@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM php:8.2-fpm
+FROM php:8.4-fpm
 
 # Move to using the default php.ini
 RUN mv "$PHP_INI_DIR/php.ini-development" "$PHP_INI_DIR/php.ini"
