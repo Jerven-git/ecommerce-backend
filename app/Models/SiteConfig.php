@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class SiteConfig extends Model
 {
+    const CREATED_AT = null;
     protected $table = 'site_config';
 
     protected $fillable = [

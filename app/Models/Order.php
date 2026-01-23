@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Order extends Model
 {
+    const UPDATED_AT = null;
+
     protected $fillable = [
         'customer_name',
         'customer_email',

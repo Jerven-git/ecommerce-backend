@@ -12,6 +12,7 @@ class Product extends Model
         'price',
         'image_url',
         'stock',
+        'weight',
         'category',
         'is_active',
     ];
@@ -19,6 +20,7 @@ class Product extends Model
     protected $casts = [
         'price' => 'decimal:2',
         'stock' => 'integer',
+        'weight' => 'decimal:2',
         'is_active' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
