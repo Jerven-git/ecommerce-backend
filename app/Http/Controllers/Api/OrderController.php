@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\Product;
 use App\Models\OrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -59,7 +60,7 @@ class OrderController extends Controller
 
             // Calculate total and prepare order items
             foreach ($validated['items'] as $item) {
-                $product = \App\Models\Product::findOrFail($item['product_id']);
+                $product = Product::findOrFail($item['product_id']);
                 
                 // Check stock
                 if ($product->stock < $item['quantity']) {

@@ -18,6 +18,7 @@ return new class extends Migration
             $table->decimal('price', 10, 2)->default(0);
             $table->text('image_url')->nullable();
             $table->integer('stock')->default(0);
+            $table->decimal('weight', 8, 2)->default(0);
             $table->string('category')->default('general');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
