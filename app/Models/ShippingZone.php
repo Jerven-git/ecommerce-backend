@@ -15,8 +15,8 @@ class ShippingZone extends Model
 
     protected $casts = [
         'enabled' => 'boolean',
-        'base_rate' => 'decimal:2',
-        'per_kg_rate' => 'decimal:2',
+        'base_rate' => 'float',
+        'per_kg_rate' => 'float', 
     ];
 
     public function calculateShipping($weight = 0)

@@ -75,7 +75,7 @@ class ShippingSettingsController extends Controller
     public function calculate(Request $request)
     {
         $validated = $request->validate([
-            'country' => 'required|string',
+            'country' => 'nullable|string',
             'state' => 'nullable|string',
             'city' => 'nullable|string',
             'weight' => 'nullable|numeric|min:0',
@@ -88,5 +88,21 @@ class ShippingSettingsController extends Controller
         $result = $calculator->calculateShipping($validated);
 
         return response()->json($result);
+    }
+
+    public function options()
+    {
+        $calculator = new ShippingCalculator();
+        $options = $calculator->getAvailableOptions();
+
+        return response()->json(['data' => $options]);
+    }
+
+    public function zones()
+    {
+        $calculator = new ShippingCalculator();
+        $zones = $calculator->getEnabledZones();
+
+        return response()->json(['data' => $zones]);
     }
 }
