@@ -8,17 +8,37 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\SiteConfigController;
 use App\Http\Controllers\Api\DiscountController;
 use App\Http\Controllers\Api\ShippingSettingsController;
+use App\Http\Controllers\Api\TaxSettingsController;
+use App\Http\Controllers\Api\PaymentSettingsController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\WebhookController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+
 Route::post('/discounts/validate', [DiscountController::class, 'validate']);
+
+Route::post('/tax/calculate', [TaxSettingsController::class, 'calculate']);
+Route::post('/tax/calculate-cart', [TaxSettingsController::class, 'calculateCart']);
+
+Route::post('/orders', [OrderController::class, 'store']);
 Route::post('/shipping/calculate', [ShippingSettingsController::class, 'calculate']);
+
+Route::get('/shipping/options', [ShippingSettingsController::class, 'options']);
+Route::get('/shipping/zones', [ShippingSettingsController::class, 'zones']);
 
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{id}', [ProductController::class, 'show']);
+
 Route::get('/site-config', [SiteConfigController::class, 'show']);
 
+Route::post('/orders/{order}/pay', [PaymentController::class, 'pay']);
 
+// webhooks (Stripe, PayPal, Square)
+Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])
+    ->whereIn('provider', ['stripe', 'paypal', 'square']);
+
+Route::get('/payment-settings/methods', [PaymentSettingsController::class, 'methods']);
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -27,7 +47,6 @@ Route::middleware('auth:sanctum')->group(function () {
     // Order routes (authenticated users)
     Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/orders/{id}', [OrderController::class, 'show']);
-    Route::post('/orders', [OrderController::class, 'store']);
     Route::patch('/orders/{id}', [OrderController::class, 'updateStatus']);
     Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
 
@@ -53,5 +72,13 @@ Route::middleware('auth:sanctum')->group(function () {
         // Shipping settings management
         Route::get('/shipping-settings', [ShippingSettingsController::class, 'show']);
         Route::patch('/shipping-settings', [ShippingSettingsController::class, 'update']);
+
+        // Tax settings management
+        Route::get('/tax-settings', [TaxSettingsController::class, 'show']);
+        Route::patch('/tax-settings', [TaxSettingsController::class, 'update']);
+
+        // Payment settings management
+        Route::get('/payment-settings', [PaymentSettingsController::class, 'show']);
+        Route::patch('/payment-settings', [PaymentSettingsController::class, 'update']);
     });
 });

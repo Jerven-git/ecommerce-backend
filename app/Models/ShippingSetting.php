@@ -17,9 +17,9 @@ class ShippingSetting extends Model
     ];
 
     protected $casts = [
-        'express_post_fee' => 'decimal:2',
-        'registered_post_fee' => 'decimal:2',
-        'insurance_fee' => 'decimal:2',
-        'free_shipping_threshold' => 'decimal:2',
+        'express_post_fee' => 'float',
+        'registered_post_fee' => 'float',
+        'insurance_fee' => 'float',
+        'free_shipping_threshold' => 'float',
     ];
 }

@@ -9,13 +9,11 @@ class ShippingCalculator
 {
     protected $settings;
 
-    /**
-     * Create a new class instance.
-     */
     public function __construct()
     {
         $this->settings = ShippingSetting::first();
     }
+
     public function calculateShipping($params)
     {
         $country = $params['country'] ?? '';
@@ -29,9 +27,11 @@ class ShippingCalculator
         if ($this->settings && $this->settings->free_shipping_threshold > 0 && $orderAmount >= $this->settings->free_shipping_threshold) {
             return [
                 'base_shipping' => 0,
-                'zone' => 'free_shipping',
+                'weight_fee' => 0,
                 'options_fee' => $this->calculateOptionsFee($options),
-                'total' => $this->calculateOptionsFee($options)
+                'total' => $this->calculateOptionsFee($options),
+                'free_shipping' => true,
+                'zone' => 'free_shipping'
             ];
         }
 
@@ -45,14 +45,17 @@ class ShippingCalculator
             ];
         }
 
-        $baseShipping = $zone->calculateShipping($weight);
+        $baseShipping = $zone->base_rate;
+        $weightFee = $weight > 0 ? ($weight * $zone->per_kg_rate) : 0;
         $optionsFee = $this->calculateOptionsFee($options);
 
         return [
             'base_shipping' => $baseShipping,
-            'zone' => $zoneType,
+            'weight_fee' => $weightFee,
             'options_fee' => $optionsFee,
-            'total' => $baseShipping + $optionsFee
+            'total' => $baseShipping + $weightFee + $optionsFee,
+            'free_shipping' => false,
+            'zone' => $zoneType
         ];
     }
 
@@ -84,7 +87,7 @@ class ShippingCalculator
             return 'own_country';
         }
 
-        // Different country - you can add logic for specific cities/states
+        // Different country
         return 'other_country';
     }
 
@@ -109,6 +112,55 @@ class ShippingCalculator
         }
 
         return $fee;
+    }
+
+    public function getAvailableOptions()
+    {
+        if (!$this->settings) {
+            return [];
+        }
+
+        $options = [];
+
+        if ($this->settings->express_post_fee > 0) {
+            $options[] = [
+                'id' => 'express_post',
+                'name' => 'Express Post',
+                'description' => 'Fast delivery (1-2 days)',
+                'fee' => $this->settings->express_post_fee
+            ];
+        }
+
+        if ($this->settings->registered_post_fee > 0) {
+            $options[] = [
+                'id' => 'registered_post',
+                'name' => 'Registered Post',
+                'description' => 'Tracking number and proof of delivery',
+                'fee' => $this->settings->registered_post_fee
+            ];
+        }
+
+        if ($this->settings->insurance_fee > 0) {
+            $options[] = [
+                'id' => 'insurance',
+                'name' => 'Shipping Insurance',
+                'description' => 'Coverage for lost or damaged items',
+                'fee' => $this->settings->insurance_fee
+            ];
+        }
+
+        return $options;
+    }
+
+    public function getEnabledZones()
+    {
+        return ShippingZone::where('enabled', true)->get()->map(function($zone) {
+            return [
+                'zone_type' => $zone->zone_type,
+                'base_rate' => $zone->base_rate,
+                'per_kg_rate' => $zone->per_kg_rate
+            ];
+        });
     }
 }
 
