@@ -36,7 +36,7 @@ class PaymentSetting extends Model
                 'id' => 'stripe',
                 'name' => 'Credit/Debit Card',
                 'config' => [
-                    'publishable_key' => config('payments.stripe.publishable_key'),
+                    'publishable_key' => config('payment.stripe.publishable_key'),
                 ],
             ];
         }
@@ -46,7 +46,7 @@ class PaymentSetting extends Model
                 'id' => 'paypal',
                 'name' => 'PayPal',
                 'config' => [
-                    'client_id' => config('payments.paypal.client_id'),
+                    'client_id' => config('payment.paypal.client_id'),
                 ],
             ];
         }
@@ -56,8 +56,8 @@ class PaymentSetting extends Model
                 'id' => 'square',
                 'name' => 'Square',
                 'config' => [
-                    'application_id' => config('payments.square.application_id'),
-                    'location_id' => config('payments.square.location_id'),
+                    'application_id' => config('payment.square.application_id'),
+                    'location_id' => config('payment.square.location_id'),
                 ],
             ];
         }

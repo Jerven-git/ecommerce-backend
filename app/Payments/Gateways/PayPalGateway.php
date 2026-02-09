@@ -34,23 +34,24 @@ class PayPalGateway implements PaymentGateway
     {
         $token = $this->token();
 
+        $baseReturn = rtrim(env('PAYPAL_RETURN_BASE_URL', env('PAYPAL_PUBLIC_URL', config('app.url'))), '/');
+
         /** @var Response $res */
-        $res = Http::withToken($token)
-            ->post($this->baseUrl() . '/v2/checkout/orders', [
-                'intent' => 'CAPTURE',
-                'purchase_units' => [[
-                    'custom_id'  => (string) $order->id,
-                    'invoice_id' => (string) $order->id,
-                    'amount' => [
-                        'currency_code' => strtoupper($order->currency ?? 'USD'),
-                        'value' => number_format($order->total_amount, 2, '.', ''),
-                    ],
-                ]],
-                'application_context' => [
-                    'return_url' => config('app.url') . '/paypal/return',
-                    'cancel_url' => config('app.url') . '/paypal/cancel',
-                ],
-            ]);
+        $res = Http::withToken($token)->post($this->baseUrl() . '/v2/checkout/orders', [
+        'intent' => 'CAPTURE',
+        'purchase_units' => [[
+            'custom_id'  => (string) ($meta['payment_id'] ?? $order->id),
+            'invoice_id' => 'PAY-' . ($meta['payment_id'] ?? $order->id),
+            'amount' => [
+            'currency_code' => strtoupper($order->currency ?? 'USD'),
+            'value' => number_format($order->total_amount, 2, '.', ''),
+            ],
+        ]],
+        'application_context' => [
+            'return_url' => $baseReturn . '/paypal/return',
+            'cancel_url' => $baseReturn . '/paypal/cancel',
+        ],
+        ]);
 
         $res->throw();
         $data = $res->json();

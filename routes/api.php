@@ -33,12 +33,15 @@ Route::get('/products/{id}', [ProductController::class, 'show']);
 Route::get('/site-config', [SiteConfigController::class, 'show']);
 
 Route::post('/orders/{order}/pay', [PaymentController::class, 'pay']);
+Route::post('/orders/{order}/stripe/intent', [PaymentController::class, 'stripeIntent']);
 
 // webhooks (Stripe, PayPal, Square)
 Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])
     ->whereIn('provider', ['stripe', 'paypal', 'square']);
 
 Route::get('/payment-settings/methods', [PaymentSettingsController::class, 'methods']);
+Route::get('/payments/{payment}', [PaymentController::class, 'show']);
+
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
