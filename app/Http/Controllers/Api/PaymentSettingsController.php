@@ -67,7 +67,7 @@ class PaymentSettingsController extends Controller
         }
 
         if ($settings->stripe_enabled) {
-            $publishable = config('payments.stripe.publishable_key');
+            $publishable = config('payment.stripe.publishable_key');
 
             // Optional: if missing, don't advertise Stripe
             if ($publishable) {
@@ -84,7 +84,7 @@ class PaymentSettingsController extends Controller
         }
 
         if ($settings->paypal_enabled) {
-            $clientId = config('payments.paypal.client_id');
+            $clientId = config('payment.paypal.client_id');
 
             if ($clientId) {
                 $methods[] = [
@@ -100,8 +100,8 @@ class PaymentSettingsController extends Controller
         }
 
         if ($settings->square_enabled) {
-            $appId = config('payments.square.application_id');
-            $locationId = config('payments.square.location_id');
+            $appId = config('payment.square.application_id');
+            $locationId = config('payment.square.location_id');
 
             if ($appId && $locationId) {
                 $methods[] = [

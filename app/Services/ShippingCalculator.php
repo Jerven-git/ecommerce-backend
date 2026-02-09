@@ -23,7 +23,7 @@ class ShippingCalculator
         $orderAmount = $params['order_amount'] ?? 0;
         $options = $params['options'] ?? [];
 
-        // Check for free shipping
+
         if ($this->settings && $this->settings->free_shipping_threshold > 0 && $orderAmount >= $this->settings->free_shipping_threshold) {
             return [
                 'base_shipping' => 0,
@@ -35,7 +35,6 @@ class ShippingCalculator
             ];
         }
 
-        // Determine shipping zone
         $zoneType = $this->determineZone($country, $state, $city);
         $zone = ShippingZone::where('zone_type', $zoneType)->where('enabled', true)->first();
 
