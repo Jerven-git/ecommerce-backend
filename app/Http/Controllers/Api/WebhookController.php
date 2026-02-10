@@ -244,6 +244,14 @@ class WebhookController extends Controller
 
     private function applyPaymentStatus(Payment $payment, array $normalized, PaymentService $payments): void
     {
+        if (!$payment->order_id && !empty($normalized['order_id'])) {
+            $oid = (int) $normalized['order_id'];
+            if ($oid > 0) {
+                $payment->update(['order_id' => $oid]);
+                $payment->order_id = $oid;
+            }
+        }
+
         if (($normalized['status'] ?? null) === 'paid') {
             $payments->markPaid($payment);
         }

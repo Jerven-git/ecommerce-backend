@@ -18,15 +18,21 @@ class PaymentController extends Controller
             'provider' => ['required', 'string', Rule::in(['stripe','paypal','square'])],
         ]);
 
-        $gateway = $manager->get($data['provider']);
+        $provider = $data['provider'];
+        $gateway = $manager->get($provider);
 
         $init = $gateway->createPayment($order, [
             'user_id' => (string) optional($request->user())->id,
         ]);
 
-        $payments->createPending($order, $data['provider'], $init);
+        $payment = $payments->createPending($order, $provider, $init);
 
-        return response()->json($init);
+        return response()->json([
+            'payment_id'    => $payment->id,
+            'provider'      => $provider,
+            'provider_ref'  => $payment->provider_ref,
+            'redirect_url'  => $init['redirect_url'] ?? $init['approval_url'] ?? null,
+        ]);
     }
 
     public function stripeIntent(Order $order)
