@@ -14,7 +14,7 @@ interface PaymentGateway
      * - PayPal: approval_url
      * - Square: payment_link_url (or payment init info)
      */
-    public function createPayment(Order $order, array $meta = []): array;
+    public function createPayment(Order $order, array $meta = [] ): array;
 
     /**
      * Parse + normalize a webhook event after signature verification.

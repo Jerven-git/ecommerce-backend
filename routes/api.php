@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\TaxSettingsController;
 use App\Http\Controllers\Api\PaymentSettingsController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WebhookController;
+use App\Http\Controllers\Api\PayPalReturnController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -41,6 +42,10 @@ Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])
 
 Route::get('/payment-settings/methods', [PaymentSettingsController::class, 'methods']);
 Route::get('/payments/{payment}', [PaymentController::class, 'show']);
+
+Route::get('/paypal/return', [PayPalReturnController::class, 'return']);
+Route::get('/paypal/cancel', [PayPalReturnController::class, 'cancel']);
+Route::post('/paypal/capture', [PayPalReturnController::class, 'capture']);
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {

@@ -5,7 +5,7 @@ namespace App\Payments\Gateways;
 use App\Models\Order;
 use App\Payments\Contracts\PaymentGateway;
 use Illuminate\Support\Facades\Http;
-
+use Illuminate\Support\Str;
 class PayPalGateway implements PaymentGateway
 {
     public function key(): string { return 'paypal'; }
@@ -34,37 +34,59 @@ class PayPalGateway implements PaymentGateway
     {
         $token = $this->token();
 
-        $baseReturn = rtrim(env('PAYPAL_RETURN_BASE_URL', env('PAYPAL_PUBLIC_URL', config('app.url'))), '/');
+        $baseReturn = rtrim(
+            env('PAYPAL_RETURN_BASE_URL', env('FRONTEND_URL', 'http://localhost:8000')),
+            '/'
+        );
 
-        /** @var Response $res */
-        $res = Http::withToken($token)->post($this->baseUrl() . '/v2/checkout/orders', [
-        'intent' => 'CAPTURE',
-        'purchase_units' => [[
-            'custom_id'  => (string) ($meta['payment_id'] ?? $order->id),
-            'invoice_id' => 'PAY-' . ($meta['payment_id'] ?? $order->id),
-            'amount' => [
-            'currency_code' => strtoupper($order->currency ?? 'USD'),
-            'value' => number_format($order->total_amount, 2, '.', ''),
+        $currency = strtoupper($order->currency ?? 'USD');
+        $value = number_format((float) $order->total_amount, 2, '.', '');
+
+        // ✅ invoice_id must be unique per transaction
+        $invoiceId = 'ORDER-' . $order->id . '-' . Str::uuid()->toString();
+
+        $payload = [
+            'intent' => 'CAPTURE',
+            'purchase_units' => [[
+                'custom_id'  => (string) $order->id,  // internal order id (OK to repeat)
+                'invoice_id' => $invoiceId,           // must be unique
+                'amount' => [
+                    'currency_code' => $currency,
+                    'value' => $value,
+                ],
+            ]],
+            'application_context' => [
+                'return_url' => $baseReturn . '/payment/complete',
+                'cancel_url' => $baseReturn . '/payment/cancelled',
             ],
-        ]],
-        'application_context' => [
-            'return_url' => $baseReturn . '/paypal/return',
-            'cancel_url' => $baseReturn . '/paypal/cancel',
-        ],
-        ]);
+        ];
+        
+        /** @var Response $res */
+        $res = Http::withToken($token)
+            ->timeout(20)
+            ->retry(2, 200)
+            ->post($this->baseUrl() . '/v2/checkout/orders', $payload);
 
-        $res->throw();
+        if (!$res->successful()) {
+            throw new \RuntimeException("PayPal create order failed: {$res->status()} {$res->body()}");
+        }
+
         $data = $res->json();
 
-        $approval = collect($data['links'] ?? [])
-            ->firstWhere('rel', 'approve')['href'] ?? null;
+        $paypalOrderId = data_get($data, 'id');
+        $approvalUrl = collect($data['links'] ?? [])->firstWhere('rel', 'approve')['href'] ?? null;
+
+        if (!$paypalOrderId || !$approvalUrl) {
+            throw new \RuntimeException("PayPal response missing fields: {$res->body()}");
+        }
 
         return [
-            'provider' => 'paypal',
-            'type' => 'redirect',
-            'provider_ref' => $data['id'] ?? null, // paypal order id
-            'approval_url' => $approval,
-            'invoice_id' => (string) $order->id,
+            'provider'      => 'paypal',
+            'type'          => 'redirect',
+            'provider_ref'  => $paypalOrderId,
+            'approval_url'  => $approvalUrl,
+            'redirect_url'  => $approvalUrl,
+            'invoice_id'    => $invoiceId, // return the actual invoice id you used
         ];
     }
 
