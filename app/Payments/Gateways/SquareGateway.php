@@ -40,7 +40,7 @@ class SquareGateway implements PaymentGateway
                 'location_id' => config('payment.square.location_id'),
             ],
             'checkout_options' => [
-                'redirect_url' => config('app.url') . '/square/return',
+                'redirect_url' => config('app.url') . '/payment/complete',
             ],
         ]);
 
@@ -71,11 +71,9 @@ class SquareGateway implements PaymentGateway
 
         $eventId = $event['event_id'] ?? null;
 
-        // Prefer matching using Square order id (because you stored it as provider_ref)
-        $squareOrderId = is_array($payment) ? ($payment['order_id'] ?? null) : null;
-
-        $paymentId = is_array($payment) ? ($payment['id'] ?? null) : null;
-        $paymentStatus = is_array($payment) ? ($payment['status'] ?? null) : null;
+        $squareOrderId   = is_array($payment) ? ($payment['order_id'] ?? null) : null;
+        $squarePaymentId = is_array($payment) ? ($payment['id'] ?? null) : null;
+        $paymentStatus   = is_array($payment) ? ($payment['status'] ?? null) : null;
 
         $status = match ($type) {
             'payment.updated', 'payment.created' =>
@@ -87,12 +85,13 @@ class SquareGateway implements PaymentGateway
             'provider'     => 'square',
             'event_id'     => $eventId,
             'event_type'   => $type,
-            'order_id'     => null,                 // optional: only if you embed your internal id somewhere
-            'provider_ref' => $squareOrderId,       // THIS should match payments.provider_ref
+            'order_id'     => null,
+            'provider_ref' => $squareOrderId,
             'status'       => $status,
             'payload'      => $event,
             'meta' => [
-                'square_payment_id' => $paymentId,
+                'square_payment_id' => $squarePaymentId,
+                'square_order_id'   => $squareOrderId,
                 'square_status'     => $paymentStatus,
             ],
         ];
