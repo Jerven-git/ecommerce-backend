@@ -213,6 +213,18 @@ class WebhookController extends Controller
         $providerRef = $normalized['provider_ref'] ?? null;
         $orderId = $normalized['order_id'] ?? null;
 
+        if ($provider === 'square') {
+            $squarePaymentId = $normalized['meta']['square_payment_id'] ?? null;
+            if ($squarePaymentId) {
+                $payment = Payment::where('provider', 'square')
+                    ->where('meta->square_payment_id', $squarePaymentId)
+                    ->latest()
+                    ->first();
+
+                if ($payment) return $payment;
+            }
+        }
+
         if ($providerRef) {
             $payment = Payment::where('provider', $provider)
                 ->where('provider_ref', $providerRef)

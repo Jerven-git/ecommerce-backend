@@ -24,18 +24,14 @@ class PaymentService
     public function markPaid(Payment $payment): void
     {
         DB::transaction(function () use ($payment) {
-            // lock payment row to prevent concurrent webhook double-processing
+
             $payment = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
 
-            // idempotent: already paid
-            if ($payment->status === 'paid') {
-                return;
-            }
-
-            $payment->update(['status' => 'paid']);
-
-            // If payment is not linked to an order, nothing to finalize
+            // If payment is not linked to an order, we can only mark payment paid.
             if (!$payment->order_id) {
+                if ($payment->status !== 'paid') {
+                    $payment->update(['status' => 'paid']);
+                }
                 return;
             }
 
@@ -46,12 +42,20 @@ class PaymentService
 
             if (!$order) return;
 
-            // idempotent: stock already deducted
+            // ✅ True idempotency: if stock already deducted, ensure paid/status then exit.
             if ($order->stock_deducted_at) {
+                if ($payment->status !== 'paid') {
+                    $payment->update(['status' => 'paid']);
+                }
                 if ($order->status === 'pending') {
                     $order->update(['status' => 'processing']);
                 }
                 return;
+            }
+
+            // Mark payment paid (do NOT return just because it is already paid)
+            if ($payment->status !== 'paid') {
+                $payment->update(['status' => 'paid']);
             }
 
             foreach ($order->items as $item) {
@@ -66,7 +70,6 @@ class PaymentService
 
             $order->update([
                 'stock_deducted_at' => now(),
-                // optional: when paid, order moves to processing
                 'status' => $order->status === 'pending' ? 'processing' : $order->status,
             ]);
         });
