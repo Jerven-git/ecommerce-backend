@@ -9,16 +9,8 @@ interface PaymentGateway
     public function key(): string;
 
     /**
-     * Create a payment "start" response for frontend:
-     * - Stripe: client_secret
-     * - PayPal: approval_url
-     * - Square: payment_link_url (or payment init info)
+     * Create a payment "start" response for frontend.
+     * Return an array that your frontend understands (e.g. client_secret, approval_url, etc).
      */
-    public function createPayment(Order $order, array $meta = [] ): array;
-
-    /**
-     * Parse + normalize a webhook event after signature verification.
-     * Return: provider, event_id, event_type, order_id (if possible), provider_ref, status
-     */
-    public function parseWebhook(array $event): array;
+    public function createPayment(Order $order, array $meta = []): array;
 }

@@ -22,7 +22,8 @@ return new class extends Migration
 
             $table->unsignedBigInteger('amount');
             $table->string('currency', 10)->default('USD');
-
+            $table->string('public_token', 64)->nullable()->unique();
+            
             $table->json('meta')->nullable();
             $table->timestamps();
 

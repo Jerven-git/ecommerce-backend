@@ -3,12 +3,19 @@
 namespace App\Payments\Gateways;
 
 use App\Models\Order;
+use App\Payments\Contracts\HandlesWebhooks;
 use App\Payments\Contracts\PaymentGateway;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
-class PayPalGateway implements PaymentGateway
+
+class PayPalGateway implements PaymentGateway, HandlesWebhooks
 {
-    public function key(): string { return 'paypal'; }
+    public function key(): string
+    {
+        return 'paypal';
+    }
 
     private function baseUrl(): string
     {
@@ -17,39 +24,62 @@ class PayPalGateway implements PaymentGateway
             : 'https://api-m.sandbox.paypal.com';
     }
 
+    private function client(?string $token = null): PendingRequest
+    {
+        $req = Http::acceptJson()
+            ->connectTimeout(3)
+            ->timeout(15);
+
+        if ($token) {
+            $req = $req->withToken($token);
+        }
+
+        return $req;
+    }
+
+    private function withRetry(PendingRequest $req): PendingRequest
+    {
+        return $req->retry(
+            2,
+            200,
+            function (\Throwable $e, ?Response $response) {
+                if ($response === null) return true; // network error
+                $s = $response->status();
+                return $s === 429 || $s >= 500;
+            }
+        );
+    }
+
+    /**
+     * Prefer reusing your existing PayPalToken service (already used in WebhookController).
+     * That service should cache tokens (recommended).
+     */
     private function token(): string
     {
-        /** @var Response $res */
-        $res = Http::asForm()
-            ->withBasicAuth(config('payment.paypal.client_id'), config('payment.paypal.secret'))
-            ->post($this->baseUrl() . '/v1/oauth2/token', [
-                'grant_type' => 'client_credentials',
-            ]);
-
-        $res->throw();
-        return $res->json('access_token');
+        return app(\App\Payments\PayPalToken::class)->get();
     }
 
     public function createPayment(Order $order, array $meta = []): array
     {
         $token = $this->token();
 
-        $baseReturn = rtrim(
-            env('PAYPAL_RETURN_BASE_URL', env('FRONTEND_URL', 'http://localhost:8000')),
-            '/'
-        );
+        $baseReturn = rtrim((string) config('payment.paypal.return_base_url'), '/');
+        if ($baseReturn === '') {
+            // fallback to app url if not configured
+            $baseReturn = rtrim((string) config('app.url'), '/');
+        }
 
-        $currency = strtoupper($order->currency ?? 'USD');
+        $currency = strtoupper($order->currency ?: 'USD');
         $value = number_format((float) $order->total_amount, 2, '.', '');
 
-        // ✅ invoice_id must be unique per transaction
+        // must be unique per transaction
         $invoiceId = 'ORDER-' . $order->id . '-' . Str::uuid()->toString();
 
         $payload = [
             'intent' => 'CAPTURE',
             'purchase_units' => [[
-                'custom_id'  => (string) $order->id,  // internal order id (OK to repeat)
-                'invoice_id' => $invoiceId,           // must be unique
+                'custom_id'  => (string) $order->id,  // internal order id
+                'invoice_id' => $invoiceId,           // unique
                 'amount' => [
                     'currency_code' => $currency,
                     'value' => $value,
@@ -60,16 +90,18 @@ class PayPalGateway implements PaymentGateway
                 'cancel_url' => $baseReturn . '/payment/cancelled',
             ],
         ];
+
+        // PayPal idempotency key
+        $requestId = (string) Str::uuid();
         
         /** @var Response $res */
-        $res = Http::withToken($token)
-            ->timeout(20)
-            ->retry(2, 200)
-            ->post($this->baseUrl() . '/v2/checkout/orders', $payload);
+        $res = $this->withRetry(
+            $this->client($token)->withHeaders([
+                'PayPal-Request-Id' => $requestId,
+            ])
+        )->post($this->baseUrl() . '/v2/checkout/orders', $payload);
 
-        if (!$res->successful()) {
-            throw new \RuntimeException("PayPal create order failed: {$res->status()} {$res->body()}");
-        }
+        $res->throw();
 
         $data = $res->json();
 
@@ -77,16 +109,17 @@ class PayPalGateway implements PaymentGateway
         $approvalUrl = collect($data['links'] ?? [])->firstWhere('rel', 'approve')['href'] ?? null;
 
         if (!$paypalOrderId || !$approvalUrl) {
-            throw new \RuntimeException("PayPal response missing fields: {$res->body()}");
+            throw new \RuntimeException('PayPal response missing expected fields.');
         }
 
         return [
             'provider'      => 'paypal',
             'type'          => 'redirect',
-            'provider_ref'  => $paypalOrderId,
+            'provider_ref'  => $paypalOrderId,  // PayPal ORDER id (keep consistent)
             'approval_url'  => $approvalUrl,
             'redirect_url'  => $approvalUrl,
-            'invoice_id'    => $invoiceId, // return the actual invoice id you used
+            'invoice_id'    => $invoiceId,
+            'paypal_request_id' => $requestId,
         ];
     }
 
@@ -95,34 +128,36 @@ class PayPalGateway implements PaymentGateway
         $type = $event['event_type'] ?? null;
         $resource = $event['resource'] ?? [];
 
-        // IMPORTANT: for PAYMENT.CAPTURE.* events, this is the PayPal ORDER id
-        $paypalOrderId = $resource['supplementary_data']['related_ids']['order_id'] ?? null;
+        // For PAYMENT.CAPTURE.* events, PayPal ORDER id is usually here:
+        $paypalOrderId = data_get($resource, 'supplementary_data.related_ids.order_id');
 
-        // Your internal order id from custom_id
+        // Your internal order id (string)
         $orderId = $resource['custom_id'] ?? null;
 
-        // Capture id (optional, useful for refunds / audit)
+        // Capture id (useful for audit/refunds)
         $captureId = $resource['id'] ?? null;
 
         $status = match ($type) {
             'PAYMENT.CAPTURE.COMPLETED' => 'paid',
-            'PAYMENT.CAPTURE.DENIED' => 'failed',
-            'PAYMENT.CAPTURE.REFUNDED' => 'refunded',
-            default => 'pending',
+            'PAYMENT.CAPTURE.DENIED'    => 'failed',
+            'PAYMENT.CAPTURE.REFUNDED'  => 'refunded',
+            default                     => 'pending',
         };
 
         return [
-            'provider' => 'paypal',
-            'event_id' => $event['id'] ?? null,
-            'event_type' => $type,
-            'order_id' => $orderId,
-            // Make provider_ref match what you stored in createPayment()
-            'provider_ref' => $paypalOrderId ?? $resource['invoice_id'] ?? null,
-            'status' => $status,
-            'payload' => $event,
-            'meta' => [
+            'provider'     => 'paypal',
+            'event_id'     => $event['id'] ?? null,
+            'event_type'   => $type,
+            'order_id'     => $orderId,
+            // MUST match what you store during createPayment():
+            'provider_ref' => $paypalOrderId, // keep it PayPal ORDER id only
+            'status'       => $status,
+            'payload'      => $event,
+            'meta' => array_filter([
                 'capture_id' => $captureId,
-            ],
+                // keep invoice id if present (sometimes handy)
+                'invoice_id' => $resource['invoice_id'] ?? null,
+            ]),
         ];
     }
 }

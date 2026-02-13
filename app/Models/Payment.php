@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Payment extends Model
 {
     protected $fillable = [
-        'order_id','provider','provider_ref','status','amount','currency','meta'
+        'order_id','provider','provider_ref','status','amount','currency','meta', 'public_token',
     ];
 
     protected $casts = [
@@ -19,4 +19,3 @@ class Payment extends Model
         return $this->belongsTo(Order::class);
     }
 }
-

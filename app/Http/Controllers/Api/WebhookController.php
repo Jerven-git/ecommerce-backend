@@ -9,11 +9,18 @@ use App\Payments\GatewayManager;
 use App\Payments\PaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use App\Payments\Contracts\HandlesWebhooks;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
 class WebhookController extends Controller
 {
-    public function handle(string $provider, Request $request, GatewayManager $manager, PaymentService $payments)
-    {
+    public function handle(
+        string $provider,
+        Request $request,
+        GatewayManager $manager,
+        PaymentService $payments
+    ) {
+        $provider = strtolower(trim($provider));
         $raw = $request->getContent();
 
         // 1) Parse + verify provider payload -> array
@@ -30,12 +37,14 @@ class WebhookController extends Controller
         $eventId = $normalized['event_id'] ?? null;
         if (!$eventId) return response('Missing event id', 400);
 
-        // 3) Store event (dedupe via unique constraint; ignore duplicates)
-        $this->storeWebhookEventOrIgnoreDuplicate($provider, $normalized, $eventArr);
+        // 3) Dedupe early (all providers)
+        $created = $this->storeWebhookEventOnce($provider, $normalized, $eventArr);
+        if (!$created) {
+            return response('OK', 200);
+        }
 
         // 4) Resolve payment (by provider_ref then order_id)
         $payment = $this->resolvePaymentFromNormalized($provider, $normalized);
-
         if (!$payment) {
             return response('OK', 200);
         }
@@ -43,7 +52,7 @@ class WebhookController extends Controller
         // 5) Merge meta
         $this->mergePaymentMeta($payment, $normalized);
 
-        // 6) Mark paid if needed
+        // 6) Apply payment status
         $this->applyPaymentStatus($payment, $normalized, $payments);
 
         return response('OK', 200);
@@ -68,8 +77,9 @@ class WebhookController extends Controller
     private function parseStripe(Request $request, string $raw): array
     {
         $secret = config('payment.stripe.webhook_secret');
+
         if (!$secret) {
-            // Returning 200 prevents Stripe from retrying forever if you forgot to configure it
+            // Prevent retry loop if misconfigured
             return [null, response('Stripe webhook not configured', 200)];
         }
 
@@ -91,8 +101,8 @@ class WebhookController extends Controller
         $signature = $request->header('x-square-hmacsha256-signature');
 
         $ok = \App\Payments\VerifySquareSignature::isValid(
-            config('payment.square.webhook_url'),
-            config('payment.square.webhook_secret'),
+            (string) config('payment.square.webhook_notification_url'),
+            (string) config('payment.square.webhook_signature_key'),
             $raw,
             $signature
         );
@@ -101,7 +111,8 @@ class WebhookController extends Controller
             return [null, response('Invalid signature', 403)];
         }
 
-        return [json_decode($raw, true) ?? [], null];
+        $decoded = json_decode($raw, true);
+        return [is_array($decoded) ? $decoded : [], null];
     }
 
     /**
@@ -119,48 +130,31 @@ class WebhookController extends Controller
             return [null, response('PayPal webhook_id not configured', 200)];
         }
 
-        $eventId   = $eventArr['id'] ?? null;
-        $eventType = $eventArr['event_type'] ?? null;
-
-        if (!$eventId) {
-            return [null, response('Missing event id', 400)];
-        }
-
-        // Dedupe early for PayPal
-        $webhookEvent = PaymentWebhookEvent::firstOrCreate(
-            ['provider' => 'paypal', 'event_id' => $eventId],
-            ['event_type' => $eventType, 'payload' => $eventArr]
-        );
-
-        if (!$webhookEvent->wasRecentlyCreated) {
-            return [null, response('OK', 200)];
-        }
-
-        // Environment mismatch guard (prevents verifying with wrong mode)
+        // Env mismatch guard
         $certUrl = (string) $request->header('paypal-cert-url');
-
         $incomingLooksSandbox = str_contains($certUrl, 'sandbox');
         $configuredIsSandbox  = config('payment.paypal.mode') !== 'live';
 
-        if ($configuredIsSandbox && !$incomingLooksSandbox) {
+        if ($configuredIsSandbox !== $incomingLooksSandbox) {
             return [null, response('OK', 200)];
         }
 
-        if (!$configuredIsSandbox && $incomingLooksSandbox) {
-            return [null, response('OK', 200)];
-        }
-
-        // Verify via PayPal endpoint
         $base = $configuredIsSandbox
             ? 'https://api-m.sandbox.paypal.com'
             : 'https://api-m.paypal.com';
 
         $token = app(\App\Payments\PayPalToken::class)->get();
 
+        /** @var Response $verifyRes */
         $verifyRes = Http::withToken($token)
             ->connectTimeout(3)
             ->timeout(8)
-            ->retry(2, 200)
+            ->retry(2, 200, function ($e, $res) {
+                // retry network + 429 + 5xx
+                if ($res === null) return true;
+                $s = $res->status();
+                return $s === 429 || $s >= 500;
+            })
             ->post($base . '/v1/notifications/verify-webhook-signature', [
                 'transmission_id'   => $request->header('paypal-transmission-id'),
                 'transmission_time' => $request->header('paypal-transmission-time'),
@@ -171,7 +165,6 @@ class WebhookController extends Controller
                 'webhook_event'     => $eventArr,
             ]);
 
-        /** @var Response $verifyRes */
         if (!$verifyRes->ok()) {
             return [null, response('OK', 200)];
         }
@@ -188,35 +181,47 @@ class WebhookController extends Controller
     private function normalizeEvent(string $provider, GatewayManager $manager, array $eventArr): array
     {
         $gateway = $manager->get($provider);
+
+        if (!$gateway instanceof HandlesWebhooks) {
+            // This means someone hit /webhooks/{provider} for a provider that isn't webhook-capable
+            throw new BadRequestHttpException("Provider does not support webhooks: {$provider}");
+            // Or: return []; and handle as 400 above
+        }
+
         return $gateway->parseWebhook($eventArr);
     }
 
-    private function storeWebhookEventOrIgnoreDuplicate(string $provider, array $normalized, array $fallbackPayload): void
+    /**
+     * Store once. Return true if inserted, false if duplicate.
+     */
+    private function storeWebhookEventOnce(string $provider, array $normalized, array $fallbackPayload): bool
     {
         $eventId = $normalized['event_id'] ?? null;
-        if (!$eventId) return;
+        if (!$eventId) return true; // let it continue; caller already checks
 
-        try {
-            PaymentWebhookEvent::create([
-                'provider' => $provider,
-                'event_id' => $eventId,
+        // Requires a unique index on (provider, event_id)
+        $event = PaymentWebhookEvent::firstOrCreate(
+            ['provider' => $provider, 'event_id' => $eventId],
+            [
                 'event_type' => $normalized['event_type'] ?? null,
-                'payload' => $normalized['payload'] ?? $fallbackPayload,
-            ]);
-        } catch (\Throwable) {
-            // ignore duplicates or insert failures (as per request: no logs)
-        }
+                'payload'    => $normalized['payload'] ?? $fallbackPayload,
+            ]
+        );
+
+        return $event->wasRecentlyCreated;
     }
 
     private function resolvePaymentFromNormalized(string $provider, array $normalized): ?Payment
     {
         $providerRef = $normalized['provider_ref'] ?? null;
-        $orderId = $normalized['order_id'] ?? null;
+        $orderId     = $normalized['order_id'] ?? null;
 
         if ($provider === 'square') {
             $squarePaymentId = $normalized['meta']['square_payment_id'] ?? null;
+
             if ($squarePaymentId) {
-                $payment = Payment::where('provider', 'square')
+                $payment = Payment::query()
+                    ->where('provider', 'square')
                     ->where('meta->square_payment_id', $squarePaymentId)
                     ->latest()
                     ->first();
@@ -226,7 +231,8 @@ class WebhookController extends Controller
         }
 
         if ($providerRef) {
-            $payment = Payment::where('provider', $provider)
+            $payment = Payment::query()
+                ->where('provider', $provider)
                 ->where('provider_ref', $providerRef)
                 ->latest()
                 ->first();
@@ -235,7 +241,8 @@ class WebhookController extends Controller
         }
 
         if ($orderId) {
-            return Payment::where('order_id', $orderId)
+            return Payment::query()
+                ->where('order_id', (int) $orderId)
                 ->where('provider', $provider)
                 ->latest()
                 ->first();
@@ -247,7 +254,10 @@ class WebhookController extends Controller
     private function mergePaymentMeta(Payment $payment, array $normalized): void
     {
         $meta = $normalized['meta'] ?? null;
-        if (empty($meta) || !is_array($meta)) return;
+        if (!is_array($meta) || empty($meta)) return;
+
+        // Light concurrency-safe approach: refresh before merge
+        $payment->refresh();
 
         $payment->update([
             'meta' => array_merge($payment->meta ?? [], $meta),
