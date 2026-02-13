@@ -9,6 +9,7 @@ use App\Payments\GatewayManager;
 use App\Payments\PaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use App\Payments\Contracts\ChecksPaymentStatus;
 
 class PaymentController extends Controller
 {
@@ -69,17 +70,39 @@ class PaymentController extends Controller
         ]);
     }
 
-    public function show(Request $request, Payment $payment)
+    public function show(Request $request, Payment $payment, GatewayManager $manager, PaymentService $payments)
     {
         $order = $payment->order;
 
-        // Only restrict when the order is tied to a user account
         if ($order && $order->user_id) {
-            if (!$request->user() || $order->user_id !== $request->user()->id) {
+            if (!$request->user() || (int) $order->user_id !== (int) $request->user()->id) {
                 abort(403);
             }
         }
 
+        if ($payment->status === 'pending' && $payment->created_at?->lt(now()->subSeconds(3))) {
+            /** @var PaymentGateway $gateway */
+            $gateway = $manager->get($payment->provider);
+            if ($gateway instanceof ChecksPaymentStatus) {
+                $result = $gateway->verifyPayment($payment);
+
+                if (!empty($result['meta']) && is_array($result['meta'])) {
+                    $payment->update([
+                        'meta' => array_merge($payment->meta ?? [], $result['meta']),
+                    ]);
+                    $payment->refresh();
+                }
+
+                if (!empty($result['paid'])) {
+                    $payments->markPaid($payment);
+                    $payment->refresh();
+                } elseif (!empty($result['failed'])) {
+                    $payment->update(['status' => 'failed']);
+                    $payment->refresh();
+                }
+            }
+        }
+        
         return response()->json([
             'id' => $payment->id,
             'status' => $payment->status,
