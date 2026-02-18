@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\PayPalReturnController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::get('/user', [AuthController::class, 'user']);
 
 Route::post('/discounts/validate', [DiscountController::class, 'validate']);
 
@@ -50,8 +51,6 @@ Route::post('/paypal/capture', [PayPalReturnController::class, 'capture']);
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/user', [AuthController::class, 'user']);
-
     // Order routes (authenticated users)
     Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/orders/{id}', [OrderController::class, 'show']);
