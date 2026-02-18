@@ -67,8 +67,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/products/{id}', [ProductController::class, 'destroy']);
 
         // Site config management
-        Route::put('/site-config', [SiteConfigController::class, 'update']);
+        Route::post('/site-config/media/{collection}', [SiteConfigController::class, 'uploadMedia']);
         Route::patch('/site-config', [SiteConfigController::class, 'update']);
+        Route::delete('/site-config/media/{collection}', [SiteConfigController::class, 'deleteMedia']);
 
         // Discount management
         Route::post('/discounts', [DiscountController::class, 'store']);

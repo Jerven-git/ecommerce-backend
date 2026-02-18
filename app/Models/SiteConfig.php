@@ -24,4 +24,29 @@ class SiteConfig extends Model
     protected $casts = [
         'updated_at' => 'datetime',
     ];
+
+    public function media()
+    {
+        return $this->morphMany(Media::class, 'imageable');
+    }
+
+    public function logoMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'logo');
+    }
+
+    public function heroMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'hero');
+    }
+
+    public function aboutMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'about');
+    }
+
+    public function contactMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'contact');
+    }
 }
