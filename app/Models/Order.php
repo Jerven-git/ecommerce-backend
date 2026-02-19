@@ -14,11 +14,14 @@ class Order extends Model
         'customer_phone',
         'shipping_address',
         'total_amount',
+        'discount_code',
+        'discount_amount',
         'status',
     ];
 
     protected $casts = [
         'total_amount' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
         'created_at' => 'datetime',
     ];
 
