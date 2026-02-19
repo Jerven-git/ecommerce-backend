@@ -18,6 +18,8 @@ return new class extends Migration
             $table->string('customer_phone')->nullable();
             $table->text('shipping_address');
             $table->decimal('total_amount', 10, 2)->default(0);
+            $table->string('discount_code')->nullable();
+            $table->decimal('discount_amount', 10, 2)->default(0);
             $table->enum('status', ['pending', 'processing', 'shipped', 'delivered', 'cancelled'])->default('pending');
             $table->timestamp('stock_deducted_at')->nullable();
             $table->timestamps();

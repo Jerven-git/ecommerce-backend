@@ -7,9 +7,9 @@ use App\Models\Order;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\Discount;
 use App\Models\TaxSetting;
 use App\Services\ShippingCalculator;
-use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -62,10 +62,27 @@ class OrderController extends Controller
                 $rawSubtotal
             );
 
-            $finalTotal = $this->calculateFinalTotal($tax, $shippingCalc);
+            $totalBeforeDiscount = $this->calculateFinalTotal($tax, $shippingCalc);
 
-            $order = $this->createOrder($validated, $finalTotal);
+            $discountAmount = 0.0;
+            $discountCode = $request->input('discount_code');
+            $discount = null;
+
+            if ($discountCode) {
+                $discount = Discount::where('code', $discountCode)->first();
+                if ($discount && $discount->isValid($rawSubtotal)) {
+                    $discountAmount = $discount->calculateDiscount($rawSubtotal);
+                }
+            }
+
+            $finalTotal = max(0, $totalBeforeDiscount - $discountAmount);
+
+            $order = $this->createOrder($validated, $finalTotal, $discountCode, $discountAmount);
             $this->createOrderItems($order, $orderItems);
+
+            if ($discount && $discountAmount > 0) {
+                $discount->increment('used_count');
+            }
 
             DB::commit();
 
@@ -77,6 +94,8 @@ class OrderController extends Controller
                         'raw_subtotal' => round($rawSubtotal, 2),
                         'tax' => $tax,
                         'shipping' => $shippingCalc,
+                        'discount_code' => $discountCode,
+                        'discount_amount' => round($discountAmount, 2),
                         'final_total' => round($finalTotal, 2),
                     ],
                 ],
@@ -250,7 +269,7 @@ class OrderController extends Controller
         return $taxTotal + $shippingTotal;
     }
 
-    private function createOrder(array $validated, float $finalTotal): Order
+    private function createOrder(array $validated, float $finalTotal, ?string $discountCode = null, float $discountAmount = 0): Order
     {
         return Order::create([
             'customer_name' => $validated['customer_name'],
@@ -258,6 +277,8 @@ class OrderController extends Controller
             'customer_phone' => $validated['customer_phone'] ?? '',
             'shipping_address' => $validated['shipping_address'],
             'total_amount' => round($finalTotal, 2),
+            'discount_code' => $discountCode,
+            'discount_amount' => round($discountAmount, 2),
             'status' => 'pending',
         ]);
     }
