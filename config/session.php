@@ -214,4 +214,28 @@ return [
 
     'partitioned' => env('SESSION_PARTITIONED_COOKIE', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Absolute Session Lifetime (minutes)
+    |--------------------------------------------------------------------------
+    |
+    | Maximum session duration regardless of activity. Used by
+    | SessionLifetimeMiddleware together with inactivity_timeout.
+    |
+    */
+
+    'absolute_lifetime' => (int) env('SESSION_ABSOLUTE_LIFETIME', 1440),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Inactivity Timeout (minutes)
+    |--------------------------------------------------------------------------
+    |
+    | Minutes of inactivity after the absolute lifetime has passed before
+    | the user is force-logged out. Both conditions must be true.
+    |
+    */
+
+    'inactivity_timeout' => (int) env('SESSION_INACTIVITY_TIMEOUT', 60),
+
 ];

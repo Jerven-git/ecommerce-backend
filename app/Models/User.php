@@ -47,4 +47,19 @@ class User extends Authenticatable
             'is_admin' => 'boolean',
         ];
     }
+
+    public function roles()
+    {
+        return $this->belongsToMany(Role::class);
+    }
+
+    public function hasRole(string $role): bool
+    {
+        return $this->roles()->where('name', $role)->exists();
+    }
+
+    public function isAdminLike(): bool
+    {
+        return $this->roles()->whereIn('name', ['admin', 'super_admin'])->exists();
+    }
 }

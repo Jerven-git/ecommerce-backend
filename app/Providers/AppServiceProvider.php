@@ -11,6 +11,7 @@ use Stripe\StripeClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Http\Request;
+use Illuminate\Auth\Notifications\ResetPassword;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -100,6 +101,31 @@ class AppServiceProvider extends ServiceProvider
         // PAYPAL CAPTURE: prevent duplicate capture attempts
         RateLimiter::for('paypal-capture', function (Request $request) {
             return Limit::perMinute(10)->by('paypal-capture:' . $request->ip());
+        });
+
+        // PASSWORD RESET: prevent email enumeration and abuse
+        RateLimiter::for('password-reset', function (Request $request) {
+            $email = (string) str($request->input('email', ''))->lower();
+            $key = 'password-reset:' . sha1($email . '|' . $request->ip());
+
+            return Limit::perMinute(5)->by($key);
+        });
+
+        // TWO-FACTOR VERIFY: prevent brute-forcing the 6-digit code
+        RateLimiter::for('two-factor', function (Request $request) {
+            return Limit::perMinute(5)->by('two-factor:' . $request->ip());
+        });
+
+        // TWO-FACTOR RESEND: prevent email spam
+        RateLimiter::for('two-factor-resend', function (Request $request) {
+            return Limit::perMinute(2)->by('two-factor-resend:' . $request->ip());
+        });
+
+        ResetPassword::createUrlUsing(function ($notifiable, string $token) {
+            $frontend = config('app.frontend_url');
+            $email = $notifiable->getEmailForPasswordReset();
+
+            return "{$frontend}/admin/reset-password?token={$token}&email=" . urlencode($email);
         });
     }
 }

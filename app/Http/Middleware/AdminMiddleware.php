@@ -23,8 +23,7 @@ class AdminMiddleware
             ], 401);
         }
 
-        // Check if user is an admin
-        if (!$user->is_admin) {
+        if (!$user->isAdminLike()) {
             return response()->json([
                 'message' => 'Forbidden. Admin access required.'
             ], 403);

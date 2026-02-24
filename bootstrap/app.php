@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use App\Http\Middleware\AdminMiddleware;
+use App\Http\Middleware\SessionLifetimeMiddleware;
 use App\Providers\RouteServiceProvider;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => AdminMiddleware::class,
             'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
+            'session.lifetime' => SessionLifetimeMiddleware::class,
         ]);
 
         $middleware->encryptCookies(except: []);

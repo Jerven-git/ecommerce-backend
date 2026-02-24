@@ -22,6 +22,7 @@ return new class extends Migration
             $table->text('about_content')->nullable();
             $table->string('contact_email')->default('contact@store.com');
             $table->string('contact_phone')->default('+1234567890');
+            $table->json('contact_entries')->nullable();
             $table->timestamps();
         });
     }

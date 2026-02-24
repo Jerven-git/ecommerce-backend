@@ -3,16 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\TwoFactorCodeMail;
+use App\Models\TwoFactorCode;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
     /**
-     * Login user
+     * Step 1: Verify credentials and send 2FA code via email.
      */
     public function login(Request $request)
     {
@@ -27,17 +30,118 @@ class AuthController extends Controller
             ]);
         }
 
-        // Regenerate session to prevent fixation attacks
-        $request->session()->regenerate();
+        $user = Auth::user();
+
+        // Generate and send 2FA code
+        $this->generateAndSendCode($user);
+
+        // Log out — user is NOT authenticated until 2FA is verified
+        Auth::logout();
+
+        // Store pending 2FA state in session
+        $request->session()->put('two_factor_user_id', $user->id);
+        $request->session()->put('two_factor_expires_at', now()->addMinutes(10)->timestamp);
 
         return response()->json([
-            'message' => 'Login successful',
-            'user' => $request->user(),
+            'message' => 'Verification code sent to your email.',
+            'two_factor_required' => true,
         ]);
     }
 
     /**
-     * Logout user
+     * Step 2: Verify the 2FA code and complete login.
+     */
+    public function verifyTwoFactor(Request $request)
+    {
+        $request->validate([
+            'code' => 'required|string|size:6',
+        ]);
+
+        $userId = $request->session()->get('two_factor_user_id');
+        $expiresAt = $request->session()->get('two_factor_expires_at');
+
+        if (!$userId || !$expiresAt || now()->timestamp > $expiresAt) {
+            return response()->json([
+                'message' => 'Your verification session has expired. Please log in again.',
+            ], 422);
+        }
+
+        $user = User::find($userId);
+
+        if (!$user) {
+            return response()->json([
+                'message' => 'User not found. Please log in again.',
+            ], 422);
+        }
+
+        // Find the latest unused, unexpired code
+        $twoFactorCode = TwoFactorCode::where('user_id', $userId)
+            ->whereNull('used_at')
+            ->where('expires_at', '>', now())
+            ->latest()
+            ->first();
+
+        if (!$twoFactorCode || !Hash::check($request->code, $twoFactorCode->code)) {
+            return response()->json([
+                'message' => 'Invalid verification code.',
+            ], 422);
+        }
+
+        // Mark code as used
+        $twoFactorCode->update(['used_at' => now()]);
+
+        // Clean up session 2FA data
+        $request->session()->forget(['two_factor_user_id', 'two_factor_expires_at']);
+
+        // Fully authenticate the user
+        Auth::login($user);
+        $request->session()->regenerate();
+
+        // Track session creation time for 24h expiry
+        $request->session()->put('session_created_at', now()->timestamp);
+
+        return response()->json([
+            'message' => 'Login successful',
+            'user' => array_merge($user->toArray(), [
+                'is_admin' => $user->isAdminLike(),
+            ]),
+        ]);
+    }
+
+    /**
+     * Resend the 2FA code.
+     */
+    public function resendTwoFactor(Request $request)
+    {
+        $userId = $request->session()->get('two_factor_user_id');
+
+        if (!$userId) {
+            return response()->json([
+                'message' => 'No pending verification found. Please log in again.',
+            ], 422);
+        }
+
+        $user = User::find($userId);
+
+        if (!$user) {
+            return response()->json([
+                'message' => 'User not found. Please log in again.',
+            ], 422);
+        }
+
+        // Generate and send a new code
+        $this->generateAndSendCode($user);
+
+        // Reset session expiry
+        $request->session()->put('two_factor_expires_at', now()->addMinutes(10)->timestamp);
+
+        return response()->json([
+            'message' => 'A new verification code has been sent to your email.',
+        ]);
+    }
+
+    /**
+     * Logout user.
      */
     public function logout(Request $request)
     {
@@ -52,12 +156,37 @@ class AuthController extends Controller
     }
 
     /**
-     * Get authenticated user
+     * Get authenticated user.
      */
     public function user(Request $request)
     {
+        $user = $request->user();
+
         return response()->json([
-            'user' => $request->user()
+            'user' => $user ? array_merge($user->toArray(), [
+                'is_admin' => $user->isAdminLike(),
+            ]) : null
         ]);
+    }
+
+    /**
+     * Generate a 6-digit code, store hashed, and email it.
+     */
+    private function generateAndSendCode(User $user): void
+    {
+        // Invalidate any existing unused codes
+        TwoFactorCode::where('user_id', $user->id)
+            ->whereNull('used_at')
+            ->delete();
+
+        $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        TwoFactorCode::create([
+            'user_id' => $user->id,
+            'code' => Hash::make($code),
+            'expires_at' => now()->addMinutes(10),
+        ]);
+
+        Mail::to($user->email)->send(new TwoFactorCodeMail($code, $user->name));
     }
 }
