@@ -19,10 +19,12 @@ class SiteConfig extends Model
         'about_content',
         'contact_email',
         'contact_phone',
+        'contact_entries',
     ];
 
     protected $casts = [
         'updated_at' => 'datetime',
+        'contact_entries' => 'array',
     ];
 
     public function media()
@@ -33,6 +35,11 @@ class SiteConfig extends Model
     public function logoMedia()
     {
         return $this->morphOne(Media::class, 'imageable')->where('collection', 'logo');
+    }
+
+    public function faviconMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'favicon');
     }
 
     public function heroMedia()

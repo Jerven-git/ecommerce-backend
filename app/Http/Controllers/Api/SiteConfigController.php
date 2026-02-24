@@ -14,7 +14,7 @@ class SiteConfigController extends Controller
 
     private function config(): SiteConfig
     {
-        return SiteConfig::with(['logoMedia', 'heroMedia', 'aboutMedia', 'contactMedia'])->first()
+        return SiteConfig::with(['logoMedia', 'faviconMedia', 'heroMedia', 'aboutMedia', 'contactMedia'])->first()
             ?? SiteConfig::create([]);
     }
 
@@ -33,10 +33,12 @@ class SiteConfigController extends Controller
                 'about_content' => $config->about_content,
                 'contact_email' => $config->contact_email,
                 'contact_phone' => $config->contact_phone,
+                'contact_entries' => $config->contact_entries ?? [],
                 'updated_at' => $config->updated_at,
 
-                // ✅ urls come from media
+                // urls come from media
                 'logo_url' => optional($config->logoMedia)->url,
+                'favicon_url' => optional($config->faviconMedia)->url,
                 'hero_image_url' => optional($config->heroMedia)->url,
                 'about_image_url' => optional($config->aboutMedia)->url,
                 'contact_image_url' => optional($config->contactMedia)->url,
@@ -57,6 +59,10 @@ class SiteConfigController extends Controller
             'about_content' => 'nullable|string',
             'contact_email' => 'nullable|email',
             'contact_phone' => 'nullable|string|max:20',
+            'contact_entries' => 'nullable|array|max:20',
+            'contact_entries.*.label' => 'required|string|max:100',
+            'contact_entries.*.email' => 'nullable|email|max:255',
+            'contact_entries.*.phone' => 'nullable|string|max:30',
         ]);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
@@ -75,9 +81,9 @@ class SiteConfigController extends Controller
         //     'file' => $request->file('file'),
         //     'all' => $request->all(),
         // ]);
-        abort_unless(in_array($collection, ['logo', 'hero', 'about', 'contact']), 404);
+        abort_unless(in_array($collection, ['logo', 'favicon', 'hero', 'about', 'contact']), 404);
 
-        $max = $collection === 'logo' ? 2048 : 10120; // KB (2MB vs 10MB)
+        $max = in_array($collection, ['logo', 'favicon']) ? 2048 : 10120; // KB (2MB vs 10MB)
 
         $validated = $request->validate([
             'file' => ['required', 'file', 'image', "max:$max"],
@@ -101,7 +107,7 @@ class SiteConfigController extends Controller
 
     public function deleteMedia(string $collection)
     {
-        abort_unless(in_array($collection, ['logo', 'hero', 'about', 'contact']), 404);
+        abort_unless(in_array($collection, ['logo', 'favicon', 'hero', 'about', 'contact']), 404);
 
         $config = SiteConfig::first();
         if (!$config) return response()->noContent();

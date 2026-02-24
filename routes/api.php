@@ -12,6 +12,8 @@ use App\Http\Controllers\Api\PaymentSettingsController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\PayPalReturnController;
+use App\Http\Controllers\Auth\AdminPasswordResetLinkController;
+use App\Http\Controllers\Auth\AdminNewPasswordController;
 
 /*
 |--------------------------------------------------------------------------
@@ -21,7 +23,11 @@ use App\Http\Controllers\Api\PayPalReturnController;
 
 // Auth
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
+Route::post('/two-factor/verify', [AuthController::class, 'verifyTwoFactor'])->middleware('throttle:two-factor');
+Route::post('/two-factor/resend', [AuthController::class, 'resendTwoFactor'])->middleware('throttle:two-factor-resend');
 Route::get('/user', [AuthController::class, 'user']);
+Route::post('/forgot-password', AdminPasswordResetLinkController::class)->middleware('throttle:password-reset');
+Route::post('/reset-password', AdminNewPasswordController::class)->middleware('throttle:password-reset');
 
 // Products
 Route::get('/products', [ProductController::class, 'index']);
@@ -74,7 +80,7 @@ Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])
 |--------------------------------------------------------------------------
 */
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'session.lifetime'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     // Order management
