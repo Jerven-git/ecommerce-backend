@@ -14,6 +14,7 @@ class Product extends Model
         'stock',
         'weight',
         'category',
+        'category_id',
         'is_active',
     ];
 
@@ -25,6 +26,11 @@ class Product extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    public function category()
+    {
+        return $this->belongsTo(Category::class);
+    }
 
     public function orderItems()
     {

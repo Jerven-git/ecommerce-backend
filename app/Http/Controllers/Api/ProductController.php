@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\Request;
 
@@ -17,14 +18,25 @@ class ProductController extends Controller
             $query->where('is_active', $request->boolean('is_active'));
         }
 
-        // Filter by category
-        if ($request->has('category')) {
+        // Filter by category_id (includes subcategories when parent is selected)
+        if ($request->has('category_id')) {
+            $categoryId = (int) $request->category_id;
+            $childIds = Category::where('parent_id', $categoryId)->pluck('id')->toArray();
+            $allIds = array_merge([$categoryId], $childIds);
+
+            // Match by category_id OR legacy category string name
+            $categoryNames = Category::whereIn('id', $allIds)->pluck('name')->toArray();
+            $query->where(function ($q) use ($allIds, $categoryNames) {
+                $q->whereIn('category_id', $allIds)
+                  ->orWhereIn('category', $categoryNames);
+            });
+        } elseif ($request->has('category')) {
             $query->where('category', $request->category);
         }
 
         // Search by name
         if ($request->has('search')) {
-            $query->where('name', 'ILIKE', '%' . $request->search . '%');
+            $query->where('name', 'LIKE', '%' . $request->search . '%');
         }
 
         // Sorting
