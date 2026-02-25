@@ -12,6 +12,8 @@ use App\Http\Controllers\Api\PaymentSettingsController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\PayPalReturnController;
+use App\Http\Controllers\Api\ContactController;
+use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Auth\AdminPasswordResetLinkController;
 use App\Http\Controllers\Auth\AdminNewPasswordController;
 
@@ -33,8 +35,14 @@ Route::post('/reset-password', AdminNewPasswordController::class)->middleware('t
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{id}', [ProductController::class, 'show']);
 
+// Categories
+Route::get('/categories', [CategoryController::class, 'index']);
+
 // Site config
 Route::get('/site-config', [SiteConfigController::class, 'show']);
+
+// Contact form
+Route::post('/contact', [ContactController::class, 'store'])->middleware('throttle:contact');
 
 // Discounts
 Route::get('/discounts', [DiscountController::class, 'index']);
@@ -101,6 +109,11 @@ Route::middleware(['auth:sanctum', 'session.lifetime'])->group(function () {
         Route::put('/products/{id}', [ProductController::class, 'update']);
         Route::patch('/products/{id}', [ProductController::class, 'update']);
         Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+
+        // Categories
+        Route::post('/categories', [CategoryController::class, 'store']);
+        Route::patch('/categories/{id}', [CategoryController::class, 'update']);
+        Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
 
         // Site config
         Route::patch('/site-config', [SiteConfigController::class, 'update']);

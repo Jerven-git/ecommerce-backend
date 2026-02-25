@@ -103,6 +103,11 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(10)->by('paypal-capture:' . $request->ip());
         });
 
+        // CONTACT FORM: prevent spam submissions
+        RateLimiter::for('contact', function (Request $request) {
+            return Limit::perMinute(3)->by('contact:' . $request->ip());
+        });
+
         // PASSWORD RESET: prevent email enumeration and abuse
         RateLimiter::for('password-reset', function (Request $request) {
             $email = (string) str($request->input('email', ''))->lower();
