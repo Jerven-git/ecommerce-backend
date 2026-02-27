@@ -13,6 +13,10 @@ class Product extends Model
         'image_url',
         'stock',
         'weight',
+        'length_cm',
+        'width_cm',
+        'height_cm',
+        'shipping_calc_type',
         'category',
         'category_id',
         'is_active',
@@ -22,10 +26,28 @@ class Product extends Model
         'price' => 'decimal:2',
         'stock' => 'integer',
         'weight' => 'decimal:2',
+        'length_cm' => 'decimal:2',
+        'width_cm' => 'decimal:2',
+        'height_cm' => 'decimal:2',
         'is_active' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    protected $appends = ['volume_cbm'];
+
+    public function getVolumeCbmAttribute(): float
+    {
+        $l = (float) $this->length_cm;
+        $w = (float) $this->width_cm;
+        $h = (float) $this->height_cm;
+
+        if ($l <= 0 || $w <= 0 || $h <= 0) {
+            return 0;
+        }
+
+        return round(($l * $w * $h) / 1000000, 6);
+    }
 
     public function category()
     {

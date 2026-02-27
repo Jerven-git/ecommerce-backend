@@ -69,6 +69,10 @@ class ProductController extends Controller
             'image_url' => 'nullable|string',
             'stock' => 'nullable|integer|min:0',
             'weight' => 'nullable|numeric|min:0',
+            'length_cm' => 'nullable|numeric|min:0',
+            'width_cm' => 'nullable|numeric|min:0',
+            'height_cm' => 'nullable|numeric|min:0',
+            'shipping_calc_type' => 'nullable|in:weight,dimensions',
             'category' => 'nullable|string',
             'is_active' => 'nullable|boolean',
         ]);
@@ -92,6 +96,10 @@ class ProductController extends Controller
             'image_url' => 'nullable|string',
             'stock' => 'nullable|integer|min:0',
             'weight' => 'nullable|numeric|min:0',
+            'length_cm' => 'nullable|numeric|min:0',
+            'width_cm' => 'nullable|numeric|min:0',
+            'height_cm' => 'nullable|numeric|min:0',
+            'shipping_calc_type' => 'nullable|in:weight,dimensions',
             'category' => 'nullable|string',
             'is_active' => 'nullable|boolean',
         ]);

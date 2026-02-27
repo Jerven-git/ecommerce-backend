@@ -20,14 +20,15 @@ class ShippingCalculator
         $state = $params['state'] ?? '';
         $city = $params['city'] ?? '';
         $weight = $params['weight'] ?? 0;
+        $volumeCbm = $params['volume_cbm'] ?? 0;
         $orderAmount = $params['order_amount'] ?? 0;
         $options = $params['options'] ?? [];
-
 
         if ($this->settings && $this->settings->free_shipping_threshold > 0 && $orderAmount >= $this->settings->free_shipping_threshold) {
             return [
                 'base_shipping' => 0,
                 'weight_fee' => 0,
+                'volume_fee' => 0,
                 'options_fee' => $this->calculateOptionsFee($options),
                 'total' => $this->calculateOptionsFee($options),
                 'free_shipping' => true,
@@ -46,13 +47,15 @@ class ShippingCalculator
 
         $baseShipping = $zone->base_rate;
         $weightFee = $weight > 0 ? ($weight * $zone->per_kg_rate) : 0;
+        $volumeFee = $volumeCbm > 0 ? ($volumeCbm * $zone->per_cbm_rate) : 0;
         $optionsFee = $this->calculateOptionsFee($options);
 
         return [
             'base_shipping' => $baseShipping,
             'weight_fee' => $weightFee,
+            'volume_fee' => $volumeFee,
             'options_fee' => $optionsFee,
-            'total' => $baseShipping + $weightFee + $optionsFee,
+            'total' => $baseShipping + $weightFee + $volumeFee + $optionsFee,
             'free_shipping' => false,
             'zone' => $zoneType
         ];
@@ -157,7 +160,8 @@ class ShippingCalculator
             return [
                 'zone_type' => $zone->zone_type,
                 'base_rate' => $zone->base_rate,
-                'per_kg_rate' => $zone->per_kg_rate
+                'per_kg_rate' => $zone->per_kg_rate,
+                'per_cbm_rate' => $zone->per_cbm_rate,
             ];
         });
     }
