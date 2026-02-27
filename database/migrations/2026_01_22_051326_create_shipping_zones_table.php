@@ -13,10 +13,11 @@ return new class extends Migration
     {
         Schema::create('shipping_zones', function (Blueprint $table) {
             $table->id();
-            $table->enum('zone_type', ['own_city', 'own_state', 'own_country', 'other_city', 'other_state', 'other_country']);
+            $table->enum('zone_type', ['own_city', 'own_state', 'own_country', 'other_country']);
             $table->boolean('enabled')->default(true);
             $table->decimal('base_rate', 10, 2)->default(0);
             $table->decimal('per_kg_rate', 10, 2)->default(0);
+            $table->decimal('per_cbm_rate', 10, 2)->default(0);
             $table->timestamps();
             
             $table->unique('zone_type');

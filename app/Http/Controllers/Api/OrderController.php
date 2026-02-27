@@ -17,21 +17,22 @@ class OrderController extends Controller
     {
         $query = Order::query();
 
-        // Include order items if requested
-        if ($request->has('include') && $request->include === 'items') {
+        if ($request->query('include') === 'items') {
             $query->with('items');
         }
 
-        // Filter by status
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
+        if ($request->filled('status')) {
+            $query->where('status', $request->query('status'));
         }
 
-        $sort = $request->input('sort', 'created_at');
-        $order = $request->input('order', 'desc');
-        $query->orderBy($sort, $order);
+        $allowedSorts = ['created_at', 'id', 'status', 'total'];
+        $sort  = $request->query('sort', 'created_at');
+        $sort  = in_array($sort, $allowedSorts, true) ? $sort : 'created_at';
 
-        $orders = $query->get();
+        $order = strtolower($request->query('order', 'desc'));
+        $order = in_array($order, ['asc', 'desc'], true) ? $order : 'desc';
+
+        $orders = $query->orderBy($sort, $order)->get();
 
         return response()->json(['data' => $orders]);
     }
@@ -50,7 +51,7 @@ class OrderController extends Controller
         DB::beginTransaction();
 
         try {
-            [$rawSubtotal, $totalWeight, $orderItems, $taxItems] =
+            [$rawSubtotal, $totalWeight, $totalVolumeCbm, $orderItems, $taxItems] =
                 $this->buildCartAndReserveStock($validated['items']);
 
             $tax = $this->calculateTax($rawSubtotal, $taxItems);
@@ -59,6 +60,7 @@ class OrderController extends Controller
                 $validated,
                 $shipping,
                 $totalWeight,
+                $totalVolumeCbm,
                 $rawSubtotal
             );
 
@@ -152,14 +154,16 @@ class OrderController extends Controller
      * @return array{
      *   0: float, // rawSubtotal
      *   1: float, // totalWeight
-     *   2: array<int, array<string, mixed>>, // orderItems
-     *   3: array<int, array{price: float, quantity: int}> // taxItems
+     *   2: float, // totalVolumeCbm
+     *   3: array<int, array<string, mixed>>, // orderItems
+     *   4: array<int, array{price: float, quantity: int}> // taxItems
      * }
      */
     private function buildCartAndReserveStock(array $items): array
     {
         $rawSubtotal = 0.0;
         $totalWeight = 0.0;
+        $totalVolumeCbm = 0.0;
         $orderItems = [];
         $taxItems = [];
 
@@ -178,8 +182,11 @@ class OrderController extends Controller
 
             $rawSubtotal += $lineSubtotal;
 
-            $weight = (float) ($product->weight ?? 0);
-            $totalWeight += $weight * $qty;
+            if ($product->shipping_calc_type === 'dimensions') {
+                $totalVolumeCbm += $product->volume_cbm * $qty;
+            } else {
+                $totalWeight += (float) ($product->weight ?? 0) * $qty;
+            }
 
             $orderItems[] = [
                 'product_id' => $product->id,
@@ -195,7 +202,7 @@ class OrderController extends Controller
             ];
         }
 
-        return [$rawSubtotal, $totalWeight, $orderItems, $taxItems];
+        return [$rawSubtotal, $totalWeight, $totalVolumeCbm, $orderItems, $taxItems];
     }
 
     private function calculateTax(float $rawSubtotal, array $taxItems): array
@@ -220,6 +227,7 @@ class OrderController extends Controller
         array $validated,
         ShippingCalculator $shipping,
         float $totalWeight,
+        float $totalVolumeCbm,
         float $rawSubtotal
     ): array {
         $shippingCalc = $this->defaultShippingCalc();
@@ -235,7 +243,7 @@ class OrderController extends Controller
             'state' => $validated['state'],
             'city' => $validated['city'],
             'weight' => $totalWeight,
-            // stays consistent with your current comment
+            'volume_cbm' => $totalVolumeCbm,
             'order_amount' => $rawSubtotal,
             'options' => $shippingOptions,
         ]);
@@ -254,6 +262,7 @@ class OrderController extends Controller
         return [
             'base_shipping' => 0,
             'weight_fee' => 0,
+            'volume_fee' => 0,
             'options_fee' => 0,
             'total' => 0,
             'free_shipping' => false,

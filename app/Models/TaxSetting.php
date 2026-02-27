@@ -61,10 +61,17 @@ class TaxSetting extends Model
     public function calculateCartTax($items)
     {
         if (!$this->tax_enabled || $this->tax_rate == 0) {
+            $subtotal = 0;
+            foreach ($items as $item) {
+                $subtotal += $item['price'] * $item['quantity'];
+            }
             return [
-                'subtotal' => 0,
+                'subtotal' => round($subtotal, 2),
                 'tax_amount' => 0,
-                'total' => 0
+                'total' => round($subtotal, 2),
+                'tax_rate' => 0,
+                'tax_name' => $this->tax_name ?? 'Tax',
+                'tax_display_mode' => $this->tax_display_mode ?? 'exclusive',
             ];
         }
 

@@ -38,10 +38,11 @@ class ShippingSettingsController extends Controller
             'store_state' => 'nullable|string|max:255',
             'store_city' => 'nullable|string|max:255',
             'zones' => 'nullable|array',
-            'zones.*.zone_type' => 'required|in:own_city,own_state,own_country,other_city,other_state,other_country',
+            'zones.*.zone_type' => 'required|in:own_city,own_state,own_country,other_country',
             'zones.*.enabled' => 'required|boolean',
             'zones.*.base_rate' => 'required|numeric|min:0',
             'zones.*.per_kg_rate' => 'nullable|numeric|min:0',
+            'zones.*.per_cbm_rate' => 'nullable|numeric|min:0',
         ]);
 
         $settings = ShippingSetting::first();
@@ -61,6 +62,7 @@ class ShippingSettingsController extends Controller
                         'enabled' => $zoneData['enabled'],
                         'base_rate' => $zoneData['base_rate'],
                         'per_kg_rate' => $zoneData['per_kg_rate'] ?? 0,
+                        'per_cbm_rate' => $zoneData['per_cbm_rate'] ?? 0,
                     ]
                 );
             }
@@ -79,6 +81,7 @@ class ShippingSettingsController extends Controller
             'state' => 'nullable|string',
             'city' => 'nullable|string',
             'weight' => 'nullable|numeric|min:0',
+            'volume_cbm' => 'nullable|numeric|min:0',
             'order_amount' => 'required|numeric|min:0',
             'options' => 'nullable|array',
             'options.*' => 'in:express_post,registered_post,insurance',

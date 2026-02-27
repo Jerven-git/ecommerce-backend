@@ -19,6 +19,10 @@ return new class extends Migration
             $table->text('image_url')->nullable();
             $table->integer('stock')->default(0);
             $table->decimal('weight', 8, 2)->default(0);
+            $table->decimal('length_cm', 8, 2)->default(0);
+            $table->decimal('width_cm', 8, 2)->default(0);
+            $table->decimal('height_cm', 8, 2)->default(0);
+            $table->enum('shipping_calc_type', ['weight', 'dimensions'])->default('weight');
             $table->string('category')->default('general');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
