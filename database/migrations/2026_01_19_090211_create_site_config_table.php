@@ -14,8 +14,8 @@ return new class extends Migration
         Schema::create('site_config', function (Blueprint $table) {
             $table->id();
             $table->string('site_name')->default('My Store');
-            $table->string('primary_color')->default('#2563eb');
-            $table->string('secondary_color')->default('#10b981');
+            $table->string('primary_color')->default('#6898ED');
+            $table->string('secondary_color')->default('#4B5979');
             $table->string('heading_font')->nullable()->default('Inter');
             $table->string('body_font')->nullable()->default('Inter');
             $table->string('logo_url')->nullable();
