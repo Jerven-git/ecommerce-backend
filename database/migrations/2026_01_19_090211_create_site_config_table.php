@@ -16,6 +16,8 @@ return new class extends Migration
             $table->string('site_name')->default('My Store');
             $table->string('primary_color')->default('#2563eb');
             $table->string('secondary_color')->default('#10b981');
+            $table->string('heading_font')->nullable()->default('Inter');
+            $table->string('body_font')->nullable()->default('Inter');
             $table->string('logo_url')->nullable();
             $table->string('hero_title')->default('Welcome to Our Store');
             $table->string('hero_subtitle')->default('Discover amazing products at great prices');
