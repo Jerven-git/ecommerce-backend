@@ -10,7 +10,12 @@ class PaymentSettingsController extends Controller
 {
     private function settings(): PaymentSetting
     {
-        return PaymentSetting::firstOrCreate(['id' => 1], []);
+        return PaymentSetting::firstOrCreate(['id' => 1], [
+            'cash_enabled' => true,
+            'stripe_enabled' => false,
+            'paypal_enabled' => false,
+            'square_enabled' => false,
+        ]);
     }
 
     /**
