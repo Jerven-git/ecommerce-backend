@@ -95,6 +95,8 @@ Route::middleware(['auth:sanctum', 'session.lifetime'])->group(function () {
     Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/orders/{id}', [OrderController::class, 'show']);
     Route::patch('/orders/{id}', [OrderController::class, 'updateStatus']);
+    Route::post('/orders/{id}/confirm-payment', [OrderController::class, 'confirmPayment']);
+    Route::post('/orders/{id}/undo-payment', [OrderController::class, 'undoPayment']);
     Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
 
     /*

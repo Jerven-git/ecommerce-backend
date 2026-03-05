@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Discount;
 use App\Models\TaxSetting;
 use App\Services\ShippingCalculator;
+use App\Payments\PaymentService;
 
 class OrderController extends Controller
 {
@@ -17,9 +18,9 @@ class OrderController extends Controller
     {
         $query = Order::query();
 
-        if ($request->query('include') === 'items') {
-            $query->with('items');
-        }
+        $includes = array_filter(explode(',', $request->query('include', '')));
+        $allowed = ['items', 'payment'];
+        $query->with(array_intersect($includes, $allowed));
 
         if ($request->filled('status')) {
             $query->where('status', $request->query('status'));
@@ -39,7 +40,7 @@ class OrderController extends Controller
 
     public function show($id)
     {
-        $order = Order::with('items')->findOrFail($id);
+        $order = Order::with(['items', 'payment'])->findOrFail($id);
         return response()->json(['data' => $order]);
     }
 
@@ -79,11 +80,18 @@ class OrderController extends Controller
 
             $finalTotal = max(0, $totalBeforeDiscount - $discountAmount);
 
-            $order = $this->createOrder($validated, $finalTotal, $discountCode, $discountAmount);
+            $taxAmount = (float) ($tax['tax_amount'] ?? 0);
+            $shippingTotal = (float) ($shippingCalc['total'] ?? 0);
+
+            $order = $this->createOrder($validated, $finalTotal, $rawSubtotal, $taxAmount, $shippingTotal, $discountCode, $discountAmount);
             $this->createOrderItems($order, $orderItems);
 
             if ($discount && $discountAmount > 0) {
                 $discount->increment('used_count');
+            }
+
+            if (($validated['payment_method'] ?? null) === 'cash') {
+                app(PaymentService::class)->createPending($order, 'cash', []);
             }
 
             DB::commit();
@@ -128,6 +136,8 @@ class OrderController extends Controller
 
             'shipping_options' => 'nullable|array',
             'shipping_options.*' => 'string',
+
+            'payment_method' => 'nullable|string|in:cash,stripe,paypal,square',
 
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
@@ -278,14 +288,24 @@ class OrderController extends Controller
         return $taxTotal + $shippingTotal;
     }
 
-    private function createOrder(array $validated, float $finalTotal, ?string $discountCode = null, float $discountAmount = 0): Order
-    {
+    private function createOrder(
+        array $validated,
+        float $finalTotal,
+        float $subtotal,
+        float $taxAmount,
+        float $shippingAmount,
+        ?string $discountCode = null,
+        float $discountAmount = 0
+    ): Order {
         return Order::create([
             'customer_name' => $validated['customer_name'],
             'customer_email' => $validated['customer_email'],
             'customer_phone' => $validated['customer_phone'] ?? '',
             'shipping_address' => $validated['shipping_address'],
             'total_amount' => round($finalTotal, 2),
+            'subtotal' => round($subtotal, 2),
+            'tax_amount' => round($taxAmount, 2),
+            'shipping_amount' => round($shippingAmount, 2),
             'discount_code' => $discountCode,
             'discount_amount' => round($discountAmount, 2),
             'status' => 'pending',
@@ -309,9 +329,64 @@ class OrderController extends Controller
         $order->status = $validated['status'];
         $order->save();
 
+        if ($validated['status'] === 'cancelled') {
+            $payment = $order->payment;
+            if ($payment && $payment->status === 'pending') {
+                $payment->update(['status' => 'failed']);
+            }
+        }
+
         return response()->json([
             'message' => 'Order status updated successfully',
-            'data' => $order
+            'data' => $order->load('payment')
+        ]);
+    }
+
+    public function confirmPayment($id, PaymentService $payments)
+    {
+        $order = Order::with('payment')->findOrFail($id);
+        $payment = $order->payment;
+
+        abort_unless($payment, 404, 'No payment record found');
+        abort_if($payment->status === 'paid', 422, 'Payment already confirmed');
+        abort_unless($payment->provider === 'cash', 422, 'Only cash payments can be manually confirmed');
+
+        $payments->markPaid($payment);
+
+        return response()->json([
+            'message' => 'Payment confirmed',
+            'data' => $order->fresh()->load('payment'),
+        ]);
+    }
+
+    public function undoPayment($id)
+    {
+        $order = Order::with('payment')->findOrFail($id);
+        $payment = $order->payment;
+
+        abort_unless($payment, 404, 'No payment record found');
+        abort_unless($payment->provider === 'cash', 422, 'Only cash payments can be undone');
+        abort_unless($payment->status === 'paid', 422, 'Payment is not confirmed');
+
+        DB::transaction(function () use ($payment, $order) {
+            $payment->update(['status' => 'pending']);
+
+            // Restore stock if it was deducted
+            if ($order->stock_deducted_at) {
+                foreach ($order->items as $item) {
+                    Product::where('id', $item->product_id)->increment('stock', $item->quantity);
+                }
+
+                $order->forceFill([
+                    'stock_deducted_at' => null,
+                    'status' => 'pending',
+                ])->save();
+            }
+        });
+
+        return response()->json([
+            'message' => 'Payment reverted to pending',
+            'data' => $order->fresh()->load('payment'),
         ]);
     }
 
