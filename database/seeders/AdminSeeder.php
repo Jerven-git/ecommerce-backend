@@ -18,37 +18,38 @@ class AdminSeeder extends Seeder
         $superAdmin = Role::firstOrCreate(['name' => 'super_admin']);
         $admin = Role::firstOrCreate(['name' => 'admin']);
 
-        $user = User::firstOrCreate(
-            ['email' => 'kannalatayada@gmail.com'],
+        $users = [
             [
+                'email' => 'kannalatayada@gmail.com',
                 'name' => 'Admin User',
-                'password' => Hash::make('password'),
-                'is_admin' => true,
-            ]
-        );
+                'role_ids' => [$superAdmin->id],
+            ],
+            [
+                'email' => 'info.pageone@gmail.com',
+                'name' => 'Admin User 2',
+                'role_ids' => [$admin->id],
+            ],
+        ];
 
-        $user->roles()->syncWithoutDetaching([$superAdmin->id]);
+        foreach ($users as $data) {
+            $user = User::firstOrCreate(
+                ['email' => $data['email']],
+                [
+                    'name' => $data['name'],
+                    'password' => Hash::make('password'),
+                    'is_admin' => true,
+                ]
+            );
 
-        $this->command->info('Super admin created successfully!');
-        $this->command->info('Email: kannalatayada@gmail.com');
-        $this->command->info('Password: password');
+            $user->roles()->syncWithoutDetaching($data['role_ids']);
+        }
 
-        $siteConfig = SiteConfig::first();
+        $this->command->info('Admin users seeded successfully!');
+        $this->command->info('Password for seeded users: password');
 
-        if ($siteConfig) {
-            $siteConfig->update([
-                'contact_email' => 'sendekato@gmail.com',
-                'contact_phone' => '11112222',
-                'contact_entries' => [
-                    [
-                        'label' => 'General Inquiries',
-                        'email' => 'sendekato@gmail.com',
-                        'phone' => '11112222',
-                    ],
-                ],
-            ]);
-        } else {
-            SiteConfig::create([
+        SiteConfig::updateOrCreate(
+            [],
+            [
                 'site_name' => 'My Store',
                 'contact_email' => 'sendekato@gmail.com',
                 'contact_phone' => '11112222',
@@ -59,8 +60,8 @@ class AdminSeeder extends Seeder
                         'phone' => '11112222',
                     ],
                 ],
-            ]);
-        }
+            ]
+        );
 
         $this->command->info('Site config contact settings seeded!');
     }
