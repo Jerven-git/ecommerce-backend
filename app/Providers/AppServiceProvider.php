@@ -38,6 +38,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // GLOBAL API: cap total requests per IP across all endpoints
+        // Prevents volumetric DDoS from a single source
+        RateLimiter::for('api', function (Request $request) {
+            return Limit::perMinute(120)->by($request->ip())->response(function () {
+                return response()->json([
+                    'message' => 'Too many requests. Please slow down.',
+                ], 429);
+            });
+        });
+
         // LOGIN: 5 attempts/min per email+ip (good default)
         // plus a longer window safety net to slow sustained attacks.
         RateLimiter::for('login', function (Request $request) {

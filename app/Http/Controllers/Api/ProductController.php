@@ -6,9 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\Request;
+use App\Modules\Media\MediaService;
+use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
+    public function __construct(private MediaService $mediaService) {}
+    
     public function index(Request $request)
     {
         $query = Product::query();
@@ -66,7 +70,7 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
-            'image_url' => 'nullable|string',
+            'image' => 'nullable|image|max:2048',
             'stock' => 'nullable|integer|min:0',
             'weight' => 'nullable|numeric|min:0',
             'length_cm' => 'nullable|numeric|min:0',
@@ -77,11 +81,17 @@ class ProductController extends Controller
             'is_active' => 'nullable|boolean',
         ]);
 
+        unset($validated['image']);
         $product = Product::create($validated);
+
+        if ($request->hasFile('image')) {
+            $media = $this->mediaService->upload($request->file('image'), $product, 'image', 'products');
+            $product->update(['image_url' => Storage::disk('public')->url($media->path)]);
+        }
 
         return response()->json([
             'message' => 'Product created successfully',
-            'data' => $product
+            'data' => $product->fresh()
         ], 201);
     }
 
@@ -93,7 +103,7 @@ class ProductController extends Controller
             'name' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
             'price' => 'sometimes|numeric|min:0',
-            'image_url' => 'nullable|string',
+            'image' => 'nullable|image|max:2048',
             'stock' => 'nullable|integer|min:0',
             'weight' => 'nullable|numeric|min:0',
             'length_cm' => 'nullable|numeric|min:0',
@@ -104,11 +114,17 @@ class ProductController extends Controller
             'is_active' => 'nullable|boolean',
         ]);
 
+        unset($validated['image']);
         $product->update($validated);
+
+        if ($request->hasFile('image')) {
+            $media = $this->mediaService->upload($request->file('image'), $product, 'image', 'products');
+            $product->update(['image_url' => Storage::disk('public')->url($media->path)]);
+        }
 
         return response()->json([
             'message' => 'Product updated successfully',
-            'data' => $product
+            'data' => $product->fresh()
         ]);
     }
 

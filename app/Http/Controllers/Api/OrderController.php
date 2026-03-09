@@ -177,11 +177,19 @@ class OrderController extends Controller
         $orderItems = [];
         $taxItems = [];
 
+        // Lock all products upfront to prevent concurrent overselling
+        $productIds = array_column($items, 'product_id');
+        $products = Product::whereIn('id', $productIds)->lockForUpdate()->get()->keyBy('id');
+
         foreach ($items as $item) {
             $productId = (int) $item['product_id'];
             $qty = (int) $item['quantity'];
 
-            $product = Product::findOrFail($productId);
+            $product = $products->get($productId);
+
+            if (!$product) {
+                throw new \Exception("Product not found: {$productId}");
+            }
 
             if ($product->stock < $qty) {
                 throw new \Exception("Insufficient stock for product: {$product->name}");
