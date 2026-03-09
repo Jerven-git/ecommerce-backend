@@ -68,4 +68,8 @@ class Product extends Model
     {
         return $query->where('stock', '>', 0);
     }
+    public function media()
+    {
+        return $this->morphMany(Media::class, 'imageable');
+    }
 }

@@ -98,9 +98,9 @@ class PayPalReturnController extends Controller
         ]);
     }
 
-    public function return(Request $request, PayPalToken $token)
+    public function return(Request $request, PayPalToken $token, PaymentService $payments)
     {
-        $paypalOrderId = trim((string) $request->query('token')); // PayPal order id
+        $paypalOrderId = trim((string) $request->query('token'));
 
         if ($paypalOrderId === '') {
             return redirect($this->frontendUrl('/checkout/failed?reason=missing_token'));
@@ -148,7 +148,6 @@ class PayPalReturnController extends Controller
 
                     return false;
                 })
-                // keep your logic, but ensure PayPal gets {} not []
                 ->post($base . "/v2/checkout/orders/{$paypalOrderId}/capture", (object) []);
 
             if (!$res->successful()) {
@@ -168,14 +167,13 @@ class PayPalReturnController extends Controller
             $captureId = data_get($data, 'purchase_units.0.payments.captures.0.id');
 
             $payment->update([
-                'status' => 'paid',
                 'meta' => array_merge($payment->meta ?? [], [
                     'paypal_capture' => $data,
                     'capture_id' => $captureId,
                 ]),
             ]);
 
-            // (optional) also mark the order as processing, etc.
+            $payments->markPaid($payment);
 
             return redirect($this->frontendUrl('/payment/complete?payment_id=' . $payment->id));
 

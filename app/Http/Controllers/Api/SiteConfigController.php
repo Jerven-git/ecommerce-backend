@@ -50,8 +50,6 @@ class SiteConfigController extends Controller
 
     public function update(Request $request)
     {
-        // ✅ remove dd()
-
         $validated = $request->validate([
             'site_name' => 'nullable|string|max:255',
             'primary_color' => 'nullable|string|max:7',
@@ -78,13 +76,6 @@ class SiteConfigController extends Controller
 
     public function uploadMedia(Request $request, string $collection)
     {
-        // dd([
-        //     'collection' => $collection,
-        //     'content_type' => $request->header('content-type'),
-        //     'has_file' => $request->hasFile('file'),
-        //     'file' => $request->file('file'),
-        //     'all' => $request->all(),
-        // ]);
         abort_unless(in_array($collection, ['logo', 'favicon', 'hero', 'about', 'contact']), 404);
 
         $max = in_array($collection, ['logo', 'favicon']) ? 2048 : 10120; // KB (2MB vs 10MB)

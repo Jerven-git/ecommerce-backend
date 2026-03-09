@@ -15,6 +15,10 @@ class PaymentController extends Controller
 {
     public function pay(Order $order, Request $request, GatewayManager $manager, PaymentService $payments)
     {
+        $existingPayment = $order->payment;
+        abort_if($existingPayment && $existingPayment->status === 'paid', 422, 'Order is already paid');
+        abort_if($existingPayment && $existingPayment->status === 'pending', 422, 'A payment is already in progress for this order');
+
         $data = $request->validate([
             'provider' => ['required', 'string', Rule::in(['stripe','paypal','square'])],
         ]);
@@ -38,6 +42,10 @@ class PaymentController extends Controller
 
     public function stripeIntent(Order $order)
     {
+        $existingPayment = $order->payment;
+        abort_if($existingPayment && $existingPayment->status === 'paid', 422, 'Order is already paid');
+        abort_if($existingPayment && $existingPayment->status === 'pending', 422, 'A payment is already in progress for this order');
+
         \Stripe\Stripe::setApiKey(config('payment.stripe.secret_key'));
 
         $amountCents = (int) round($order->total_amount * 100);
