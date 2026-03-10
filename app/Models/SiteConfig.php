@@ -22,11 +22,13 @@ class SiteConfig extends Model
         'contact_email',
         'contact_phone',
         'contact_entries',
+        'favorites_enabled',
     ];
 
     protected $casts = [
         'updated_at' => 'datetime',
         'contact_entries' => 'array',
+        'favorites_enabled' => 'boolean',
     ];
 
     public function media()

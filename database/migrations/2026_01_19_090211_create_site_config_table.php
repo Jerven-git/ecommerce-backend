@@ -25,6 +25,7 @@ return new class extends Migration
             $table->string('contact_email')->default('contact@store.com');
             $table->string('contact_phone')->default('+1234567890');
             $table->json('contact_entries')->nullable();
+            $table->boolean('favorites_enabled')->default(false);
             $table->timestamps();
         });
     }
