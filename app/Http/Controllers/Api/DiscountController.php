@@ -17,14 +17,23 @@ class DiscountController extends Controller
             $query->where('is_active', $request->boolean('is_active'));
         }
 
+        // Search by code or description
+        if ($request->filled('search')) {
+            $search = $request->query('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('code', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
         // Sorting
         $sort = $request->input('sort', 'created_at');
         $order = $request->input('order', 'desc');
         $query->orderBy($sort, $order);
 
-        $discounts = $query->get();
+        $discounts = $query->paginate($request->input('per_page', 15));
 
-        return response()->json(['data' => $discounts]);
+        return response()->json($discounts);
     }
 
     public function show($id)
