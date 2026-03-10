@@ -26,6 +26,22 @@ class OrderController extends Controller
             $query->where('status', $request->query('status'));
         }
 
+        if ($request->filled('search')) {
+            $search = $request->query('search');
+            // Strip "Order", "#", and whitespace so "Order #1", "#1", "1" all match
+            $idCandidate = preg_replace('/^[Oo]rder\s*/', '', $search);
+            $idCandidate = ltrim($idCandidate, '# ');
+
+            $query->where(function ($q) use ($search, $idCandidate) {
+                $q->where('customer_name', 'like', "%{$search}%")
+                  ->orWhere('customer_email', 'like', "%{$search}%");
+
+                if (ctype_digit($idCandidate)) {
+                    $q->orWhere('id', (int) $idCandidate);
+                }
+            });
+        }
+
         $allowedSorts = ['created_at', 'id', 'status', 'total'];
         $sort  = $request->query('sort', 'created_at');
         $sort  = in_array($sort, $allowedSorts, true) ? $sort : 'created_at';
@@ -33,9 +49,18 @@ class OrderController extends Controller
         $order = strtolower($request->query('order', 'desc'));
         $order = in_array($order, ['asc', 'desc'], true) ? $order : 'desc';
 
-        $orders = $query->orderBy($sort, $order)->get();
+        $query->orderBy($sort, $order);
 
-        return response()->json(['data' => $orders]);
+        // Status counts (unfiltered) for filter badges
+        $statusCounts = Order::selectRaw('status, count(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status');
+
+        $paginated = $query->paginate($request->input('per_page', 15));
+
+        return response()->json(array_merge($paginated->toArray(), [
+            'status_counts' => $statusCounts,
+        ]));
     }
 
     public function show($id)
