@@ -36,6 +36,7 @@ class SiteConfigController extends Controller
                 'contact_email' => $config->contact_email,
                 'contact_phone' => $config->contact_phone,
                 'contact_entries' => $config->contact_entries ?? [],
+                'favorites_enabled' => (bool) $config->favorites_enabled,
                 'updated_at' => $config->updated_at,
 
                 // urls come from media
@@ -65,6 +66,7 @@ class SiteConfigController extends Controller
             'contact_entries.*.label' => 'required|string|max:100',
             'contact_entries.*.email' => 'nullable|email|max:255',
             'contact_entries.*.phone' => 'nullable|string|max:30',
+            'favorites_enabled' => 'nullable|boolean',
         ]);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
