@@ -26,6 +26,10 @@ return new class extends Migration
             $table->enum('status', ['pending', 'processing', 'shipped', 'delivered', 'cancelled'])->default('pending');
             $table->timestamp('stock_deducted_at')->nullable();
             $table->timestamps();
+
+            $table->index('status');
+            $table->index('customer_email');
+            $table->index('created_at');
         });
     }
 

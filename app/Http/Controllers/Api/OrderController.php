@@ -19,7 +19,7 @@ class OrderController extends Controller
         $query = Order::query();
 
         $includes = array_filter(explode(',', $request->query('include', '')));
-        $allowed = ['items', 'payment'];
+        $allowed = ['items', 'payment', 'shipment'];
         $query->with(array_intersect($includes, $allowed));
 
         if ($request->filled('status')) {
@@ -65,7 +65,7 @@ class OrderController extends Controller
 
     public function show($id)
     {
-        $order = Order::with(['items', 'payment'])->findOrFail($id);
+        $order = Order::with(['items', 'payment', 'shipment'])->findOrFail($id);
         return response()->json(['data' => $order]);
     }
 
