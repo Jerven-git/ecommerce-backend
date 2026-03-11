@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Payment;
+use App\Models\Shipment;
 
 class Order extends Model
 {
@@ -40,6 +41,11 @@ class Order extends Model
     public function payment()
     {
         return $this->hasOne(Payment::class)->latestOfMany();
+    }
+
+    public function shipment()
+    {
+        return $this->hasOne(Shipment::class)->latestOfMany();
     }
 
     public function scopePending($query)

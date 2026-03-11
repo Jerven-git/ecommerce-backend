@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\PayPalReturnController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Auth\AdminPasswordResetLinkController;
 use App\Http\Controllers\Auth\AdminNewPasswordController;
 
@@ -43,6 +44,10 @@ Route::get('/site-config', [SiteConfigController::class, 'show']);
 
 // Contact form
 Route::post('/contact', [ContactController::class, 'store'])->middleware('throttle:contact');
+
+// Shipment tracking (public)
+Route::get('/tracking/{trackingNumber}', [ShipmentController::class, 'track']);
+Route::get('/tracking/{trackingNumber}/barcode', [ShipmentController::class, 'barcode']);
 
 // Discounts
 Route::get('/discounts', [DiscountController::class, 'index']);
@@ -98,6 +103,10 @@ Route::middleware(['auth:sanctum', 'session.lifetime'])->group(function () {
     Route::post('/orders/{id}/confirm-payment', [OrderController::class, 'confirmPayment']);
     Route::post('/orders/{id}/undo-payment', [OrderController::class, 'undoPayment']);
     Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
+
+    // Shipment management
+    Route::post('/orders/{id}/ship', [ShipmentController::class, 'ship']);
+    Route::patch('/shipments/{id}', [ShipmentController::class, 'update']);
 
     /*
     |----------------------------------------------------------------------

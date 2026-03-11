@@ -14,6 +14,7 @@
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
+        "picqer/php-barcode-generator": "*",
         "square/square": "^44.0",
         "stripe/stripe-php": "^19.2"
     },
