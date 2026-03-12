@@ -18,7 +18,6 @@ return new class extends Migration
             $table->string('secondary_color')->default('#4B5979');
             $table->string('heading_font')->nullable()->default('Inter');
             $table->string('body_font')->nullable()->default('Inter');
-            $table->string('logo_url')->nullable();
             $table->string('hero_title')->default('Welcome to Our Store');
             $table->string('hero_subtitle')->default('Discover amazing products at great prices');
             $table->text('about_content')->nullable();

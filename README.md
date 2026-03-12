@@ -17,6 +17,39 @@ Customer places order
   → Listeners handle side effects independently
 ```
 
+### Gateway Architecture
+
+The system supports multiple payment providers through a **gateway pattern**. Each provider is a class that implements one or more contracts:
+
+| Contract | Method | Purpose |
+|----------|--------|---------|
+| `PaymentGateway` | `createPayment()` | Required. Creates a payment on the provider's side and returns data the frontend needs (client_secret, redirect URL, etc.) |
+| `HandlesWebhooks` | `parseWebhook()` | Optional. Normalizes incoming webhook payloads into a standard format |
+| `ChecksPaymentStatus` | `verifyPayment()` | Optional. Polls the provider's API to check if a payment succeeded or failed |
+
+Each gateway implements the contracts relevant to its provider:
+
+| Gateway | `PaymentGateway` | `HandlesWebhooks` | `ChecksPaymentStatus` |
+|---------|:-:|:-:|:-:|
+| `StripeGateway` | yes | yes | yes |
+| `PayPalGateway` | yes | yes | no |
+| `SquareGateway` | yes | no | yes |
+
+**GatewayManager** is the registry. It's registered as a singleton in `AppServiceProvider` and holds all gateway instances. Controllers never instantiate gateways directly — they call `$manager->get('stripe')` to resolve the correct one by name.
+
+```php
+// How controllers use it
+$gateway = $manager->get('stripe');       // returns StripeGateway
+$init = $gateway->createPayment($order);  // creates PaymentIntent on Stripe
+```
+
+**Adding a new provider** (e.g., Authorize.net):
+1. Create `app/Payments/Gateways/AuthorizeGateway.php` implementing `PaymentGateway` (and optionally `HandlesWebhooks` / `ChecksPaymentStatus`)
+2. Register it in `AppServiceProvider` inside the `GatewayManager` constructor
+3. Add the provider name to the validation rules in the relevant controller
+
+No existing gateway code needs to change.
+
 ### Payment Flow (Step by Step)
 
 #### 1. Order Creation
@@ -152,6 +185,21 @@ scripts/
 | `cancelled` | Order was cancelled or payment expired (abandoned) |
 | `failed_needs_refund` | Payment succeeded but stock deduction failed — needs manual refund |
 
+### Order Status Transitions
+
+Status changes are enforced by a state machine in `OrderController::updateStatus()`. Not every transition is allowed:
+
+```
+pending → processing → shipped → delivered
+  ↓           ↓
+cancelled  cancelled
+```
+
+- `delivered` and `cancelled` are **terminal states** — no further transitions allowed.
+- **Cancelling restores stock** — if `stock_deducted_at` is set, all item quantities are incremented back on the product. The `stock_deducted_at` timestamp is cleared.
+- **Cancelling fails pending payments** — if the order has a pending payment, it's marked `failed`.
+- **Deletion is restricted** — only `pending` or `cancelled` orders can be deleted, and only if stock hasn't been deducted (`stock_deducted_at` is null).
+
 ### Scheduled Tasks
 
 Defined in `routes/console.php`:
@@ -170,6 +218,80 @@ Or manually add this cron entry:
 ```
 * * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
 ```
+
+## Future Improvements
+
+### High Priority
+
+- **Queueable listeners** — Add `implements ShouldQueue` to `DeductStock` and `UpdateOrderStatus`. Currently these run synchronously inside the webhook response. Under high load, stock deduction could timeout and the webhook would fail. Queuing makes the webhook respond instantly and processes side effects in the background.
+
+- **Automated refunds** — `HandleFailedOrder` currently only logs. When a payment succeeds but stock deduction fails, the customer is charged with no product to ship. This listener should call the provider's refund API automatically (e.g., `Stripe::refunds()->create()`) and notify the admin.
+
+### Medium Priority
+
+- **Payment audit trail** — Log every status transition (pending → paid, pending → expired, paid → refunded) with timestamps in a `payment_events` table. Critical for handling customer disputes and chargebacks.
+
+- **Webhook event storage** — Store raw webhook payloads in a `webhook_events` table. This lets you replay failed webhooks, debug provider issues, and provides an audit trail independent of your payment records.
+
+- **Email notifications** — Add a `SendOrderConfirmation` listener on `PaymentConfirmed` to email the customer their receipt. Add an admin notification on `OrderRequiresRefund`.
+
+### Low Priority
+
+- **Gateway retry logic** — If a provider's API is temporarily down (e.g., Stripe 503), queue the request and retry with exponential backoff instead of failing immediately.
+
+- **Soft deletes on orders/payments** — Instead of keeping all records forever, add `SoftDeletes` and archive old completed orders to a separate table or export to cloud storage (S3) after 12 months.
+
+- **Payment analytics dashboard** — Track conversion rates (orders created vs. paid), abandonment rates (expired payments), failure rates per provider, and average time to payment completion.
+
+## API Routes Overview
+
+All routes are prefixed with `/api`. See `routes/api.php` for the full definition.
+
+### Public (no auth)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/login` | Admin login |
+| `POST` | `/two-factor/verify` | 2FA verification |
+| `POST` | `/two-factor/resend` | Resend 2FA code |
+| `GET` | `/products` | List products |
+| `GET` | `/products/{id}` | Product detail |
+| `GET` | `/categories` | List categories |
+| `GET` | `/site-config` | Storefront configuration |
+| `POST` | `/contact` | Contact form |
+| `GET` | `/discounts` | List active discounts |
+| `POST` | `/discounts/validate` | Validate a discount code |
+| `GET/POST` | `/shipping/*` | Shipping options, zones, calculate |
+| `POST` | `/tax/calculate`, `/tax/calculate-cart` | Tax calculation |
+
+### Checkout & Payment (no auth)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/orders` | Create an order |
+| `POST` | `/orders/{order}/pay` | Initiate PayPal/Square payment |
+| `POST` | `/orders/{order}/stripe/intent` | Create Stripe PaymentIntent |
+| `GET` | `/payments/{payment}` | Check payment status (polls provider) |
+| `GET` | `/paypal/return` | PayPal redirect return |
+| `POST` | `/paypal/capture` | Capture PayPal payment |
+| `POST` | `/webhooks/{provider}` | Incoming webhooks (stripe/paypal/square) |
+
+### Authenticated (Sanctum)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/orders` | List all orders |
+| `GET` | `/orders/{id}` | Order detail |
+| `PATCH` | `/orders/{id}` | Update order status (state machine enforced) |
+| `POST` | `/orders/{id}/confirm-payment` | Admin confirms cash payment |
+| `POST` | `/orders/{id}/undo-payment` | Admin reverses a payment |
+| `DELETE` | `/orders/{id}` | Delete order (pending/cancelled only) |
+| `POST` | `/orders/{id}/ship` | Create shipment |
+| `PATCH` | `/shipments/{id}` | Update shipment |
+
+### Admin Only (Sanctum + admin middleware)
+
+CRUD for products, categories, discounts, site config, and settings (shipping, tax, payment).
 
 ## Setup
 
