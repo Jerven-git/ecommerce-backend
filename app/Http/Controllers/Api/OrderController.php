@@ -19,16 +19,13 @@ class OrderController extends Controller
     {
         $query = Order::query();
 
-        // 1. Eager Loading (Whitelisted)
         $includes = array_filter(explode(',', $request->query('include', '')));
         $allowedIncludes = ['items', 'payment', 'shipment'];
         $query->with(array_intersect($includes, $allowedIncludes));
 
-        // 2. Filters & Search (Using Model Scope)
         $query->when($request->filled('status'), fn ($q) => $q->where('status', $request->query('status')))
             ->search($request->query('search'));
 
-        // 3. Sorting (Whitelisted)
         $allowedSorts = ['created_at', 'id', 'status', 'total'];
         $sort = in_array($request->query('sort'), $allowedSorts, true) ? $request->query('sort') : 'created_at';
         
@@ -37,15 +34,13 @@ class OrderController extends Controller
 
         $query->orderBy($sort, $order);
 
-        // 4. Cached Status Counts (Prevents DB bottleneck)
         $statusCounts = Cache::remember('order_status_counts', 300, function () {
-            return Order::toBase() // toBase() is slightly faster as it avoids hydrating Eloquent models
+            return Order::toBase()
                 ->selectRaw('status, count(*) as count')
                 ->groupBy('status')
                 ->pluck('count', 'status');
         });
 
-        // 5. Safe Pagination (Prevents Memory Exhaustion DoS)
         $perPage = min((int) $request->input('per_page', 15), 100);
         $paginated = $query->paginate($perPage);
 
@@ -128,10 +123,11 @@ class OrderController extends Controller
             ], 201);
         } catch (\Throwable $e) {
             DB::rollBack();
+            report($e);
 
             return response()->json([
                 'message' => 'Failed to create order',
-                'error' => $e->getMessage(),
+                'error' => app()->hasDebugModeEnabled() ? $e->getMessage() : 'Something went wrong',
             ], 422);
         }
     }
@@ -144,7 +140,7 @@ class OrderController extends Controller
             'customer_phone' => 'nullable|string',
 
             'delivery_method' => 'required|in:delivery,pickup',
-            'shipping_address' => 'required|string',
+            'shipping_address' => 'required_if:delivery_method,delivery|nullable|string',
 
             'country' => 'nullable|string',
             'state' => 'nullable|string',
@@ -338,9 +334,7 @@ class OrderController extends Controller
 
     private function createOrderItems(Order $order, array $orderItems): void
     {
-        foreach ($orderItems as $item) {
-            $order->items()->create($item);
-        }
+        $order->items()->createMany($orderItems);
     }
 
     public function updateStatus(Request $request, $id)
@@ -350,14 +344,40 @@ class OrderController extends Controller
         ]);
 
         $order = Order::findOrFail($id);
+
+        $allowedTransitions = [
+            'pending' => ['processing', 'cancelled'],
+            'processing' => ['shipped', 'cancelled'],
+            'shipped' => ['delivered'],
+            'delivered' => [],
+            'cancelled' => [],
+        ];
+
+        $allowed = $allowedTransitions[$order->status] ?? [];
+
+        if (!in_array($validated['status'], $allowed, true)) {
+            return response()->json([
+                'message' => "Cannot transition from '{$order->status}' to '{$validated['status']}'",
+            ], 422);
+        }
+
         $order->status = $validated['status'];
         $order->save();
 
         if ($validated['status'] === 'cancelled') {
-            $payment = $order->payment;
-            if ($payment && $payment->status === 'pending') {
-                $payment->update(['status' => 'failed']);
-            }
+            DB::transaction(function () use ($order) {
+                $payment = $order->payment;
+                if ($payment && $payment->status === 'pending') {
+                    $payment->update(['status' => 'failed']);
+                }
+
+                if ($order->stock_deducted_at) {
+                    foreach ($order->items as $item) {
+                        Product::where('id', $item->product_id)->increment('stock', $item->quantity);
+                    }
+                    $order->forceFill(['stock_deducted_at' => null])->save();
+                }
+            });
         }
 
         return response()->json([
@@ -417,6 +437,15 @@ class OrderController extends Controller
     public function destroy($id)
     {
         $order = Order::findOrFail($id);
+
+        abort_unless(
+            in_array($order->status, ['cancelled', 'pending'], true),
+            422,
+            'Only cancelled or pending orders can be deleted'
+        );
+
+        abort_if($order->stock_deducted_at, 422, 'Cannot delete an order with deducted stock');
+
         $order->delete();
 
         return response()->json([

@@ -15,7 +15,6 @@ class SiteConfig extends Model
         'secondary_color',
         'heading_font',
         'body_font',
-        'logo_url',
         'hero_title',
         'hero_subtitle',
         'about_content',
