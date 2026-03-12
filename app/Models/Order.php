@@ -72,4 +72,22 @@ class Order extends Model
     {
         return $query->where('status', 'cancelled');
     }
+
+    public function scopeSearch($query, ?string $term)
+    {
+        if (blank($term)) {
+            return $query;
+        }
+
+        $idCandidate = ltrim(preg_replace('/^[Oo]rder\s*/', '', $term), '# ');
+
+        return $query->where(function ($q) use ($term, $idCandidate) {
+            $q->where('customer_name', 'like', "%{$term}%")
+            ->orWhere('customer_email', 'like', "%{$term}%");
+
+            if (ctype_digit($idCandidate)) {
+                $q->orWhere('id', (int) $idCandidate);
+            }
+        });
+    }
 }

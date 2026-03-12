@@ -11,3 +11,5 @@ Artisan::command('inspire', function () {
 Schedule::call(function () {
     \App\Models\TwoFactorCode::where('expires_at', '<', now()->subHour())->delete();
 })->hourly();
+
+Schedule::command('payments:expire-stale --minutes=30')->everyFifteenMinutes();

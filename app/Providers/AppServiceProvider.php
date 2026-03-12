@@ -3,10 +3,18 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Event;
 use App\Payments\GatewayManager;
 use App\Payments\Gateways\StripeGateway;
 use App\Payments\Gateways\PayPalGateway;
 use App\Payments\Gateways\SquareGateway;
+use App\Payments\Contracts\PaymentServiceInterface;
+use App\Payments\PaymentService;
+use App\Events\PaymentConfirmed;
+use App\Events\OrderRequiresRefund;
+use App\Listeners\UpdateOrderStatus;
+use App\Listeners\DeductStock;
+use App\Listeners\HandleFailedOrder;
 use Stripe\StripeClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\RateLimiter;
@@ -31,6 +39,8 @@ class AppServiceProvider extends ServiceProvider
                 'square' => $app->make(SquareGateway::class),
             ]);
         });
+
+        $this->app->bind(PaymentServiceInterface::class, PaymentService::class);
     }
 
     /**
@@ -38,6 +48,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Event::listen(PaymentConfirmed::class, UpdateOrderStatus::class);
+        Event::listen(PaymentConfirmed::class, DeductStock::class);
+        Event::listen(OrderRequiresRefund::class, HandleFailedOrder::class);
+
         // GLOBAL API: cap total requests per IP across all endpoints
         // Prevents volumetric DDoS from a single source
         RateLimiter::for('api', function (Request $request) {
