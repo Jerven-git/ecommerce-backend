@@ -1,59 +1,186 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# SSU Backend
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Laravel API backend for SSU — handles orders, payments, shipping, and admin management.
 
-## About Laravel
+## Payment System
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+### How It Works
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+The payment system uses an **event-driven architecture**. The core flow is:
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+```
+Customer places order
+  → Controller creates a pending Payment
+  → Customer pays (Stripe / PayPal / Square / Cash)
+  → PaymentService::markPaid() is called
+  → PaymentConfirmed event is dispatched
+  → Listeners handle side effects independently
+```
 
-## Learning Laravel
+### Payment Flow (Step by Step)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+#### 1. Order Creation
+**Route:** `POST /api/orders`
+**Controller:** `OrderController::store()`
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+The customer submits their order. For cash payments, a pending `Payment` record is created immediately via `PaymentService::createPending()`.
 
-## Laravel Sponsors
+#### 2. Payment Initiation
+**Route:** `POST /api/orders/{order}/pay`
+**Controller:** `PaymentController::pay()`
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+For redirect-based payments (PayPal, Square), the frontend calls this endpoint. It resolves the correct gateway via `GatewayManager`, creates a pending `Payment` record, and returns a `redirect_url` for the customer to complete checkout on the provider's site.
 
-### Premium Partners
+**Note:** Stripe is not accepted on this endpoint — it has its own dedicated flow below.
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+#### 2b. Stripe Payment Intent
+**Route:** `POST /api/orders/{order}/stripe/intent`
+**Controller:** `PaymentController::stripeIntent()`
 
-## Contributing
+Stripe uses a card form rendered on your frontend via Stripe.js, not a redirect. This endpoint creates a Stripe PaymentIntent via `StripeGateway::createPayment()`, saves a pending `Payment` record, and returns a `client_secret` that the frontend uses to render the card form and handle 3D Secure authentication.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+#### 3. Payment Confirmation
+Payment gets confirmed through one of these paths:
 
-## Code of Conduct
+| Path | Route | When |
+|------|-------|------|
+| **Webhook** | `POST /api/webhooks/{provider}` | Stripe/Square sends async notification |
+| **PayPal Capture** | `POST /api/paypal/capture` | Frontend captures after PayPal approval |
+| **PayPal Return** | `GET /api/paypal/return` | PayPal redirects back after approval |
+| **Status Check** | `GET /api/payments/{payment}` | Frontend polls; if provider says paid, we mark it |
+| **Cash Confirm** | `POST /api/orders/{id}/confirm-payment` | Admin manually confirms cash payment |
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+All paths end up calling `PaymentService::markPaid()`.
 
-## Security Vulnerabilities
+#### 3b. Payment Failure Detection
+Failed/incomplete payments are detected through three layers:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+| Layer | How | When |
+|-------|-----|------|
+| **Webhook** | Provider sends failure event (e.g., `payment_intent.payment_failed`) | Real-time (requires Cloudflare tunnel) |
+| **Status Polling** | `GET /api/payments/{payment}` checks provider and marks `failed` | When frontend polls |
+| **Scheduled Cleanup** | `payments:expire-stale` command runs every 15 minutes | Catches abandoned payments (customer closed browser, never returned) |
 
-## License
+Payments older than 30 minutes that are still `pending` are marked `expired`, and their associated orders are `cancelled`.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+#### 4. What Happens After markPaid()
+
+`markPaid()` does two things:
+1. Updates the payment status to `paid`
+2. Dispatches the `PaymentConfirmed` event
+
+The event triggers these **listeners** (registered in `AppServiceProvider`):
+
+| Listener | What It Does |
+|----------|-------------|
+| `UpdateOrderStatus` | Changes order status from `pending` → `processing` |
+| `DeductStock` | Validates inventory and decrements product stock. If stock is insufficient, flags the order as `failed_needs_refund` and dispatches `OrderRequiresRefund` |
+| `HandleFailedOrder` | Logs the failure for admin review (placeholder for automated refunds and notifications) |
+
+### Payment Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Payment created, waiting for provider confirmation |
+| `paid` | Payment confirmed by provider |
+| `failed` | Payment declined or cancelled by provider |
+| `expired` | Payment abandoned — no response within 30 minutes (set by scheduler) |
+
+### File Reference
+
+```
+app/Payments/
+├── PaymentService.php                  # Core service — creates payments, marks paid, dispatches events
+├── GatewayManager.php                  # Registry that resolves provider name → gateway instance
+├── InsufficientStockException.php      # Thrown when stock is too low during deduction
+├── PayPalToken.php                     # Handles PayPal OAuth token management
+├── VerifySquareSignature.php           # Middleware to verify Square webhook signatures
+├── Contracts/
+│   ├── PaymentServiceInterface.php     # Interface for PaymentService (swappable in tests)
+│   ├── PaymentGateway.php              # Interface all gateways implement
+│   ├── HandlesWebhooks.php             # Interface for gateways that receive webhooks
+│   └── ChecksPaymentStatus.php         # Interface for gateways that support status polling
+├── DTOs/
+│   └── PaymentInitData.php             # Typed data object for payment initialization params
+└── Gateways/
+    ├── StripeGateway.php               # Stripe integration
+    ├── PayPalGateway.php               # PayPal integration
+    └── SquareGateway.php               # Square integration
+
+app/Events/
+├── PaymentConfirmed.php                # Dispatched when a payment is marked as paid
+└── OrderRequiresRefund.php             # Dispatched when stock deduction fails after payment
+
+app/Listeners/
+├── UpdateOrderStatus.php              # Sets order to "processing" after payment
+├── DeductStock.php                    # Validates and decrements product inventory
+└── HandleFailedOrder.php              # Handles orders that need refunds
+
+app/Http/Controllers/Api/
+├── OrderController.php                # Order CRUD + cash payment confirmation
+├── PaymentController.php              # Stripe intent, PayPal/Square pay, status checks
+├── PayPalReturnController.php         # PayPal redirect/capture handling
+└── WebhookController.php              # Incoming webhooks from Stripe/PayPal/Square
+
+app/Console/Commands/
+└── ExpireStalePendingPayments.php     # Scheduled: expires stale pending payments + cancels orders
+
+scripts/
+└── setup-cron.sh                      # One-time setup: adds Laravel scheduler to crontab
+```
+
+### Key Design Decisions
+
+- **Event-driven side effects** — `PaymentService` doesn't handle stock or order status directly. It dispatches `PaymentConfirmed` and listeners handle the rest. This means adding new behavior (email notifications, audit logs) requires zero changes to existing code.
+
+- **Interface binding** — `PaymentServiceInterface` is bound to `PaymentService` in `AppServiceProvider`. Type-hint the interface in controllers/tests to swap implementations.
+
+- **Idempotent stock deduction** — `DeductStock` checks `order.stock_deducted_at` before deducting. Safe to call multiple times (e.g., duplicate webhooks).
+
+- **Deadlock prevention** — Products are locked in ascending ID order during stock deduction to prevent database deadlocks when multiple orders process concurrently.
+
+- **Payment before stock** — The payment is marked `paid` outside the stock transaction. If stock deduction fails, the order is flagged `failed_needs_refund` rather than rolling back the payment (which was already captured by the provider).
+
+### Order Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Order created, awaiting payment |
+| `processing` | Payment confirmed, stock deducted |
+| `shipped` | Order has been shipped |
+| `delivered` | Order received by customer |
+| `cancelled` | Order was cancelled or payment expired (abandoned) |
+| `failed_needs_refund` | Payment succeeded but stock deduction failed — needs manual refund |
+
+### Scheduled Tasks
+
+Defined in `routes/console.php`:
+
+| Task | Frequency | Purpose |
+|------|-----------|---------|
+| `payments:expire-stale --minutes=30` | Every 15 minutes | Expires abandoned pending payments, cancels their orders |
+| Two-factor code cleanup | Hourly | Deletes expired 2FA codes |
+
+Setup cron automatically:
+```bash
+bash scripts/setup-cron.sh
+```
+
+Or manually add this cron entry:
+```
+* * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
+```
+
+## Setup
+
+```bash
+cp .env.example .env
+composer install
+php artisan key:generate
+php artisan migrate --seed
+bash scripts/setup-cron.sh   # sets up the Laravel scheduler
+```
+
+## Environment Variables
+
+Payment provider credentials are configured in `.env`. See `config/payment.php` for the full list of required keys for each provider (Stripe, PayPal, Square).

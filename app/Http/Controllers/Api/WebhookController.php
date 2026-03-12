@@ -274,8 +274,12 @@ class WebhookController extends Controller
             }
         }
 
-        if (($normalized['status'] ?? null) === 'paid') {
+        $status = $normalized['status'] ?? null;
+
+        if ($status === 'paid') {
             $payments->markPaid($payment);
+        } elseif ($status === 'failed' && $payment->status === 'pending') {
+            $payment->update(['status' => 'failed']);
         }
     }
 }

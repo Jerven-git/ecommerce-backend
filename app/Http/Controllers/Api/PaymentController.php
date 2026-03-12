@@ -20,7 +20,7 @@ class PaymentController extends Controller
         abort_if($existingPayment && $existingPayment->status === 'pending', 422, 'A payment is already in progress for this order');
 
         $data = $request->validate([
-            'provider' => ['required', 'string', Rule::in(['stripe','paypal','square'])],
+            'provider' => ['required', 'string', Rule::in(['paypal', 'square'])],
         ]);
 
         $provider = $data['provider'];
@@ -40,41 +40,20 @@ class PaymentController extends Controller
         ]);
     }
 
-    public function stripeIntent(Order $order)
+    public function stripeIntent(Order $order, GatewayManager $manager, PaymentService $payments)
     {
         $existingPayment = $order->payment;
         abort_if($existingPayment && $existingPayment->status === 'paid', 422, 'Order is already paid');
         abort_if($existingPayment && $existingPayment->status === 'pending', 422, 'A payment is already in progress for this order');
 
-        \Stripe\Stripe::setApiKey(config('payment.stripe.secret_key'));
+        $gateway = $manager->get('stripe');
+        $init = $gateway->createPayment($order);
 
-        $amountCents = (int) round($order->total_amount * 100);
-        $currency = strtolower($order->currency ?? 'usd');
-
-        $intent = \Stripe\PaymentIntent::create([
-            'amount' => $amountCents,
-            'currency' => $currency,
-            'metadata' => [
-                'order_id' => (string) $order->id,
-            ],
-            'automatic_payment_methods' => ['enabled' => true],
-        ]);
-
-        $payment = Payment::create([
-            'order_id' => $order->id,
-            'provider' => 'stripe',
-            'provider_ref' => $intent->id,
-            'status' => 'pending',
-            'amount' => $amountCents,
-            'currency' => strtoupper($currency),
-            'meta' => [
-                'client_secret_last4' => substr((string) $intent->client_secret, -6), // optional
-            ],
-        ]);
+        $payment = $payments->createPending($order, 'stripe', $init);
 
         return response()->json([
-            'payment_id' => $payment->id,
-            'client_secret' => $intent->client_secret,
+            'payment_id'    => $payment->id,
+            'client_secret' => $init['client_secret'],
         ]);
     }
 

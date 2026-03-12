@@ -11,6 +11,7 @@ use App\Models\Discount;
 use App\Models\TaxSetting;
 use App\Services\ShippingCalculator;
 use App\Payments\PaymentService;
+use Illuminate\Support\Facades\Cache;
 
 class OrderController extends Controller
 {
@@ -18,45 +19,35 @@ class OrderController extends Controller
     {
         $query = Order::query();
 
+        // 1. Eager Loading (Whitelisted)
         $includes = array_filter(explode(',', $request->query('include', '')));
-        $allowed = ['items', 'payment', 'shipment'];
-        $query->with(array_intersect($includes, $allowed));
+        $allowedIncludes = ['items', 'payment', 'shipment'];
+        $query->with(array_intersect($includes, $allowedIncludes));
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->query('status'));
-        }
+        // 2. Filters & Search (Using Model Scope)
+        $query->when($request->filled('status'), fn ($q) => $q->where('status', $request->query('status')))
+            ->search($request->query('search'));
 
-        if ($request->filled('search')) {
-            $search = $request->query('search');
-            // Strip "Order", "#", and whitespace so "Order #1", "#1", "1" all match
-            $idCandidate = preg_replace('/^[Oo]rder\s*/', '', $search);
-            $idCandidate = ltrim($idCandidate, '# ');
-
-            $query->where(function ($q) use ($search, $idCandidate) {
-                $q->where('customer_name', 'like', "%{$search}%")
-                  ->orWhere('customer_email', 'like', "%{$search}%");
-
-                if (ctype_digit($idCandidate)) {
-                    $q->orWhere('id', (int) $idCandidate);
-                }
-            });
-        }
-
+        // 3. Sorting (Whitelisted)
         $allowedSorts = ['created_at', 'id', 'status', 'total'];
-        $sort  = $request->query('sort', 'created_at');
-        $sort  = in_array($sort, $allowedSorts, true) ? $sort : 'created_at';
-
+        $sort = in_array($request->query('sort'), $allowedSorts, true) ? $request->query('sort') : 'created_at';
+        
         $order = strtolower($request->query('order', 'desc'));
         $order = in_array($order, ['asc', 'desc'], true) ? $order : 'desc';
 
         $query->orderBy($sort, $order);
 
-        // Status counts (unfiltered) for filter badges
-        $statusCounts = Order::selectRaw('status, count(*) as count')
-            ->groupBy('status')
-            ->pluck('count', 'status');
+        // 4. Cached Status Counts (Prevents DB bottleneck)
+        $statusCounts = Cache::remember('order_status_counts', 300, function () {
+            return Order::toBase() // toBase() is slightly faster as it avoids hydrating Eloquent models
+                ->selectRaw('status, count(*) as count')
+                ->groupBy('status')
+                ->pluck('count', 'status');
+        });
 
-        $paginated = $query->paginate($request->input('per_page', 15));
+        // 5. Safe Pagination (Prevents Memory Exhaustion DoS)
+        $perPage = min((int) $request->input('per_page', 15), 100);
+        $paginated = $query->paginate($perPage);
 
         return response()->json(array_merge($paginated->toArray(), [
             'status_counts' => $statusCounts,
@@ -97,7 +88,7 @@ class OrderController extends Controller
             $discount = null;
 
             if ($discountCode) {
-                $discount = Discount::where('code', $discountCode)->first();
+                $discount = Discount::where('code', $discountCode)->lockForUpdate()->first();
                 if ($discount && $discount->isValid($rawSubtotal)) {
                     $discountAmount = $discount->calculateDiscount($rawSubtotal);
                 }
