@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\PayPalReturnController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ShipmentController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Auth\AdminPasswordResetLinkController;
 use App\Http\Controllers\Auth\AdminNewPasswordController;
 
@@ -95,6 +96,9 @@ Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])
 
 Route::middleware(['auth:sanctum', 'session.lifetime'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
+
+    // Dashboard
+    Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
 
     // Order management
     Route::get('/orders', [OrderController::class, 'index']);
