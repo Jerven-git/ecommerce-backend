@@ -25,7 +25,7 @@ class AdminSeeder extends Seeder
                 'role_ids' => [$superAdmin->id],
             ],
             [
-                'email' => 'info.pageone@gmail.com',
+                'email' => 'info.pageone247@gmail.com',
                 'name' => 'Admin User 2',
                 'role_ids' => [$admin->id],
             ],
