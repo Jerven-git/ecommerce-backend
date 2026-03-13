@@ -25,8 +25,8 @@ class ProductController extends Controller
         // Filter by category_id (includes subcategories when parent is selected)
         if ($request->has('category_id')) {
             $categoryId = (int) $request->category_id;
-            $childIds = Category::where('parent_id', $categoryId)->pluck('id')->toArray();
-            $allIds = array_merge([$categoryId], $childIds);
+            $category = Category::with('childrenRecursive')->find($categoryId);
+            $allIds = $category ? array_merge([$categoryId], $category->allDescendantIds()) : [$categoryId];
 
             // Match by category_id OR legacy category string name
             $categoryNames = Category::whereIn('id', $allIds)->pluck('name')->toArray();
@@ -78,6 +78,7 @@ class ProductController extends Controller
             'height_cm' => 'nullable|numeric|min:0',
             'shipping_calc_type' => 'nullable|in:weight,dimensions',
             'category' => 'nullable|string',
+            'category_id' => 'nullable|exists:categories,id',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -111,6 +112,7 @@ class ProductController extends Controller
             'height_cm' => 'nullable|numeric|min:0',
             'shipping_calc_type' => 'nullable|in:weight,dimensions',
             'category' => 'nullable|string',
+            'category_id' => 'nullable|exists:categories,id',
             'is_active' => 'nullable|boolean',
         ]);
 
