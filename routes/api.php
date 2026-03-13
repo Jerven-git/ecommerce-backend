@@ -19,6 +19,14 @@ use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Auth\AdminPasswordResetLinkController;
 use App\Http\Controllers\Auth\AdminNewPasswordController;
 
+/*
+|--------------------------------------------------------------------------
+| Shared Auth Routes (not versioned)
+|--------------------------------------------------------------------------
+*/
+Route::post('/forgot-password', AdminPasswordResetLinkController::class)->middleware('throttle:password-reset');
+Route::post('/reset-password', AdminNewPasswordController::class)->middleware('throttle:password-reset');
+
 Route::prefix('v1')->group(function () {
 
     /*
@@ -32,8 +40,6 @@ Route::prefix('v1')->group(function () {
     Route::post('/two-factor/verify', [AuthController::class, 'verifyTwoFactor'])->middleware('throttle:two-factor');
     Route::post('/two-factor/resend', [AuthController::class, 'resendTwoFactor'])->middleware('throttle:two-factor-resend');
     Route::get('/user', [AuthController::class, 'user']);
-    Route::post('/forgot-password', AdminPasswordResetLinkController::class)->middleware('throttle:password-reset');
-    Route::post('/reset-password', AdminNewPasswordController::class)->middleware('throttle:password-reset');
 
     // Products
     Route::get('/products', [ProductController::class, 'index']);
