@@ -12,7 +12,7 @@ class CategoryController extends Controller
     public function index(): JsonResponse
     {
         $categories = Category::whereNull('parent_id')
-            ->with('children')
+            ->with('childrenRecursive')
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
@@ -28,16 +28,8 @@ class CategoryController extends Controller
             'sort_order' => 'nullable|integer|min:0',
         ]);
 
-        // Prevent nesting beyond 2 levels
-        if ($validated['parent_id'] ?? null) {
-            $parent = Category::find($validated['parent_id']);
-            if ($parent && $parent->parent_id !== null) {
-                return response()->json(['message' => 'Subcategories cannot have their own subcategories.'], 422);
-            }
-        }
-
         $category = Category::create($validated);
-        $category->load('children');
+        $category->load('childrenRecursive');
 
         return response()->json(['data' => $category], 201);
     }
@@ -52,21 +44,20 @@ class CategoryController extends Controller
             'sort_order' => 'nullable|integer|min:0',
         ]);
 
-        // Prevent nesting beyond 2 levels
-        if (isset($validated['parent_id']) && $validated['parent_id'] !== null) {
-            $parent = Category::find($validated['parent_id']);
-            if ($parent && $parent->parent_id !== null) {
-                return response()->json(['message' => 'Subcategories cannot have their own subcategories.'], 422);
+        // Prevent setting parent_id to self or to a descendant (circular reference)
+        if (($validated['parent_id'] ?? null) !== null) {
+            $parentId = (int) $validated['parent_id'];
+            if ($parentId === $id) {
+                return response()->json(['message' => 'A category cannot be its own parent.'], 422);
+            }
+            $category->load('childrenRecursive');
+            if (in_array($parentId, $category->allDescendantIds())) {
+                return response()->json(['message' => 'Cannot set a descendant as the parent.'], 422);
             }
         }
 
-        // Prevent setting parent_id to self
-        if (($validated['parent_id'] ?? null) == $id) {
-            return response()->json(['message' => 'A category cannot be its own parent.'], 422);
-        }
-
         $category->update($validated);
-        $category->load('children');
+        $category->load('childrenRecursive');
 
         return response()->json(['data' => $category]);
     }

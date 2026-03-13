@@ -28,8 +28,45 @@ class Category extends Model
         return $this->hasMany(self::class, 'parent_id')->orderBy('sort_order');
     }
 
+    public function childrenRecursive(): HasMany
+    {
+        return $this->children()->with('childrenRecursive');
+    }
+
+    /**
+     * Get all descendant IDs (requires children to be loaded).
+     */
+    public function allDescendantIds(): array
+    {
+        $children = $this->relationLoaded('childrenRecursive')
+            ? $this->childrenRecursive
+            : $this->children;
+
+        $ids = [];
+        foreach ($children as $child) {
+            $ids[] = $child->id;
+            $ids = array_merge($ids, $child->allDescendantIds());
+        }
+        return $ids;
+    }
+
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);
+    }
+
+    /**
+     * Flatten childrenRecursive into children key for JSON output.
+     */
+    public function toArray(): array
+    {
+        $array = parent::toArray();
+
+        if (isset($array['children_recursive'])) {
+            $array['children'] = $array['children_recursive'];
+            unset($array['children_recursive']);
+        }
+
+        return $array;
     }
 }
