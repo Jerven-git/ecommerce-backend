@@ -60,8 +60,54 @@ class ProductController extends Controller
 
     public function show($id)
     {
-        $product = Product::findOrFail($id);
+        $product = Product::with('media')->findOrFail($id);
         return response()->json(['data' => $product]);
+    }
+
+    public function uploadImages(Request $request, $id)
+    {
+        $product = Product::findOrFail($id);
+
+        $request->validate([
+            'images' => 'required|array|min:1',
+            'images.*' => 'image|max:2048',
+        ]);
+
+        $uploaded = [];
+        foreach ($request->file('images') as $file) {
+            $media = $this->mediaService->addToCollection($file, $product, 'gallery', 'products');
+            $uploaded[] = $media;
+        }
+
+        // Set image_url from first gallery image if not already set
+        if (!$product->image_url && count($uploaded)) {
+            $product->update(['image_url' => Storage::disk('public')->url($uploaded[0]->path)]);
+        }
+
+        return response()->json([
+            'message' => count($uploaded) . ' image(s) uploaded',
+            'data' => $product->fresh()->load('media'),
+        ]);
+    }
+
+    public function deleteImage($id, $mediaId)
+    {
+        $product = Product::findOrFail($id);
+        $media = $product->media()->where('id', $mediaId)->firstOrFail();
+
+        Storage::disk('public')->delete($media->path);
+        $media->delete();
+
+        // If the deleted image was the main image_url, update to next gallery image or null
+        if ($product->image_url && str_contains($product->image_url, basename($media->path))) {
+            $next = $product->media()->where('collection', 'gallery')->first();
+            $product->update(['image_url' => $next ? Storage::disk('public')->url($next->path) : null]);
+        }
+
+        return response()->json([
+            'message' => 'Image deleted',
+            'data' => $product->fresh()->load('media'),
+        ]);
     }
 
     public function store(Request $request)
