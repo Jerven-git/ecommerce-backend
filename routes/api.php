@@ -132,6 +132,8 @@ Route::prefix('v1')->group(function () {
             Route::put('/products/{id}', [ProductController::class, 'update']);
             Route::patch('/products/{id}', [ProductController::class, 'update']);
             Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+            Route::post('/products/{id}/images', [ProductController::class, 'uploadImages']);
+            Route::delete('/products/{id}/images/{mediaId}', [ProductController::class, 'deleteImage']);
 
             // Categories
             Route::post('/categories', [CategoryController::class, 'store']);

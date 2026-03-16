@@ -38,4 +38,30 @@ class MediaService
 
         return $media->fresh();
     }
+
+    /**
+     * Add a file to a collection without replacing existing files (gallery-style).
+     */
+    public function addToCollection(UploadedFile $file, Model $model, string $collection = 'gallery', ?string $directory = null): Media
+    {
+        $directory = $directory ?? strtolower(class_basename($model));
+
+        Storage::disk('public')->makeDirectory($directory);
+
+        $path = Storage::disk('public')->put($directory, $file);
+        $hash = md5_file($file->getRealPath());
+
+        $media = new Media([
+            'hash' => $hash,
+            'path' => $path,
+            'format' => $file->getClientOriginalExtension(),
+            'mime_type' => $file->getClientMimeType(),
+            'size' => $file->getSize(),
+            'collection' => $collection,
+        ]);
+
+        $model->media()->save($media);
+
+        return $media->fresh();
+    }
 }
