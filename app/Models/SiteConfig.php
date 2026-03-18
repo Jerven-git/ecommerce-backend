@@ -22,12 +22,16 @@ class SiteConfig extends Model
         'contact_phone',
         'contact_entries',
         'favorites_enabled',
+        'backorder_enabled',
+        'backorder_payment_link_expiry_hours',
     ];
 
     protected $casts = [
         'updated_at' => 'datetime',
         'contact_entries' => 'array',
         'favorites_enabled' => 'boolean',
+        'backorder_enabled' => 'boolean',
+        'backorder_payment_link_expiry_hours' => 'integer',
     ];
 
     public function media()

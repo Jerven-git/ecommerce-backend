@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Payment;
 use App\Models\Shipment;
+use App\Models\Backorder;
 
 class Order extends Model
 {
@@ -15,6 +16,10 @@ class Order extends Model
         'customer_email',
         'customer_phone',
         'shipping_address',
+        'delivery_method',
+        'country',
+        'state',
+        'city',
         'total_amount',
         'subtotal',
         'tax_amount',
@@ -22,6 +27,7 @@ class Order extends Model
         'discount_code',
         'discount_amount',
         'status',
+        'has_backorder_items',
     ];
 
     protected $casts = [
@@ -30,6 +36,7 @@ class Order extends Model
         'tax_amount' => 'decimal:2',
         'shipping_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
+        'has_backorder_items' => 'boolean',
         'created_at' => 'datetime',
     ];
 
@@ -46,6 +53,11 @@ class Order extends Model
     public function shipment()
     {
         return $this->hasOne(Shipment::class)->latestOfMany();
+    }
+
+    public function backorders()
+    {
+        return $this->hasMany(Backorder::class);
     }
 
     public function scopePending($query)
@@ -71,6 +83,16 @@ class Order extends Model
     public function scopeCancelled($query)
     {
         return $query->where('status', 'cancelled');
+    }
+
+    public function scopeBackorder($query)
+    {
+        return $query->whereIn('status', [
+            'backorder_awaiting_stock',
+            'backorder_notified',
+            'backorder_expired',
+            'backorder_cancelled',
+        ]);
     }
 
     public function scopeSearch($query, ?string $term)

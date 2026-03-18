@@ -37,6 +37,7 @@ class SiteConfigController extends Controller
                 'contact_phone' => $config->contact_phone,
                 'contact_entries' => $config->contact_entries ?? [],
                 'favorites_enabled' => (bool) $config->favorites_enabled,
+                'backorder_enabled' => (bool) $config->backorder_enabled,
                 'updated_at' => $config->updated_at,
 
                 // urls come from media

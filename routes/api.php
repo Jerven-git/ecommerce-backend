@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\V1\ContactController;
 use App\Http\Controllers\Api\V1\CategoryController;
 use App\Http\Controllers\Api\V1\ShipmentController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\BackorderController;
 use App\Http\Controllers\Auth\AdminPasswordResetLinkController;
 use App\Http\Controllers\Auth\AdminNewPasswordController;
 
@@ -96,6 +97,10 @@ Route::prefix('v1')->group(function () {
     Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])
         ->whereIn('provider', ['stripe', 'paypal', 'square']);
 
+    // Backorder payment (public - token-based)
+    Route::get('/backorders/pay/{token}', [BackorderController::class, 'verifyToken']);
+    Route::post('/backorders/pay/{token}', [BackorderController::class, 'payByToken'])->middleware('throttle:order-pay');
+
     /*
     |--------------------------------------------------------------------------
     | Authenticated Routes
@@ -119,6 +124,15 @@ Route::prefix('v1')->group(function () {
         // Shipment management
         Route::post('/orders/{id}/ship', [ShipmentController::class, 'ship']);
         Route::patch('/shipments/{id}', [ShipmentController::class, 'update']);
+
+        // Backorder management
+        Route::get('/backorders', [BackorderController::class, 'index']);
+        Route::get('/backorders/{id}', [BackorderController::class, 'show']);
+        Route::post('/backorders/{id}/notify', [BackorderController::class, 'notify']);
+        Route::post('/backorders/{id}/resend', [BackorderController::class, 'resend']);
+        Route::post('/backorders/{id}/cancel', [BackorderController::class, 'cancel']);
+        Route::get('/backorder-settings', [BackorderController::class, 'settings']);
+        Route::patch('/backorder-settings', [BackorderController::class, 'updateSettings']);
 
         /*
         |----------------------------------------------------------------------

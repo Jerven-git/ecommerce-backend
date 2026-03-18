@@ -49,7 +49,18 @@ class DeductStock
                     ->get()
                     ->keyBy('id');
 
+                // Separate backorder items from regular items
+                $backorderProductIds = $order->backorders()
+                    ->whereIn('status', ['awaiting_stock', 'notified', 'expired'])
+                    ->pluck('product_id')
+                    ->all();
+
                 foreach ($qtyByProduct as $productId => $qty) {
+                    // Skip backorder items — stock is deducted when backorder is paid
+                    if (in_array($productId, $backorderProductIds)) {
+                        continue;
+                    }
+
                     $product = $products->get($productId);
 
                     if (!$product) {
@@ -64,6 +75,9 @@ class DeductStock
                 $order->forceFill(['stock_deducted_at' => now()])->save();
 
                 foreach ($qtyByProduct as $productId => $qty) {
+                    if (in_array($productId, $backorderProductIds)) {
+                        continue;
+                    }
                     $products[$productId]->decrement('stock', $qty);
                 }
             });

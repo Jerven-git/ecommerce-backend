@@ -62,7 +62,7 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
             'quick_pay' => [
                 'name' => "Order #{$order->id}",
                 'price_money' => [
-                    'amount' => $this->toCents($order->total_amount),
+                    'amount' => $this->toCents($meta['amount_override'] ?? $order->total_amount),
                     'currency' => strtoupper($order->currency ?: 'USD'),
                 ],
                 'location_id' => config('payment.square.location_id'),

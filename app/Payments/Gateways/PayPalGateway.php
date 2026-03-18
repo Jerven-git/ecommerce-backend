@@ -70,7 +70,8 @@ class PayPalGateway implements PaymentGateway, HandlesWebhooks
         }
 
         $currency = strtoupper($order->currency ?: 'USD');
-        $value = number_format((float) $order->total_amount, 2, '.', '');
+        $rawAmount = $meta['amount_override'] ?? $order->total_amount;
+        $value = number_format((float) $rawAmount, 2, '.', '');
 
         // must be unique per transaction
         $invoiceId = 'ORDER-' . $order->id . '-' . Str::uuid()->toString();
