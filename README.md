@@ -219,6 +219,138 @@ Or manually add this cron entry:
 * * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
 ```
 
+## Backorder System
+
+### How It Works
+
+The backorder system allows customers to purchase products that are currently out of stock. It is controlled by a **global master switch** (`backorder_enabled` in `site_config`) and a **per-product toggle** (`allow_backorder`) — both must be enabled for a product to accept backorders.
+
+### Charge Policies
+
+Each backorder-enabled product has a charge policy that determines when the customer pays:
+
+| Policy | Behavior |
+|--------|---------|
+| `charged_now` | Customer pays for backorder items at checkout (included in order total) |
+| `charged_later` | Customer pays only when stock arrives and admin sends a payment link |
+| `charged_invoice` | Billed via invoice later |
+
+### Backorder Flow (Step by Step)
+
+#### 1. Order Creation with Backorder Items
+**Route:** `POST /api/orders`
+**Controller:** `OrderController::store()`
+
+During checkout, `buildCartAndReserveStock()` separates cart items into **in-stock** and **backorder** buckets:
+- **In-stock items:** Added to `order_items`, stock reserved, included in subtotal
+- **Backorder items:** Added to `order_items` with "(Backorder)" suffix, and separate `Backorder` records are created with status `awaiting_stock`
+
+For `charged_later`/`charged_invoice`, the backorder amount is **excluded** from the checkout total. If all items are deferred backorders, no payment is required at checkout.
+
+The order gets `has_backorder_items = true` and status `backorder_awaiting_stock`.
+
+#### 2. Stock Deduction
+**Listener:** `DeductStock`
+
+When `PaymentConfirmed` fires, `DeductStock` skips backorder items — their stock is only deducted when the backorder itself is paid (handled by `FulfillBackorder`).
+
+#### 3. Admin Sends Payment Link
+**Route:** `POST /api/v1/backorders/{id}/notify`
+**Controller:** `BackorderController::notify()`
+
+When stock arrives, the admin sends a payment link:
+1. Validates the backorder is in `awaiting_stock` status
+2. Checks the product has sufficient stock
+3. Generates a secure 64-character payment token
+4. Sets token expiry (configurable via `backorder_payment_link_expiry_hours`, default 24h)
+5. Updates status to `notified` and sets `notified_at`
+6. Sends `BackorderPaymentLinkMail` to the customer
+
+The link can be resent via `POST /api/v1/backorders/{id}/resend` (works for `notified` or `expired` backorders).
+
+#### 4. Customer Pays
+**Route:** `POST /api/v1/backorders/pay/{token}`
+**Controller:** `BackorderController::payByToken()`
+
+The customer accesses a public, token-based payment page (no login required):
+1. Token and expiry are validated
+2. Backorder total is calculated (product price × quantity + tax + shipping)
+3. Payment is processed through the selected gateway (Stripe, PayPal, or Square)
+4. Payment metadata includes `backorder_id` for fulfillment routing
+
+#### 5. Fulfillment
+**Listener:** `FulfillBackorder`
+
+On payment confirmation:
+1. Backorder status → `paid`, sets `paid_at`, clears `payment_token`
+2. **Product stock is deducted** for the backorder quantity
+3. If all backorders on the parent order are `paid` or `cancelled`, order status transitions to `processing`
+
+### Backorder Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `awaiting_stock` | Backorder created, waiting for stock to arrive |
+| `notified` | Admin sent payment link, waiting for customer to pay |
+| `expired` | Payment link expired (customer didn't pay in time) |
+| `paid` | Customer paid, stock deducted |
+| `cancelled` | Admin cancelled the backorder |
+
+**Status Transitions:**
+```
+awaiting_stock → notified → paid
+                    ↓
+                 expired → (resend) → notified
+
+Any non-paid status → cancelled
+```
+
+### Backorder API Endpoints
+
+#### Admin (Authenticated)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/v1/backorders` | List backorders (filter by status, product_id, search) |
+| `GET` | `/v1/backorders/{id}` | Backorder detail with relationships |
+| `POST` | `/v1/backorders/{id}/notify` | Send payment link to customer |
+| `POST` | `/v1/backorders/{id}/resend` | Resend payment link |
+| `POST` | `/v1/backorders/{id}/cancel` | Cancel backorder and notify customer |
+| `GET` | `/v1/backorder-settings` | Get global backorder settings |
+| `PATCH` | `/v1/backorder-settings` | Update global backorder settings |
+
+#### Public (Token-based, no auth)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/v1/backorders/pay/{token}` | Verify token and get backorder payment details |
+| `POST` | `/v1/backorders/pay/{token}` | Process backorder payment |
+
+### Email Notifications
+
+| Mail Class | Template | Trigger |
+|------------|----------|---------|
+| `BackorderPaymentLinkMail` | `emails/backorder-payment-link` | Admin sends/resends payment link |
+| `BackorderCancellationMail` | `emails/backorder-cancellation` | Admin cancels a backorder |
+
+### Stock Protection
+
+- Uses **pessimistic locking** (`lockForUpdate` in DB transaction) to prevent race conditions
+- Stock is only deducted when the backorder payment is confirmed, not when the link is sent
+
+### File Reference
+
+```
+app/Models/Backorder.php                          # Backorder model with scopes and token validation
+app/Http/Controllers/Api/V1/BackorderController.php  # All backorder endpoints
+app/Listeners/FulfillBackorder.php                 # Handles stock deduction + status update on payment
+app/Mail/BackorderPaymentLinkMail.php              # Payment link email
+app/Mail/BackorderCancellationMail.php             # Cancellation email
+resources/views/emails/backorder-payment-link.blade.php
+resources/views/emails/backorder-cancellation.blade.php
+database/migrations/2026_03_17_010002_create_backorders_table.php
+```
+
 ## Future Improvements
 
 ### High Priority
