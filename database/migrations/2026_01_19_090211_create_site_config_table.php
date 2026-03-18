@@ -25,6 +25,8 @@ return new class extends Migration
             $table->string('contact_phone')->default('+1234567890');
             $table->json('contact_entries')->nullable();
             $table->boolean('favorites_enabled')->default(false);
+            $table->boolean('backorder_enabled')->default(false);
+            $table->unsignedInteger('backorder_payment_link_expiry_hours')->default(24);
             $table->timestamps();
         });
     }

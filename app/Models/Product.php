@@ -12,6 +12,8 @@ class Product extends Model
         'price',
         'image_url',
         'stock',
+        'allow_backorder',
+        'backorder_charge_policy',
         'weight',
         'length_cm',
         'width_cm',
@@ -30,11 +32,12 @@ class Product extends Model
         'width_cm' => 'decimal:2',
         'height_cm' => 'decimal:2',
         'is_active' => 'boolean',
+        'allow_backorder' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
 
-    protected $appends = ['volume_cbm'];
+    protected $appends = ['volume_cbm', 'can_backorder'];
 
     public function getVolumeCbmAttribute(): float
     {
@@ -71,5 +74,21 @@ class Product extends Model
     public function media()
     {
         return $this->morphMany(Media::class, 'imageable');
+    }
+
+    public function backorders()
+    {
+        return $this->hasMany(Backorder::class);
+    }
+
+    public function getCanBackorderAttribute(): bool
+    {
+        return $this->canBackorder();
+    }
+
+    public function canBackorder(): bool
+    {
+        $globalEnabled = SiteConfig::first()?->backorder_enabled ?? false;
+        return $globalEnabled && $this->allow_backorder;
     }
 }

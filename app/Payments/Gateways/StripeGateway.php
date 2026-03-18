@@ -21,20 +21,24 @@ class StripeGateway implements PaymentGateway, ChecksPaymentStatus, HandlesWebho
 
     public function createPayment(Order $order, array $meta = []): array
     {
-        $amount = $this->toCents($order->total_amount);
+        $rawAmount = $meta['amount_override'] ?? $order->total_amount;
+        $amount = $this->toCents($rawAmount);
         $currency = strtolower($order->currency ?: 'usd');
 
         // Idempotency prevents duplicate intents if your request retries
-        $idempotencyKey = "order:{$order->id}:create_intent";
+        $backorderId = $meta['backorder_id'] ?? null;
+        $idempotencyKey = $backorderId
+            ? "order:{$order->id}:backorder:{$backorderId}:create_intent"
+            : "order:{$order->id}:create_intent";
 
         $intent = $this->stripe->paymentIntents->create(
             [
                 'amount' => $amount,
                 'currency' => $currency,
-                'metadata' => [
+                'metadata' => array_filter([
                     'order_id' => (string) $order->id,
-                    ...$meta,
-                ],
+                    'backorder_id' => $backorderId ? (string) $backorderId : null,
+                ]),
                 'automatic_payment_methods' => ['enabled' => true],
             ],
             [

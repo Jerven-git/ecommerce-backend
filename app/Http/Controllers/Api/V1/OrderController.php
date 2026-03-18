@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Backorder;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\SiteConfig;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Discount;
@@ -63,7 +65,7 @@ class OrderController extends Controller
         DB::beginTransaction();
 
         try {
-            [$rawSubtotal, $totalWeight, $totalVolumeCbm, $orderItems, $taxItems] =
+            [$rawSubtotal, $totalWeight, $totalVolumeCbm, $orderItems, $taxItems, $backorderItems] =
                 $this->buildCartAndReserveStock($validated['items']);
 
             $tax = $this->calculateTax($rawSubtotal, $taxItems);
@@ -94,8 +96,22 @@ class OrderController extends Controller
             $taxAmount = (float) ($tax['tax_amount'] ?? 0);
             $shippingTotal = (float) ($shippingCalc['total'] ?? 0);
 
-            $order = $this->createOrder($validated, $finalTotal, $rawSubtotal, $taxAmount, $shippingTotal, $discountCode, $discountAmount);
+            $hasBackorders = !empty($backorderItems);
+            $order = $this->createOrder($validated, $finalTotal, $rawSubtotal, $taxAmount, $shippingTotal, $discountCode, $discountAmount, $hasBackorders);
             $this->createOrderItems($order, $orderItems);
+
+            // Create backorder records for out-of-stock items
+            if ($hasBackorders) {
+                foreach ($backorderItems as $bi) {
+                    Backorder::create([
+                        'order_id' => $order->id,
+                        'product_id' => $bi['product_id'],
+                        'quantity' => $bi['quantity'],
+                        'status' => 'awaiting_stock',
+                        'charge_policy' => $bi['charge_policy'],
+                    ]);
+                }
+            }
 
             if ($discount && $discountAmount > 0) {
                 $discount->increment('used_count');
@@ -178,7 +194,8 @@ class OrderController extends Controller
      *   1: float, // totalWeight
      *   2: float, // totalVolumeCbm
      *   3: array<int, array<string, mixed>>, // orderItems
-     *   4: array<int, array{price: float, quantity: int}> // taxItems
+     *   4: array<int, array{price: float, quantity: int}>, // taxItems
+     *   5: array<int, array<string, mixed>> // backorderItems
      * }
      */
     private function buildCartAndReserveStock(array $items): array
@@ -188,6 +205,7 @@ class OrderController extends Controller
         $totalVolumeCbm = 0.0;
         $orderItems = [];
         $taxItems = [];
+        $backorderItems = [];
 
         // Lock all products upfront to prevent concurrent overselling
         $productIds = array_column($items, 'product_id');
@@ -203,36 +221,72 @@ class OrderController extends Controller
                 throw new \Exception("Product not found: {$productId}");
             }
 
-            if ($product->stock < $qty) {
+            $inStockQty = min($qty, $product->stock);
+            $backorderQty = $qty - $inStockQty;
+
+            // If not enough stock and backorder not allowed, throw
+            if ($backorderQty > 0 && !$product->canBackorder()) {
                 throw new \Exception("Insufficient stock for product: {$product->name}");
             }
 
             $price = (float) $product->price;
-            $lineSubtotal = $price * $qty;
 
-            $rawSubtotal += $lineSubtotal;
+            // Process in-stock portion as normal order items
+            if ($inStockQty > 0) {
+                $lineSubtotal = $price * $inStockQty;
+                $rawSubtotal += $lineSubtotal;
 
-            if ($product->shipping_calc_type === 'dimensions') {
-                $totalVolumeCbm += $product->volume_cbm * $qty;
-            } else {
-                $totalWeight += (float) ($product->weight ?? 0) * $qty;
+                if ($product->shipping_calc_type === 'dimensions') {
+                    $totalVolumeCbm += $product->volume_cbm * $inStockQty;
+                } else {
+                    $totalWeight += (float) ($product->weight ?? 0) * $inStockQty;
+                }
+
+                $orderItems[] = [
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'product_price' => $product->price,
+                    'quantity' => $inStockQty,
+                    'subtotal' => round($lineSubtotal, 2),
+                ];
+
+                $taxItems[] = [
+                    'price' => $price,
+                    'quantity' => $inStockQty,
+                ];
             }
 
-            $orderItems[] = [
-                'product_id' => $product->id,
-                'product_name' => $product->name,
-                'product_price' => $product->price,
-                'quantity' => $qty,
-                'subtotal' => round($lineSubtotal, 2),
-            ];
+            // Process backorder portion
+            if ($backorderQty > 0) {
+                // Still add to order items so the full order is recorded
+                $boLineSubtotal = $price * $backorderQty;
 
-            $taxItems[] = [
-                'price' => $price,
-                'quantity' => $qty,
-            ];
+                $orderItems[] = [
+                    'product_id' => $product->id,
+                    'product_name' => $product->name . ' (Backorder)',
+                    'product_price' => $product->price,
+                    'quantity' => $backorderQty,
+                    'subtotal' => round($boLineSubtotal, 2),
+                ];
+
+                // Only include in subtotal/tax if charge policy is "charged_now"
+                if ($product->backorder_charge_policy === 'charged_now') {
+                    $rawSubtotal += $boLineSubtotal;
+                    $taxItems[] = [
+                        'price' => $price,
+                        'quantity' => $backorderQty,
+                    ];
+                }
+
+                $backorderItems[] = [
+                    'product_id' => $product->id,
+                    'quantity' => $backorderQty,
+                    'charge_policy' => $product->backorder_charge_policy,
+                ];
+            }
         }
 
-        return [$rawSubtotal, $totalWeight, $totalVolumeCbm, $orderItems, $taxItems];
+        return [$rawSubtotal, $totalWeight, $totalVolumeCbm, $orderItems, $taxItems, $backorderItems];
     }
 
     private function calculateTax(float $rawSubtotal, array $taxItems): array
@@ -315,20 +369,26 @@ class OrderController extends Controller
         float $taxAmount,
         float $shippingAmount,
         ?string $discountCode = null,
-        float $discountAmount = 0
+        float $discountAmount = 0,
+        bool $hasBackorders = false
     ): Order {
         return Order::create([
             'customer_name' => $validated['customer_name'],
             'customer_email' => $validated['customer_email'],
             'customer_phone' => $validated['customer_phone'] ?? '',
             'shipping_address' => $validated['shipping_address'],
+            'delivery_method' => $validated['delivery_method'] ?? 'delivery',
+            'country' => $validated['country'] ?? null,
+            'state' => $validated['state'] ?? null,
+            'city' => $validated['city'] ?? null,
             'total_amount' => round($finalTotal, 2),
             'subtotal' => round($subtotal, 2),
             'tax_amount' => round($taxAmount, 2),
             'shipping_amount' => round($shippingAmount, 2),
             'discount_code' => $discountCode,
             'discount_amount' => round($discountAmount, 2),
-            'status' => 'pending',
+            'status' => $hasBackorders ? 'backorder_awaiting_stock' : 'pending',
+            'has_backorder_items' => $hasBackorders,
         ]);
     }
 
@@ -340,7 +400,7 @@ class OrderController extends Controller
     public function updateStatus(Request $request, $id)
     {
         $validated = $request->validate([
-            'status' => 'required|in:pending,processing,shipped,delivered,cancelled'
+            'status' => 'required|in:pending,processing,shipped,delivered,cancelled,backorder_awaiting_stock,backorder_notified,backorder_expired,backorder_cancelled'
         ]);
 
         $order = Order::findOrFail($id);
@@ -351,6 +411,10 @@ class OrderController extends Controller
             'shipped' => ['delivered'],
             'delivered' => [],
             'cancelled' => [],
+            'backorder_awaiting_stock' => ['backorder_notified', 'backorder_cancelled', 'pending'],
+            'backorder_notified' => ['backorder_expired', 'backorder_cancelled', 'pending'],
+            'backorder_expired' => ['backorder_notified', 'backorder_cancelled'],
+            'backorder_cancelled' => [],
         ];
 
         $allowed = $allowedTransitions[$order->status] ?? [];
@@ -359,6 +423,16 @@ class OrderController extends Controller
             return response()->json([
                 'message' => "Cannot transition from '{$order->status}' to '{$validated['status']}'",
             ], 422);
+        }
+
+        // Block cancellation if payment has been received
+        if ($validated['status'] === 'cancelled' || $validated['status'] === 'backorder_cancelled') {
+            $payment = $order->payment;
+            if ($payment && $payment->status === 'paid') {
+                return response()->json([
+                    'message' => 'Cannot cancel an order with a completed payment. Please undo the payment first.',
+                ], 422);
+            }
         }
 
         $order->status = $validated['status'];

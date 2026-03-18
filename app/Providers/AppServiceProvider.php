@@ -15,6 +15,7 @@ use App\Events\OrderRequiresRefund;
 use App\Listeners\UpdateOrderStatus;
 use App\Listeners\DeductStock;
 use App\Listeners\HandleFailedOrder;
+use App\Listeners\FulfillBackorder;
 use Stripe\StripeClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\RateLimiter;
@@ -50,6 +51,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Event::listen(PaymentConfirmed::class, UpdateOrderStatus::class);
         Event::listen(PaymentConfirmed::class, DeductStock::class);
+        Event::listen(PaymentConfirmed::class, FulfillBackorder::class);
         Event::listen(OrderRequiresRefund::class, HandleFailedOrder::class);
 
         // GLOBAL API: cap total requests per IP across all endpoints

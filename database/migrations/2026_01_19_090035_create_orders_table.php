@@ -23,8 +23,23 @@ return new class extends Migration
             $table->decimal('shipping_amount', 10, 2)->default(0);
             $table->string('discount_code')->nullable();
             $table->decimal('discount_amount', 10, 2)->default(0);
-            $table->enum('status', ['pending', 'processing', 'shipped', 'delivered', 'cancelled'])->default('pending');
+            $table->string('delivery_method', 20)->default('delivery');
+            $table->string('country')->nullable();
+            $table->string('state')->nullable();
+            $table->string('city')->nullable();
+            $table->enum('status', [
+                'pending',
+                'processing',
+                'shipped',
+                'delivered',
+                'cancelled',
+                'backorder_awaiting_stock',
+                'backorder_notified',
+                'backorder_expired',
+                'backorder_cancelled',
+            ])->default('pending');
             $table->timestamp('stock_deducted_at')->nullable();
+            $table->boolean('has_backorder_items')->default(false);
             $table->timestamps();
 
             $table->index('status');
