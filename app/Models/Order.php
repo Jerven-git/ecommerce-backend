@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use App\Models\Payment;
 use App\Models\Shipment;
 use App\Models\Backorder;
 
 class Order extends Model
 {
+    use HasFactory;
     const UPDATED_AT = null;
 
     protected $fillable = [
@@ -39,6 +42,62 @@ class Order extends Model
         'has_backorder_items' => 'boolean',
         'created_at' => 'datetime',
     ];
+
+    protected function customerName(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => strip_tags(trim($value)),
+        );
+    }
+
+    protected function customerEmail(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => strtolower(trim($value)),
+        );
+    }
+
+    protected function customerPhone(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function shippingAddress(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
+        );
+    }
+
+    protected function country(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function state(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function city(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function discountCode(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strtoupper(trim($value)) : $value,
+        );
+    }
 
     public function items()
     {

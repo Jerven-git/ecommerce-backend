@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Str;
 
 class Shipment extends Model
@@ -15,6 +16,20 @@ class Shipment extends Model
         'shipped_at',
         'delivered_at',
     ];
+
+    protected function trackingNumber(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => strtoupper(trim($value)),
+        );
+    }
+
+    protected function carrier(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
+        );
+    }
 
     protected $casts = [
         'shipped_at' => 'datetime',

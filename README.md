@@ -362,6 +362,84 @@ resources/views/emails/backorder-cancellation.blade.php
 database/migrations/2026_03_17_010002_create_backorders_table.php
 ```
 
+## SMS (Pre-configured)
+
+SMS sending is set up and ready to use but **no provider is active by default** (`SMS_PROVIDER=null`). When you're ready to send SMS notifications, just pick a provider, install the SDK, and set the env vars.
+
+### Configuration
+
+**Config file:** `config/sms.php`
+**Service class:** `app/Services/SmsService.php`
+
+### Supported Providers
+
+| Provider | SDK Package | Env Vars Required |
+|----------|-------------|-------------------|
+| **Twilio** (recommended) | `twilio/sdk` | `TWILIO_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` |
+| **Vonage** | `vonage/client` | `VONAGE_API_KEY`, `VONAGE_API_SECRET`, `VONAGE_FROM_NUMBER` |
+| **Log** | — | None (logs to Laravel log channel) |
+| **Null** | — | None (default — SMS disabled) |
+
+### How to Enable
+
+1. Install the provider SDK:
+   ```bash
+   # Twilio
+   composer require twilio/sdk
+
+   # or Vonage
+   composer require vonage/client
+   ```
+
+2. Uncomment the provider implementation in `app/Services/SmsService.php`
+
+3. Add to `.env`:
+   ```env
+   SMS_PROVIDER=twilio
+
+   TWILIO_SID=your_account_sid
+   TWILIO_AUTH_TOKEN=your_auth_token
+   TWILIO_FROM_NUMBER=+1234567890
+   ```
+
+### Usage
+
+```php
+use App\Services\SmsService;
+
+// Via dependency injection
+public function notify(SmsService $sms)
+{
+    $sms->send('+1234567890', 'Your order is ready for pickup!');
+}
+
+// Via container
+app(SmsService::class)->send($phone, $message);
+
+// Check if SMS is enabled
+if (app(SmsService::class)->isEnabled()) {
+    // send SMS
+}
+```
+
+### Testing Locally
+
+Use the `log` driver to see SMS messages in your Laravel log without sending real messages:
+```env
+SMS_PROVIDER=log
+```
+
+### Provider Recommendation
+
+**Twilio** is recommended for most use cases:
+- Widest international coverage
+- Reliable delivery and detailed delivery reports
+- Good documentation and Laravel community support
+- Supports SMS, MMS, and WhatsApp
+- Pay-per-message pricing (no monthly minimums)
+
+**Vonage** is a solid alternative if you need competitive international rates or already use their voice/video APIs.
+
 ## Future Improvements
 
 ### High Priority

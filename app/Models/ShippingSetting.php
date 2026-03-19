@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class ShippingSetting extends Model
 {
@@ -15,6 +16,27 @@ class ShippingSetting extends Model
         'store_state',
         'store_city',
     ];
+
+    protected function storeCountry(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function storeState(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function storeCity(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
 
     protected $casts = [
         'express_post_fee' => 'float',

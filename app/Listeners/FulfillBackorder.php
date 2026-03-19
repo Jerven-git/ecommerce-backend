@@ -6,6 +6,7 @@ use App\Events\PaymentConfirmed;
 use App\Models\Backorder;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class FulfillBackorder
 {
@@ -43,7 +44,11 @@ class FulfillBackorder
                 ->lockForUpdate()
                 ->first();
 
-            if ($product && $product->stock >= $backorder->quantity) {
+            if (!$product || $product->stock < $backorder->quantity) {
+                Log::warning("Backorder #{$backorder->id} paid but insufficient stock to deduct. Product #{$backorder->product_id}, available: " . ($product->stock ?? 0) . ", required: {$backorder->quantity}");
+            }
+
+            if ($product) {
                 $product->decrement('stock', $backorder->quantity);
             }
 

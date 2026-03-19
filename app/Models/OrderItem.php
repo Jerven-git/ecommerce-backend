@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class OrderItem extends Model
 {
@@ -16,6 +17,13 @@ class OrderItem extends Model
         'quantity',
         'subtotal',
     ];
+
+    protected function productName(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => strip_tags(trim($value)),
+        );
+    }
 
     protected $casts = [
         'product_price' => 'decimal:2',

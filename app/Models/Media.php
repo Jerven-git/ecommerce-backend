@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Facades\Storage;
 
 class Media extends Model
@@ -13,6 +14,27 @@ class Media extends Model
     protected $fillable = [
         'hash','path','format','mime_type','size','collection',
     ];
+
+    protected function format(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strtolower(trim($value)) : $value,
+        );
+    }
+
+    protected function mimeType(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strtolower(trim($value)) : $value,
+        );
+    }
+
+    protected function collection(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strtolower(trim($value)) : $value,
+        );
+    }
 
     protected $appends = ['url'];
 

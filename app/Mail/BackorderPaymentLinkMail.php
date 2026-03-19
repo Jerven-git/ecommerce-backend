@@ -69,7 +69,7 @@ class BackorderPaymentLinkMail extends Mailable
         if (!$taxSetting || !$taxSetting->tax_enabled || $taxSetting->tax_rate == 0) {
             return [
                 'tax_amount' => 0,
-                'tax_name' => $taxSetting->tax_name ?? 'Tax',
+                'tax_name' => $taxSetting?->tax_name ?? 'Tax',
             ];
         }
 

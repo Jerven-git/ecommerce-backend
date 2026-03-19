@@ -55,13 +55,11 @@ Route::prefix('v1')->group(function () {
     // Contact form
     Route::post('/contact', [ContactController::class, 'store'])->middleware('throttle:contact');
 
-    // Shipment tracking (public)
-    Route::get('/tracking/{trackingNumber}', [ShipmentController::class, 'track']);
-    Route::get('/tracking/{trackingNumber}/barcode', [ShipmentController::class, 'barcode']);
+    // Shipment tracking (public, rate-limited)
+    Route::get('/tracking/{trackingNumber}', [ShipmentController::class, 'track'])->middleware('throttle:tracking');
+    Route::get('/tracking/{trackingNumber}/barcode', [ShipmentController::class, 'barcode'])->middleware('throttle:tracking');
 
-    // Discounts
-    Route::get('/discounts', [DiscountController::class, 'index']);
-    Route::get('/discounts/{id}', [DiscountController::class, 'show']);
+    // Discounts (validate only — listing is admin-only)
     Route::post('/discounts/validate', [DiscountController::class, 'validate'])->middleware('throttle:discount-validate');
 
     // Shipping
@@ -85,7 +83,7 @@ Route::prefix('v1')->group(function () {
     // Payments
     Route::post('/orders/{order}/pay', [PaymentController::class, 'pay'])->middleware('throttle:order-pay');
     Route::post('/orders/{order}/stripe/intent', [PaymentController::class, 'stripeIntent'])->middleware('throttle:stripe-intent');
-    Route::get('/payments/{payment}', [PaymentController::class, 'show']);
+    Route::get('/payments/{payment}', [PaymentController::class, 'show'])->middleware('throttle:payment-show');
     Route::get('/payment-settings/methods', [PaymentSettingsController::class, 'methods']);
 
     // PayPal redirects
@@ -97,8 +95,8 @@ Route::prefix('v1')->group(function () {
     Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])
         ->whereIn('provider', ['stripe', 'paypal', 'square']);
 
-    // Backorder payment (public - token-based)
-    Route::get('/backorders/pay/{token}', [BackorderController::class, 'verifyToken']);
+    // Backorder payment (public - token-based, rate-limited)
+    Route::get('/backorders/pay/{token}', [BackorderController::class, 'verifyToken'])->middleware('throttle:backorder-token');
     Route::post('/backorders/pay/{token}', [BackorderController::class, 'payByToken'])->middleware('throttle:order-pay');
 
     /*
@@ -161,6 +159,8 @@ Route::prefix('v1')->group(function () {
             Route::delete('/site-config/media/{collection}', [SiteConfigController::class, 'deleteMedia']);
 
             // Discounts
+            Route::get('/discounts', [DiscountController::class, 'index']);
+            Route::get('/discounts/{id}', [DiscountController::class, 'show']);
             Route::post('/discounts', [DiscountController::class, 'store']);
             Route::patch('/discounts/{id}', [DiscountController::class, 'update']);
             Route::delete('/discounts/{id}', [DiscountController::class, 'destroy']);

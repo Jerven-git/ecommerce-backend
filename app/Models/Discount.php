@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class Discount extends Model
 {
+    use HasFactory;
     protected $fillable = [
         'code',
         'description',
@@ -17,6 +20,20 @@ class Discount extends Model
         'valid_until',
         'is_active',
     ];
+
+    protected function code(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => strtoupper(trim($value)),
+        );
+    }
+
+    protected function description(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
+        );
+    }
 
     protected $casts = [
         'value' => 'decimal:2',
