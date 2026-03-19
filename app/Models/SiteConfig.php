@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class SiteConfig extends Model
 {
@@ -25,6 +26,76 @@ class SiteConfig extends Model
         'backorder_enabled',
         'backorder_payment_link_expiry_hours',
     ];
+
+    protected function siteName(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
+        );
+    }
+
+    protected function primaryColor(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function secondaryColor(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function headingFont(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function bodyFont(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function heroTitle(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
+        );
+    }
+
+    protected function heroSubtitle(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
+        );
+    }
+
+    protected function aboutContent(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
+
+    protected function contactEmail(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strtolower(trim($value)) : $value,
+        );
+    }
+
+    protected function contactPhone(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? trim($value) : $value,
+        );
+    }
 
     protected $casts = [
         'updated_at' => 'datetime',

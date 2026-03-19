@@ -26,6 +26,8 @@ class BackorderCancellationMail extends Mailable
 
     public function content(): Content
     {
+        $this->backorder->loadMissing(['order', 'product']);
+
         return new Content(
             view: 'emails.backorder-cancellation',
             with: [

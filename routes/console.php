@@ -13,3 +13,5 @@ Schedule::call(function () {
 })->hourly();
 
 Schedule::command('payments:expire-stale --minutes=30')->everyFifteenMinutes();
+
+Schedule::command('backorders:expire-tokens')->everyFifteenMinutes();

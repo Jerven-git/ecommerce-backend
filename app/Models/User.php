@@ -6,6 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class User extends Authenticatable
 {
@@ -23,6 +24,20 @@ class User extends Authenticatable
         'password',
         'is_admin',
     ];
+
+    protected function name(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => trim($value),
+        );
+    }
+
+    protected function email(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => strtolower(trim($value)),
+        );
+    }
 
     /**
      * The attributes that should be hidden for serialization.

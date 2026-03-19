@@ -10,6 +10,7 @@ use App\Payments\Gateways\PayPalGateway;
 use App\Payments\Gateways\SquareGateway;
 use App\Payments\Contracts\PaymentServiceInterface;
 use App\Payments\PaymentService;
+use App\Services\SmsService;
 use App\Events\PaymentConfirmed;
 use App\Events\OrderRequiresRefund;
 use App\Listeners\UpdateOrderStatus;
@@ -43,6 +44,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(PaymentServiceInterface::class, PaymentService::class);
+
+        $this->app->singleton(SmsService::class);
     }
 
     /**
@@ -152,6 +155,21 @@ class AppServiceProvider extends ServiceProvider
         // TWO-FACTOR RESEND: prevent email spam
         RateLimiter::for('two-factor-resend', function (Request $request) {
             return Limit::perMinute(2)->by('two-factor-resend:' . $request->ip());
+        });
+
+        // PAYMENT SHOW: prevent payment ID enumeration
+        RateLimiter::for('payment-show', function (Request $request) {
+            return Limit::perMinute(15)->by('payment-show:' . $request->ip());
+        });
+
+        // BACKORDER TOKEN: prevent token brute force
+        RateLimiter::for('backorder-token', function (Request $request) {
+            return Limit::perMinute(10)->by('backorder-token:' . $request->ip());
+        });
+
+        // TRACKING: prevent tracking number enumeration
+        RateLimiter::for('tracking', function (Request $request) {
+            return Limit::perMinute(15)->by('tracking:' . $request->ip());
         });
 
         ResetPassword::createUrlUsing(function ($notifiable, string $token) {

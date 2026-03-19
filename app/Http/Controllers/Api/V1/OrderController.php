@@ -387,7 +387,7 @@ class OrderController extends Controller
             'customer_name' => $validated['customer_name'],
             'customer_email' => $validated['customer_email'],
             'customer_phone' => $validated['customer_phone'] ?? '',
-            'shipping_address' => $validated['shipping_address'],
+            'shipping_address' => $validated['shipping_address'] ?? '',
             'delivery_method' => $validated['delivery_method'] ?? 'delivery',
             'country' => $validated['country'] ?? null,
             'state' => $validated['state'] ?? null,

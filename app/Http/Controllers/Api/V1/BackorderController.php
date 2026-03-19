@@ -72,7 +72,24 @@ class BackorderController extends Controller
             ], 422);
         }
 
-        // Check if product has enough stock to fulfill the backorder
+        return $this->sendPaymentLink($backorder, 'Customer notified with payment link');
+    }
+
+    public function resend($id)
+    {
+        $backorder = Backorder::with(['order', 'product'])->findOrFail($id);
+
+        if (!in_array($backorder->status, ['notified', 'expired'])) {
+            return response()->json([
+                'message' => "Cannot resend for a backorder with status '{$backorder->status}'",
+            ], 422);
+        }
+
+        return $this->sendPaymentLink($backorder, 'Payment link resent to customer');
+    }
+
+    private function sendPaymentLink(Backorder $backorder, string $message)
+    {
         $product = $backorder->product;
         if (!$product || $product->stock < $backorder->quantity) {
             $available = $product->stock ?? 0;
@@ -98,48 +115,7 @@ class BackorderController extends Controller
         );
 
         return response()->json([
-            'message' => 'Customer notified with payment link',
-            'data' => $backorder->fresh()->load(['order', 'product']),
-        ]);
-    }
-
-    public function resend($id)
-    {
-        $backorder = Backorder::with(['order', 'product'])->findOrFail($id);
-
-        if (!in_array($backorder->status, ['notified', 'expired'])) {
-            return response()->json([
-                'message' => "Cannot resend for a backorder with status '{$backorder->status}'",
-            ], 422);
-        }
-
-        // Check if product has enough stock to fulfill the backorder
-        $product = $backorder->product;
-        if (!$product || $product->stock < $backorder->quantity) {
-            $available = $product->stock ?? 0;
-            return response()->json([
-                'message' => "Insufficient stock to resend payment link. Available: {$available}, required: {$backorder->quantity}.",
-            ], 422);
-        }
-
-        $config = SiteConfig::first();
-        $expiryHours = $config?->backorder_payment_link_expiry_hours ?? 24;
-
-        $token = Str::random(64);
-
-        $backorder->update([
-            'status' => 'notified',
-            'payment_token' => $token,
-            'token_expires_at' => now()->addHours($expiryHours),
-            'notified_at' => now(),
-        ]);
-
-        Mail::to($backorder->order->customer_email)->send(
-            new BackorderPaymentLinkMail($backorder, $token, $expiryHours)
-        );
-
-        return response()->json([
-            'message' => 'Payment link resent to customer',
+            'message' => $message,
             'data' => $backorder->fresh()->load(['order', 'product']),
         ]);
     }
@@ -412,7 +388,7 @@ class BackorderController extends Controller
             return [
                 'tax_amount' => 0,
                 'tax_rate' => 0,
-                'tax_name' => $taxSetting->tax_name ?? 'Tax',
+                'tax_name' => $taxSetting?->tax_name ?? 'Tax',
             ];
         }
 

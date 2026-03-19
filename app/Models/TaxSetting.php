@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class TaxSetting extends Model
 {
@@ -12,6 +13,13 @@ class TaxSetting extends Model
         'tax_display_mode',
         'tax_name',
     ];
+
+    protected function taxName(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
+        );
+    }
 
     protected $casts = [
         'tax_enabled' => 'boolean',
