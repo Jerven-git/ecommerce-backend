@@ -29,6 +29,10 @@ class BackorderController extends Controller
             $query->where('product_id', $request->query('product_id'));
         }
 
+        if ($request->filled('order_id')) {
+            $query->where('order_id', $request->query('order_id'));
+        }
+
         if ($request->filled('search')) {
             $term = $request->query('search');
             $query->whereHas('order', function ($q) use ($term) {
@@ -164,6 +168,11 @@ class BackorderController extends Controller
             $paidBackorders = $order->backorders()->where('status', 'paid')->count();
             if ($paidBackorders === 0) {
                 $order->forceFill(['status' => 'backorder_cancelled'])->save();
+
+                $payment = $order->payment;
+                if ($payment && $payment->status === 'pending') {
+                    $payment->update(['status' => 'failed']);
+                }
             }
         }
 
@@ -201,16 +210,19 @@ class BackorderController extends Controller
             return response()->json(['message' => 'This backorder has already been paid'], 422);
         }
 
-        $lineTotal = round((float) $backorder->product->price * $backorder->quantity, 2);
-        $tax = $this->calculateBackorderTax($backorder->product, $backorder->quantity);
+        $product = $backorder->product;
+        $stockAvailable = $product && $product->stock >= $backorder->quantity;
+
+        $lineTotal = round((float) $product->price * $backorder->quantity, 2);
+        $tax = $this->calculateBackorderTax($product, $backorder->quantity);
         $shipping = $this->calculateBackorderShipping($backorder);
         $total = round($lineTotal + $tax['tax_amount'] + $shipping['total'], 2);
 
         return response()->json([
             'data' => [
                 'id' => $backorder->id,
-                'product_name' => $backorder->product->name,
-                'product_price' => $backorder->product->price,
+                'product_name' => $product->name,
+                'product_price' => $product->price,
                 'quantity' => $backorder->quantity,
                 'subtotal' => $lineTotal,
                 'tax_amount' => $tax['tax_amount'],
@@ -222,6 +234,7 @@ class BackorderController extends Controller
                 'customer_email' => $backorder->order->customer_email,
                 'order_id' => $backorder->order_id,
                 'expires_at' => $backorder->token_expires_at->toIso8601String(),
+                'stock_available' => $stockAvailable,
             ],
         ]);
     }
@@ -250,12 +263,21 @@ class BackorderController extends Controller
             return response()->json(['message' => 'This backorder has already been paid'], 422);
         }
 
+        // Ensure stock is still available before accepting payment
+        $product = $backorder->product;
+        if (!$product || $product->stock < $backorder->quantity) {
+            $available = $product->stock ?? 0;
+            return response()->json([
+                'message' => "Sorry, this item is no longer available in the required quantity. Available stock: {$available}. Please contact us for assistance.",
+            ], 409);
+        }
+
         $validated = $request->validate([
             'payment_method' => 'required|string|in:stripe,paypal,square',
         ]);
 
         $order = $backorder->order;
-        $lineTotal = round((float) $backorder->product->price * $backorder->quantity, 2);
+        $lineTotal = round((float) $product->price * $backorder->quantity, 2);
         $tax = $this->calculateBackorderTax($backorder->product, $backorder->quantity);
         $shipping = $this->calculateBackorderShipping($backorder);
         $chargeTotal = round($lineTotal + $tax['tax_amount'] + $shipping['total'], 2);

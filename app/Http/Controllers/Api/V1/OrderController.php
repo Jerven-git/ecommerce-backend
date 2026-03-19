@@ -14,6 +14,8 @@ use App\Models\TaxSetting;
 use App\Services\ShippingCalculator;
 use App\Payments\PaymentService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\OrderCancellationMail;
 
 class OrderController extends Controller
 {
@@ -25,7 +27,16 @@ class OrderController extends Controller
         $allowedIncludes = ['items', 'payment', 'shipment'];
         $query->with(array_intersect($includes, $allowedIncludes));
 
-        $query->when($request->filled('status'), fn ($q) => $q->where('status', $request->query('status')))
+        $query->when($request->filled('status'), function ($q) use ($request) {
+                $status = $request->query('status');
+                if ($status === 'cancelled') {
+                    $q->whereIn('status', ['cancelled', 'backorder_cancelled']);
+                } elseif ($status === 'backorder') {
+                    $q->where('status', 'like', 'backorder_%');
+                } else {
+                    $q->where('status', $status);
+                }
+            })
             ->search($request->query('search'));
 
         $allowedSorts = ['created_at', 'id', 'status', 'total'];
@@ -409,11 +420,11 @@ class OrderController extends Controller
             'pending' => ['processing', 'cancelled'],
             'processing' => ['shipped', 'cancelled'],
             'shipped' => ['delivered'],
-            'delivered' => [],
-            'cancelled' => [],
-            'backorder_awaiting_stock' => ['backorder_notified', 'backorder_cancelled', 'pending'],
-            'backorder_notified' => ['backorder_expired', 'backorder_cancelled', 'pending'],
-            'backorder_expired' => ['backorder_notified', 'backorder_cancelled'],
+            'delivered' => ['processing'],
+            'cancelled' => ['pending'],
+            'backorder_awaiting_stock' => [],
+            'backorder_notified' => [],
+            'backorder_expired' => [],
             'backorder_cancelled' => [],
         ];
 
@@ -452,6 +463,10 @@ class OrderController extends Controller
                     $order->forceFill(['stock_deducted_at' => null])->save();
                 }
             });
+
+            if ($order->customer_email) {
+                Mail::to($order->customer_email)->send(new OrderCancellationMail($order));
+            }
         }
 
         return response()->json([
@@ -504,6 +519,49 @@ class OrderController extends Controller
 
         return response()->json([
             'message' => 'Payment reverted to pending',
+            'data' => $order->fresh()->load('payment'),
+        ]);
+    }
+
+    public function cancelAndRefund(Request $request, $id)
+    {
+        $order = Order::with(['payment', 'items'])->findOrFail($id);
+
+        if (in_array($order->status, ['cancelled', 'backorder_cancelled'], true)) {
+            return response()->json([
+                'message' => 'Order is already cancelled.',
+            ], 422);
+        }
+
+        $payment = $order->payment;
+
+        if (!$payment || $payment->status !== 'paid') {
+            return response()->json([
+                'message' => 'This order has no completed payment. Use the regular cancel instead.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($order, $payment) {
+            // Mark payment as refunded
+            $payment->update(['status' => 'refunded']);
+
+            // Restore stock if it was deducted
+            if ($order->stock_deducted_at) {
+                foreach ($order->items as $item) {
+                    Product::where('id', $item->product_id)->increment('stock', $item->quantity);
+                }
+                $order->forceFill(['stock_deducted_at' => null])->save();
+            }
+
+            $order->forceFill(['status' => 'cancelled'])->save();
+        });
+
+        if ($order->customer_email) {
+            Mail::to($order->customer_email)->send(new OrderCancellationMail($order));
+        }
+
+        return response()->json([
+            'message' => 'Order cancelled. Please process the refund through your payment provider.',
             'data' => $order->fresh()->load('payment'),
         ]);
     }
