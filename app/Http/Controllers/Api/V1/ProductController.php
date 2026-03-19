@@ -127,7 +127,7 @@ class ProductController extends Controller
             'category_id' => 'nullable|exists:categories,id',
             'is_active' => 'nullable|boolean',
             'allow_backorder' => 'nullable|boolean',
-            'backorder_charge_policy' => 'nullable|in:charged_now,charged_later,charged_invoice',
+            'backorder_charge_policy' => 'nullable|in:charged_now,charged_later',
         ]);
 
         unset($validated['image']);
@@ -163,7 +163,7 @@ class ProductController extends Controller
             'category_id' => 'nullable|exists:categories,id',
             'is_active' => 'nullable|boolean',
             'allow_backorder' => 'nullable|boolean',
-            'backorder_charge_policy' => 'nullable|in:charged_now,charged_later,charged_invoice',
+            'backorder_charge_policy' => 'nullable|in:charged_now,charged_later',
         ]);
 
         unset($validated['image']);

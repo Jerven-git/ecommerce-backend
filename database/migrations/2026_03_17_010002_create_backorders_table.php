@@ -20,7 +20,7 @@ return new class extends Migration
                 'paid',
                 'cancelled',
             ])->default('awaiting_stock');
-            $table->enum('charge_policy', ['charged_now', 'charged_later', 'charged_invoice'])
+            $table->enum('charge_policy', ['charged_now', 'charged_later'])
                 ->default('charged_later');
             $table->string('payment_token', 64)->nullable()->unique();
             $table->timestamp('token_expires_at')->nullable();

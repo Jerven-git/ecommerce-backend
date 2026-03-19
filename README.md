@@ -108,6 +108,7 @@ The event triggers these **listeners** (registered in `AppServiceProvider`):
 |----------|-------------|
 | `UpdateOrderStatus` | Changes order status from `pending` → `processing` |
 | `DeductStock` | Validates inventory and decrements product stock. If stock is insufficient, flags the order as `failed_needs_refund` and dispatches `OrderRequiresRefund` |
+| `SendOrderConfirmation` | Sends an order confirmation email to the customer with itemized receipt (subtotal, discount, tax, shipping, total) |
 | `HandleFailedOrder` | Logs the failure for admin review (placeholder for automated refunds and notifications) |
 
 ### Payment Statuses
@@ -118,6 +119,7 @@ The event triggers these **listeners** (registered in `AppServiceProvider`):
 | `paid` | Payment confirmed by provider |
 | `failed` | Payment declined or cancelled by provider |
 | `expired` | Payment abandoned — no response within 30 minutes (set by scheduler) |
+| `refunded` | Order cancelled after payment — admin must process refund through payment provider |
 
 ### File Reference
 
@@ -147,6 +149,7 @@ app/Events/
 app/Listeners/
 ├── UpdateOrderStatus.php              # Sets order to "processing" after payment
 ├── DeductStock.php                    # Validates and decrements product inventory
+├── SendOrderConfirmation.php          # Sends order confirmation email to customer
 └── HandleFailedOrder.php              # Handles orders that need refunds
 
 app/Http/Controllers/Api/
@@ -198,6 +201,7 @@ cancelled  cancelled
 - `delivered` and `cancelled` are **terminal states** — no further transitions allowed.
 - **Cancelling restores stock** — if `stock_deducted_at` is set, all item quantities are incremented back on the product. The `stock_deducted_at` timestamp is cleared.
 - **Cancelling fails pending payments** — if the order has a pending payment, it's marked `failed`.
+- **Cancel & Refund** — for orders with a completed payment (`paid`), use `POST /orders/{id}/cancel-refund`. This cancels the order, restores stock, marks the payment as `refunded`, and sends a cancellation email. The admin must then process the actual refund through their payment provider (Stripe/PayPal/Square dashboard).
 - **Deletion is restricted** — only `pending` or `cancelled` orders can be deleted, and only if stock hasn't been deducted (`stock_deducted_at` is null).
 
 ### Scheduled Tasks
@@ -233,7 +237,6 @@ Each backorder-enabled product has a charge policy that determines when the cust
 |--------|---------|
 | `charged_now` | Customer pays for backorder items at checkout (included in order total) |
 | `charged_later` | Customer pays only when stock arrives and admin sends a payment link |
-| `charged_invoice` | Billed via invoice later |
 
 ### Backorder Flow (Step by Step)
 
@@ -245,7 +248,7 @@ During checkout, `buildCartAndReserveStock()` separates cart items into **in-sto
 - **In-stock items:** Added to `order_items`, stock reserved, included in subtotal
 - **Backorder items:** Added to `order_items` with "(Backorder)" suffix, and separate `Backorder` records are created with status `awaiting_stock`
 
-For `charged_later`/`charged_invoice`, the backorder amount is **excluded** from the checkout total. If all items are deferred backorders, no payment is required at checkout.
+For `charged_later`, the backorder amount is **excluded** from the checkout total. If all items are deferred backorders, no payment is required at checkout.
 
 The order gets `has_backorder_items = true` and status `backorder_awaiting_stock`.
 
@@ -274,9 +277,10 @@ The link can be resent via `POST /api/v1/backorders/{id}/resend` (works for `not
 
 The customer accesses a public, token-based payment page (no login required):
 1. Token and expiry are validated
-2. Backorder total is calculated (product price × quantity + tax + shipping)
-3. Payment is processed through the selected gateway (Stripe, PayPal, or Square)
-4. Payment metadata includes `backorder_id` for fulfillment routing
+2. **Stock is verified** — if the product is no longer available in sufficient quantity, payment is rejected with a 409 error
+3. Backorder total is calculated (product price × quantity + tax + shipping)
+4. Payment is processed through the selected gateway (Stripe, PayPal, or Square)
+5. Payment metadata includes `backorder_id` for fulfillment routing
 
 #### 5. Fulfillment
 **Listener:** `FulfillBackorder`
@@ -330,13 +334,16 @@ Any non-paid status → cancelled
 
 | Mail Class | Template | Trigger |
 |------------|----------|---------|
-| `BackorderPaymentLinkMail` | `emails/backorder-payment-link` | Admin sends/resends payment link |
+| `OrderConfirmationMail` | `emails/order-confirmation` | Payment confirmed (via `SendOrderConfirmation` listener) |
+| `OrderCancellationMail` | `emails/order-cancellation` | Admin cancels an order |
+| `BackorderPaymentLinkMail` | `emails/backorder-payment-link` | Admin sends/resends payment link (includes tax & shipping breakdown) |
 | `BackorderCancellationMail` | `emails/backorder-cancellation` | Admin cancels a backorder |
 
 ### Stock Protection
 
 - Uses **pessimistic locking** (`lockForUpdate` in DB transaction) to prevent race conditions
 - Stock is only deducted when the backorder payment is confirmed, not when the link is sent
+- **Payment-time stock check** — `payByToken()` verifies stock availability before accepting payment, returning 409 if insufficient. The `verifyToken()` endpoint also returns a `stock_available` flag so the frontend can warn the customer before they attempt to pay
 
 ### File Reference
 
@@ -344,8 +351,12 @@ Any non-paid status → cancelled
 app/Models/Backorder.php                          # Backorder model with scopes and token validation
 app/Http/Controllers/Api/V1/BackorderController.php  # All backorder endpoints
 app/Listeners/FulfillBackorder.php                 # Handles stock deduction + status update on payment
-app/Mail/BackorderPaymentLinkMail.php              # Payment link email
+app/Mail/OrderConfirmationMail.php                    # Order confirmation email (sent on payment)
+app/Mail/OrderCancellationMail.php                    # Order cancellation email (sent on cancel)
+app/Mail/BackorderPaymentLinkMail.php              # Payment link email (with tax & shipping)
 app/Mail/BackorderCancellationMail.php             # Cancellation email
+app/Listeners/SendOrderConfirmation.php            # Listener that sends confirmation on PaymentConfirmed
+resources/views/emails/order-confirmation.blade.php
 resources/views/emails/backorder-payment-link.blade.php
 resources/views/emails/backorder-cancellation.blade.php
 database/migrations/2026_03_17_010002_create_backorders_table.php
@@ -365,7 +376,7 @@ database/migrations/2026_03_17_010002_create_backorders_table.php
 
 - **Webhook event storage** — Store raw webhook payloads in a `webhook_events` table. This lets you replay failed webhooks, debug provider issues, and provides an audit trail independent of your payment records.
 
-- **Email notifications** — Add a `SendOrderConfirmation` listener on `PaymentConfirmed` to email the customer their receipt. Add an admin notification on `OrderRequiresRefund`.
+- **Admin refund notification** — Add an admin email notification on `OrderRequiresRefund` so admins are alerted when a payment succeeds but stock deduction fails.
 
 ### Low Priority
 
@@ -417,6 +428,7 @@ All routes are prefixed with `/api`. See `routes/api.php` for the full definitio
 | `PATCH` | `/orders/{id}` | Update order status (state machine enforced) |
 | `POST` | `/orders/{id}/confirm-payment` | Admin confirms cash payment |
 | `POST` | `/orders/{id}/undo-payment` | Admin reverses a payment |
+| `POST` | `/orders/{id}/cancel-refund` | Cancel paid order, restore stock, mark for refund |
 | `DELETE` | `/orders/{id}` | Delete order (pending/cancelled only) |
 | `POST` | `/orders/{id}/ship` | Create shipment |
 | `PATCH` | `/shipments/{id}` | Update shipment |

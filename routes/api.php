@@ -119,6 +119,7 @@ Route::prefix('v1')->group(function () {
         Route::patch('/orders/{id}', [OrderController::class, 'updateStatus']);
         Route::post('/orders/{id}/confirm-payment', [OrderController::class, 'confirmPayment']);
         Route::post('/orders/{id}/undo-payment', [OrderController::class, 'undoPayment']);
+        Route::post('/orders/{id}/cancel-refund', [OrderController::class, 'cancelAndRefund']);
         Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
 
         // Shipment management
