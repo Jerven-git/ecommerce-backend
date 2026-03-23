@@ -8,6 +8,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use App\Modules\Media\MediaService;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
@@ -58,9 +59,9 @@ class ProductController extends Controller
         return response()->json($products);
     }
 
-    public function show($id)
+    public function show($slug)
     {
-        $product = Product::with('media')->findOrFail($id);
+        $product = Product::with('media')->where('slug', $slug)->firstOrFail();
         return response()->json(['data' => $product]);
     }
 
@@ -131,6 +132,7 @@ class ProductController extends Controller
         ]);
 
         unset($validated['image']);
+        $validated['slug'] = Product::generateUniqueSlug($validated['name']);
         $product = Product::create($validated);
 
         if ($request->hasFile('image')) {
@@ -167,6 +169,9 @@ class ProductController extends Controller
         ]);
 
         unset($validated['image']);
+        if (isset($validated['name']) && $validated['name'] !== $product->name) {
+            $validated['slug'] = Product::generateUniqueSlug($validated['name'], $product->id);
+        }
         $product->update($validated);
 
         if ($request->hasFile('image')) {

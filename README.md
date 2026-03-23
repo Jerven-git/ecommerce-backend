@@ -153,13 +153,17 @@ app/Listeners/
 └── HandleFailedOrder.php              # Handles orders that need refunds
 
 app/Http/Controllers/Api/
-├── OrderController.php                # Order CRUD + cash payment confirmation
+├── OrderController.php                # Order CRUD + cash payment confirmation (uses OrderRepository)
 ├── PaymentController.php              # Stripe intent, PayPal/Square pay, status checks
 ├── PayPalReturnController.php         # PayPal redirect/capture handling
 └── WebhookController.php              # Incoming webhooks from Stripe/PayPal/Square
 
+app/Repositories/
+└── OrderRepository.php                # Shared order queries + stock restoration logic
+
 app/Console/Commands/
-└── ExpireStalePendingPayments.php     # Scheduled: expires stale pending payments + cancels orders
+├── ExpireStalePendingPayments.php     # Scheduled: expires stale pending payments + cancels orders
+└── ExpireBackorderTokens.php          # Scheduled: expires stale backorder payment links
 
 scripts/
 └── setup-cron.sh                      # One-time setup: adds Laravel scheduler to crontab
@@ -211,6 +215,7 @@ Defined in `routes/console.php`:
 | Task | Frequency | Purpose |
 |------|-----------|---------|
 | `payments:expire-stale --minutes=30` | Every 15 minutes | Expires abandoned pending payments, cancels their orders |
+| `backorders:expire-tokens` | Every 15 minutes | Expires backorder payment links past their `token_expires_at` |
 | Two-factor code cleanup | Hourly | Deletes expired 2FA codes |
 
 Setup cron automatically:
@@ -480,7 +485,6 @@ All routes are prefixed with `/api`. See `routes/api.php` for the full definitio
 | `GET` | `/categories` | List categories |
 | `GET` | `/site-config` | Storefront configuration |
 | `POST` | `/contact` | Contact form |
-| `GET` | `/discounts` | List active discounts |
 | `POST` | `/discounts/validate` | Validate a discount code |
 | `GET/POST` | `/shipping/*` | Shipping options, zones, calculate |
 | `POST` | `/tax/calculate`, `/tax/calculate-cart` | Tax calculation |
@@ -513,7 +517,111 @@ All routes are prefixed with `/api`. See `routes/api.php` for the full definitio
 
 ### Admin Only (Sanctum + admin middleware)
 
-CRUD for products, categories, discounts, site config, and settings (shipping, tax, payment).
+CRUD for products, categories, site config, and settings (shipping, tax, payment).
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/discounts` | List all discount codes |
+| `GET` | `/discounts/{id}` | Discount detail |
+| `POST/PATCH/DELETE` | `/discounts/*` | Discount CRUD |
+
+## Input Sanitization
+
+The application has **two layers of defense** against XSS and dirty data:
+
+### Layer 1: Global Middleware
+
+`SanitizeInput` middleware (`app/Http/Middleware/SanitizeInput.php`) runs on every API request:
+- Strips HTML tags from all string inputs via `strip_tags()` + `trim()`
+- Allows safe HTML (`<p>`, `<strong>`, `<em>`, `<ul>`, `<ol>`, `<li>`, `<a>`, headings, `<blockquote>`) for rich-text fields (`description`, `about_content`)
+- Excludes password fields from sanitization
+- Recursively handles nested arrays (e.g., `contact_entries[].label`)
+
+### Layer 2: Model Mutators
+
+Every model with string `$fillable` fields has `Attribute` mutators that normalize data on write, regardless of source (controllers, listeners, seeders, tinker):
+
+| Operation | Models |
+|-----------|--------|
+| `lowercase + trim` | User.email, Order.customer_email, SiteConfig.contact_email, Payment.provider, Role.name, Media.format/mime_type/collection, PaymentWebhookEvent.provider/event_type |
+| `uppercase + trim` | Order.discount_code, Discount.code, Payment.currency, Shipment.tracking_number |
+| `strip_tags + trim` | Order.customer_name/shipping_address, Product.name, Category.name, Discount.description, Shipment.carrier, SiteConfig.site_name/hero_title/hero_subtitle, TaxSetting.tax_name, OrderItem.product_name |
+| `trim` | Order.customer_phone/country/state/city, Product.description, SiteConfig.about_content/contact_phone/fonts/colors, ShippingSetting.store_country/state/city, Payment.provider_ref |
+
+## API Security
+
+### Rate Limiting
+
+All rate limiters are defined in `AppServiceProvider` and keyed by IP.
+
+| Limiter | Rate | Applied To |
+|---------|------|-----------|
+| `api` (global) | 120/min | All API requests |
+| `login` | 5/min + 20/hour | `POST /login` (keyed by email+IP) |
+| `two-factor` | 5/min | `POST /two-factor/verify` |
+| `two-factor-resend` | 2/min | `POST /two-factor/resend` |
+| `order-store` | 10/min | `POST /orders` |
+| `order-pay` | 5/min | `POST /orders/{order}/pay`, `POST /backorders/pay/{token}` |
+| `stripe-intent` | 10/min | `POST /orders/{order}/stripe/intent` |
+| `discount-validate` | 15/min | `POST /discounts/validate` |
+| `paypal-capture` | 10/min | `POST /paypal/capture` |
+| `contact` | 3/min | `POST /contact` |
+| `password-reset` | 5/min | `POST /forgot-password` (keyed by email+IP) |
+| `payment-show` | 15/min | `GET /payments/{payment}` |
+| `backorder-token` | 10/min | `GET /backorders/pay/{token}` |
+| `tracking` | 15/min | `GET /tracking/{trackingNumber}` |
+
+### Access Control
+
+- **Discount listing** (`GET /discounts`, `GET /discounts/{id}`) is behind admin auth — prevents public code enumeration
+- **Order/backorder management** requires `auth:sanctum` + session middleware
+- **Product/category/settings CRUD** requires admin role
+
+## Repository Pattern
+
+The `OrderRepository` (`app/Repositories/OrderRepository.php`) is used for the `OrderController` only, where real duplication existed:
+
+| Method | Replaces |
+|--------|----------|
+| `findWithPayment($id)` | 2× duplicated `Order::with('payment')->findOrFail()` |
+| `findWithPaymentAndItems($id)` | `Order::with(['payment', 'items'])->findOrFail()` |
+| `findWithAll($id)` | `Order::with(['items', 'payment', 'shipment'])->findOrFail()` |
+| `restoreStock($order)` | 3× copy-pasted stock restore logic (the main win) |
+| `statusCounts()` | Inline aggregation query |
+
+Other controllers use Eloquent directly — they don't have enough duplication to justify a repository.
+
+## Testing
+
+### Unit/Feature Tests
+
+102 tests covering all API endpoints, auth, sanitization, and model mutators.
+
+```bash
+php artisan test
+```
+
+| Test File | Tests | Covers |
+|-----------|-------|--------|
+| `OrderApiTest` | 14 | CRUD, status transitions, auth, validation, XSS, email normalization |
+| `ProductApiTest` | 8 | Public listing, admin CRUD, validation, XSS |
+| `CategoryApiTest` | 7 | CRUD, circular parent prevention, XSS |
+| `DiscountApiTest` | 12 | CRUD, validation, uniqueness, expiry, code normalization |
+| `BackorderApiTest` | 14 | List/filter, notify, resend, cancel, token verify/expire, settings |
+| `ShipmentApiTest` | 6 | Ship, duplicate prevention, status update, tracking |
+| `AuthApiTest` | 6 | Login, logout, validation, email normalization, protected routes |
+| `SanitizationTest` | 18 | Every model mutator + middleware end-to-end |
+
+### Brute Force / Security Script
+
+Bash script that tests rate limiting, enumeration, XSS injection, and SQL injection against a running instance.
+
+```bash
+chmod +x tests/scripts/brute_force_test.sh
+./tests/scripts/brute_force_test.sh http://localhost:8000/api
+```
+
+Tests: order/payment ID enumeration, discount code leak, login/2FA/order creation rate limits, backorder token brute force, tracking enumeration, XSS payloads, SQL injection probes, global rate limit.
 
 ## Setup
 

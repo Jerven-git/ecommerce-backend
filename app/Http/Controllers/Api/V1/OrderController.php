@@ -7,6 +7,7 @@ use App\Models\Backorder;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\SiteConfig;
+use App\Repositories\OrderRepository;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Discount;
@@ -19,6 +20,7 @@ use App\Mail\OrderCancellationMail;
 
 class OrderController extends Controller
 {
+    public function __construct(private OrderRepository $orders) {}
     public function index(Request $request)
     {
         $query = Order::query();
@@ -47,12 +49,7 @@ class OrderController extends Controller
 
         $query->orderBy($sort, $order);
 
-        $statusCounts = Cache::remember('order_status_counts', 300, function () {
-            return Order::toBase()
-                ->selectRaw('status, count(*) as count')
-                ->groupBy('status')
-                ->pluck('count', 'status');
-        });
+        $statusCounts = Cache::remember('order_status_counts', 300, fn () => $this->orders->statusCounts());
 
         $perPage = min((int) $request->input('per_page', 15), 100);
         $paginated = $query->paginate($perPage);
@@ -64,7 +61,7 @@ class OrderController extends Controller
 
     public function show($id)
     {
-        $order = Order::with(['items', 'payment', 'shipment'])->findOrFail($id);
+        $order = $this->orders->findWithAll($id);
         return response()->json(['data' => $order]);
     }
 
@@ -456,12 +453,7 @@ class OrderController extends Controller
                     $payment->update(['status' => 'failed']);
                 }
 
-                if ($order->stock_deducted_at) {
-                    foreach ($order->items as $item) {
-                        Product::where('id', $item->product_id)->increment('stock', $item->quantity);
-                    }
-                    $order->forceFill(['stock_deducted_at' => null])->save();
-                }
+                $this->orders->restoreStock($order);
             });
 
             if ($order->customer_email) {
@@ -477,7 +469,7 @@ class OrderController extends Controller
 
     public function confirmPayment($id, PaymentService $payments)
     {
-        $order = Order::with('payment')->findOrFail($id);
+        $order = $this->orders->findWithPayment($id);
         $payment = $order->payment;
 
         abort_unless($payment, 404, 'No payment record found');
@@ -494,7 +486,7 @@ class OrderController extends Controller
 
     public function undoPayment($id)
     {
-        $order = Order::with('payment')->findOrFail($id);
+        $order = $this->orders->findWithPayment($id);
         $payment = $order->payment;
 
         abort_unless($payment, 404, 'No payment record found');
@@ -504,16 +496,10 @@ class OrderController extends Controller
         DB::transaction(function () use ($payment, $order) {
             $payment->update(['status' => 'pending']);
 
-            // Restore stock if it was deducted
-            if ($order->stock_deducted_at) {
-                foreach ($order->items as $item) {
-                    Product::where('id', $item->product_id)->increment('stock', $item->quantity);
-                }
+            $this->orders->restoreStock($order);
 
-                $order->forceFill([
-                    'stock_deducted_at' => null,
-                    'status' => 'pending',
-                ])->save();
+            if ($order->stock_deducted_at === null) {
+                $order->forceFill(['status' => 'pending'])->save();
             }
         });
 
@@ -525,7 +511,7 @@ class OrderController extends Controller
 
     public function cancelAndRefund(Request $request, $id)
     {
-        $order = Order::with(['payment', 'items'])->findOrFail($id);
+        $order = $this->orders->findWithPaymentAndItems($id);
 
         if (in_array($order->status, ['cancelled', 'backorder_cancelled'], true)) {
             return response()->json([
@@ -542,17 +528,8 @@ class OrderController extends Controller
         }
 
         DB::transaction(function () use ($order, $payment) {
-            // Mark payment as refunded
             $payment->update(['status' => 'refunded']);
-
-            // Restore stock if it was deducted
-            if ($order->stock_deducted_at) {
-                foreach ($order->items as $item) {
-                    Product::where('id', $item->product_id)->increment('stock', $item->quantity);
-                }
-                $order->forceFill(['stock_deducted_at' => null])->save();
-            }
-
+            $this->orders->restoreStock($order);
             $order->forceFill(['status' => 'cancelled'])->save();
         });
 
