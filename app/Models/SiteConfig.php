@@ -107,6 +107,11 @@ class SiteConfig extends Model
         return $this->morphOne(Media::class, 'imageable')->where('collection', 'favicon');
     }
 
+    public function cartIconMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'cart_icon');
+    }
+
     public function heroMedia()
     {
         return $this->morphOne(Media::class, 'imageable')->where('collection', 'hero');

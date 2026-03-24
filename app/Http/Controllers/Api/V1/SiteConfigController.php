@@ -14,7 +14,7 @@ class SiteConfigController extends Controller
 
     private function config(): SiteConfig
     {
-        return SiteConfig::with(['logoMedia', 'faviconMedia', 'heroMedia', 'aboutMedia', 'contactMedia'])->first()
+        return SiteConfig::with(['logoMedia', 'faviconMedia', 'cartIconMedia', 'heroMedia', 'aboutMedia', 'contactMedia'])->first()
             ?? SiteConfig::create([]);
     }
 
@@ -40,6 +40,7 @@ class SiteConfigController extends Controller
                 // urls come from media
                 'logo_url' => optional($config->logoMedia)->url,
                 'favicon_url' => optional($config->faviconMedia)->url,
+                'cart_icon_url' => optional($config->cartIconMedia)->url,
                 'hero_image_url' => optional($config->heroMedia)->url,
                 'about_image_url' => optional($config->aboutMedia)->url,
                 'contact_image_url' => optional($config->contactMedia)->url,
@@ -88,12 +89,12 @@ class SiteConfigController extends Controller
 
     public function uploadMedia(Request $request, string $collection)
     {
-        abort_unless(in_array($collection, ['logo', 'favicon', 'hero', 'about', 'contact']), 404);
+        abort_unless(in_array($collection, ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact']), 404);
 
-        $max = in_array($collection, ['logo', 'favicon']) ? 2048 : 10120; // KB (2MB vs 10MB)
+        $max = in_array($collection, ['logo', 'favicon', 'cart_icon']) ? 2048 : 10120; // KB (2MB vs 10MB)
 
         $validated = $request->validate([
-            'file' => ['required', 'file', 'image', "max:$max"],
+            'file' => ['required', 'file', 'mimes:jpeg,png,gif,webp,svg,svgz', "max:$max"],
         ]);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
@@ -114,7 +115,7 @@ class SiteConfigController extends Controller
 
     public function deleteMedia(string $collection)
     {
-        abort_unless(in_array($collection, ['logo', 'favicon', 'hero', 'about', 'contact']), 404);
+        abort_unless(in_array($collection, ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact']), 404);
 
         $config = SiteConfig::first();
         if (!$config) return response()->noContent();
