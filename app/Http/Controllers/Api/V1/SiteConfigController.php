@@ -26,10 +26,7 @@ class SiteConfigController extends Controller
             'data' => [
                 'id' => $config->id,
                 'site_name' => $config->site_name,
-                'primary_color' => $config->primary_color,
-                'secondary_color' => $config->secondary_color,
-                'heading_font' => $config->heading_font,
-                'body_font' => $config->body_font,
+                'theme' => $config->resolved_theme,
                 'hero_title' => $config->hero_title,
                 'hero_subtitle' => $config->hero_subtitle,
                 'about_content' => $config->about_content,
@@ -54,10 +51,13 @@ class SiteConfigController extends Controller
     {
         $validated = $request->validate([
             'site_name' => 'nullable|string|max:255',
-            'primary_color' => 'nullable|string|max:7',
-            'secondary_color' => 'nullable|string|max:7',
-            'heading_font' => 'nullable|string|max:100',
-            'body_font' => 'nullable|string|max:100',
+            'theme' => 'nullable|array',
+            'theme.primary_color' => 'nullable|string|max:7',
+            'theme.secondary_color' => 'nullable|string|max:7',
+            'theme.accent_color' => 'nullable|string|max:7',
+            'theme.heading_font' => 'nullable|string|max:100',
+            'theme.body_font' => 'nullable|string|max:100',
+            'theme.texture' => 'nullable|string|max:50',
             'hero_title' => 'nullable|string|max:255',
             'hero_subtitle' => 'nullable|string|max:255',
             'about_content' => 'nullable|string',
@@ -71,6 +71,15 @@ class SiteConfigController extends Controller
         ]);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
+
+        // Merge theme: keep existing values, override only what's sent
+        if (isset($validated['theme'])) {
+            $validated['theme'] = array_merge(
+                $config->theme ?? SiteConfig::THEME_DEFAULTS,
+                array_filter($validated['theme'], fn ($v) => $v !== null)
+            );
+        }
+
         $config->update($validated);
 
         // return fresh data including urls

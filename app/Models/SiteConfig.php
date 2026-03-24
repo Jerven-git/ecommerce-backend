@@ -10,12 +10,18 @@ class SiteConfig extends Model
     const CREATED_AT = null;
     protected $table = 'site_config';
 
+    const THEME_DEFAULTS = [
+        'primary_color' => '#6898ED',
+        'secondary_color' => '#4B5979',
+        'accent_color' => '#F3F4F6',
+        'heading_font' => 'Inter',
+        'body_font' => 'Inter',
+        'texture' => 'none',
+    ];
+
     protected $fillable = [
         'site_name',
-        'primary_color',
-        'secondary_color',
-        'heading_font',
-        'body_font',
+        'theme',
         'hero_title',
         'hero_subtitle',
         'about_content',
@@ -27,38 +33,18 @@ class SiteConfig extends Model
         'backorder_payment_link_expiry_hours',
     ];
 
+    /**
+     * Get the resolved theme with defaults applied.
+     */
+    public function getResolvedThemeAttribute(): array
+    {
+        return array_merge(self::THEME_DEFAULTS, $this->theme ?? []);
+    }
+
     protected function siteName(): Attribute
     {
         return Attribute::make(
             set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
-        );
-    }
-
-    protected function primaryColor(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? trim($value) : $value,
-        );
-    }
-
-    protected function secondaryColor(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? trim($value) : $value,
-        );
-    }
-
-    protected function headingFont(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? trim($value) : $value,
-        );
-    }
-
-    protected function bodyFont(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? trim($value) : $value,
         );
     }
 
@@ -99,6 +85,7 @@ class SiteConfig extends Model
 
     protected $casts = [
         'updated_at' => 'datetime',
+        'theme' => 'array',
         'contact_entries' => 'array',
         'favorites_enabled' => 'boolean',
         'backorder_enabled' => 'boolean',
