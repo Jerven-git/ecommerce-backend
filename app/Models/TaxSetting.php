@@ -66,6 +66,64 @@ class TaxSetting extends Model
         ];
     }
 
+    /**
+     * Calculate full order totals with discount and shipping in the tax base.
+     * Both inclusive and exclusive modes produce the same final total.
+     */
+    public function calculateOrderTotals(array $items, float $discountAmount = 0, float $shippingAmount = 0): array
+    {
+        $rawSubtotal = 0;
+        foreach ($items as $item) {
+            $rawSubtotal += $item['price'] * $item['quantity'];
+        }
+
+        if (!$this->tax_enabled || $this->tax_rate == 0) {
+            $exTaxSubtotal = $rawSubtotal;
+            $discountedSubtotal = max(0, $exTaxSubtotal - $discountAmount);
+            $taxableAmount = $discountedSubtotal + $shippingAmount;
+
+            return [
+                'raw_subtotal' => round($rawSubtotal, 2),
+                'subtotal' => round($exTaxSubtotal, 2),
+                'ex_tax_subtotal' => round($exTaxSubtotal, 2),
+                'discounted_subtotal' => round($discountedSubtotal, 2),
+                'shipping' => round($shippingAmount, 2),
+                'taxable_amount' => round($taxableAmount, 2),
+                'tax_amount' => 0,
+                'total' => round($taxableAmount, 2),
+                'tax_rate' => 0,
+                'tax_name' => $this->tax_name ?? 'Tax',
+                'tax_display_mode' => $this->tax_display_mode ?? 'exclusive',
+            ];
+        }
+
+        // Convert to ex-tax if prices are tax-inclusive
+        if ($this->tax_display_mode === 'inclusive') {
+            $exTaxSubtotal = $rawSubtotal / (1 + $this->tax_rate / 100);
+        } else {
+            $exTaxSubtotal = $rawSubtotal;
+        }
+
+        $discountedSubtotal = max(0, $exTaxSubtotal - $discountAmount);
+        $taxableAmount = $discountedSubtotal + $shippingAmount;
+        $taxAmount = $taxableAmount * ($this->tax_rate / 100);
+        $total = $taxableAmount + $taxAmount;
+
+        return [
+            'raw_subtotal' => round($rawSubtotal, 2),
+            'subtotal' => round($exTaxSubtotal, 2),
+            'ex_tax_subtotal' => round($exTaxSubtotal, 2),
+            'discounted_subtotal' => round($discountedSubtotal, 2),
+            'shipping' => round($shippingAmount, 2),
+            'taxable_amount' => round($taxableAmount, 2),
+            'tax_amount' => round($taxAmount, 2),
+            'total' => round($total, 2),
+            'tax_rate' => $this->tax_rate,
+            'tax_name' => $this->tax_name,
+            'tax_display_mode' => $this->tax_display_mode,
+        ];
+    }
+
     public function calculateCartTax($items)
     {
         if (!$this->tax_enabled || $this->tax_rate == 0) {

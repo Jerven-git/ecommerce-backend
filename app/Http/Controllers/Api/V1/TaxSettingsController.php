@@ -65,6 +65,8 @@ class TaxSettingsController extends Controller
             'items' => 'required|array',
             'items.*.price' => 'required|numeric|min:0',
             'items.*.quantity' => 'required|integer|min:1',
+            'discount_amount' => 'nullable|numeric|min:0',
+            'shipping_amount' => 'nullable|numeric|min:0',
         ]);
 
         $settings = TaxSetting::first();
@@ -73,7 +75,15 @@ class TaxSettingsController extends Controller
             $settings = TaxSetting::create([]);
         }
 
-        $result = $settings->calculateCartTax($validated['items']);
+        $discountAmount = (float) ($validated['discount_amount'] ?? 0);
+        $shippingAmount = (float) ($validated['shipping_amount'] ?? 0);
+
+        // Use full order calculation when discount or shipping is provided
+        if ($discountAmount > 0 || $shippingAmount > 0) {
+            $result = $settings->calculateOrderTotals($validated['items'], $discountAmount, $shippingAmount);
+        } else {
+            $result = $settings->calculateCartTax($validated['items']);
+        }
 
         return response()->json($result);
     }
