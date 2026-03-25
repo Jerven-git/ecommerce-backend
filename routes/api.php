@@ -98,6 +98,7 @@ Route::prefix('v1')->group(function () {
     // Backorder payment (public - token-based, rate-limited)
     Route::get('/backorders/pay/{token}', [BackorderController::class, 'verifyToken'])->middleware('throttle:backorder-token');
     Route::post('/backorders/pay/{token}', [BackorderController::class, 'payByToken'])->middleware('throttle:order-pay');
+    Route::post('/backorders/pay/{token}/confirm', [BackorderController::class, 'confirmWithoutPayment'])->middleware('throttle:order-pay');
 
     /*
     |--------------------------------------------------------------------------
@@ -130,6 +131,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/backorders/{id}/notify', [BackorderController::class, 'notify']);
         Route::post('/backorders/{id}/resend', [BackorderController::class, 'resend']);
         Route::post('/backorders/{id}/cancel', [BackorderController::class, 'cancel']);
+        Route::post('/backorders/{id}/mark-paid', [BackorderController::class, 'markAsPaid']);
         Route::get('/backorder-settings', [BackorderController::class, 'settings']);
         Route::patch('/backorder-settings', [BackorderController::class, 'updateSettings']);
 
