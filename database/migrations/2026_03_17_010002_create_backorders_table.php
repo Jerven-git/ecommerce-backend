@@ -17,11 +17,13 @@ return new class extends Migration
                 'awaiting_stock',
                 'notified',
                 'expired',
+                'confirmed',
                 'paid',
                 'cancelled',
             ])->default('awaiting_stock');
             $table->enum('charge_policy', ['charged_now', 'charged_later'])
                 ->default('charged_later');
+            $table->boolean('stock_reserved')->default(false);
             $table->string('payment_token', 64)->nullable()->unique();
             $table->timestamp('token_expires_at')->nullable();
             $table->timestamp('notified_at')->nullable();

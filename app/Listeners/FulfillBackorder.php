@@ -30,26 +30,31 @@ class FulfillBackorder
                 return;
             }
 
+            $wasReserved = $backorder->stock_reserved;
+
             // Mark backorder as paid
             $backorder->update([
                 'status' => 'paid',
                 'paid_at' => now(),
                 'payment_token' => null,
                 'token_expires_at' => null,
+                'stock_reserved' => false,
             ]);
 
-            // Deduct stock for the backorder quantity
-            $product = Product::query()
-                ->whereKey($backorder->product_id)
-                ->lockForUpdate()
-                ->first();
+            // Only deduct stock if it wasn't already reserved when the payment link was sent
+            if (!$wasReserved) {
+                $product = Product::query()
+                    ->whereKey($backorder->product_id)
+                    ->lockForUpdate()
+                    ->first();
 
-            if (!$product || $product->stock < $backorder->quantity) {
-                Log::warning("Backorder #{$backorder->id} paid but insufficient stock to deduct. Product #{$backorder->product_id}, available: " . ($product->stock ?? 0) . ", required: {$backorder->quantity}");
-            }
+                if (!$product || $product->stock < $backorder->quantity) {
+                    Log::warning("Backorder #{$backorder->id} paid but insufficient stock to deduct. Product #{$backorder->product_id}, available: " . ($product->stock ?? 0) . ", required: {$backorder->quantity}");
+                }
 
-            if ($product) {
-                $product->decrement('stock', $backorder->quantity);
+                if ($product) {
+                    $product->decrement('stock', $backorder->quantity);
+                }
             }
 
             // If all backorders on the parent order are now paid/cancelled, update order status

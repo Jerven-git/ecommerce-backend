@@ -90,25 +90,37 @@ class BackorderController extends Controller
 
     private function sendPaymentLink(Backorder $backorder, string $message)
     {
-        $product = $backorder->product;
-        if (!$product || $product->stock < $backorder->quantity) {
-            $available = $product->stock ?? 0;
-            return response()->json([
-                'message' => "Insufficient stock to send payment link. Available: {$available}, required: {$backorder->quantity}.",
-            ], 422);
-        }
-
         $config = SiteConfig::first();
         $expiryHours = $config?->backorder_payment_link_expiry_hours ?? 24;
-
         $token = Str::random(64);
 
-        $backorder->update([
-            'status' => 'notified',
-            'payment_token' => $token,
-            'token_expires_at' => now()->addHours($expiryHours),
-            'notified_at' => now(),
-        ]);
+        try {
+            DB::transaction(function () use ($backorder, $token, $expiryHours) {
+                $product = Product::where('id', $backorder->product_id)->lockForUpdate()->first();
+
+                if (!$product || $product->stock < $backorder->quantity) {
+                    $available = $product->stock ?? 0;
+                    abort(422, "Insufficient stock to send payment link. Available: {$available}, required: {$backorder->quantity}.");
+                }
+
+                // Reserve stock only if not already reserved (safe for resend)
+                if (!$backorder->stock_reserved) {
+                    $product->decrement('stock', $backorder->quantity);
+                }
+
+                $backorder->update([
+                    'status' => 'notified',
+                    'payment_token' => $token,
+                    'token_expires_at' => now()->addHours($expiryHours),
+                    'notified_at' => now(),
+                    'stock_reserved' => true,
+                ]);
+            });
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->getStatusCode());
+        }
+
+        $backorder->refresh()->load(['order', 'product']);
 
         Mail::to($backorder->order->customer_email)->send(
             new BackorderPaymentLinkMail($backorder, $token, $expiryHours)
@@ -116,7 +128,7 @@ class BackorderController extends Controller
 
         return response()->json([
             'message' => $message,
-            'data' => $backorder->fresh()->load(['order', 'product']),
+            'data' => $backorder,
         ]);
     }
 
@@ -130,11 +142,22 @@ class BackorderController extends Controller
             ], 422);
         }
 
-        $backorder->update([
-            'status' => 'cancelled',
-            'payment_token' => null,
-            'token_expires_at' => null,
-        ]);
+        DB::transaction(function () use ($backorder) {
+            // Release reserved stock back to the product
+            if ($backorder->stock_reserved) {
+                $product = Product::where('id', $backorder->product_id)->lockForUpdate()->first();
+                if ($product) {
+                    $product->increment('stock', $backorder->quantity);
+                }
+            }
+
+            $backorder->update([
+                'status' => 'cancelled',
+                'payment_token' => null,
+                'token_expires_at' => null,
+                'stock_reserved' => false,
+            ]);
+        });
 
         // Update parent order status if all backorders are cancelled
         $order = $backorder->order;
@@ -187,7 +210,7 @@ class BackorderController extends Controller
         }
 
         $product = $backorder->product;
-        $stockAvailable = $product && $product->stock >= $backorder->quantity;
+        $stockAvailable = $backorder->stock_reserved || ($product && $product->stock >= $backorder->quantity);
 
         $lineTotal = round((float) $product->price * $backorder->quantity, 2);
         $tax = $this->calculateBackorderTax($product, $backorder->quantity);
@@ -241,7 +264,7 @@ class BackorderController extends Controller
 
         // Ensure stock is still available before accepting payment
         $product = $backorder->product;
-        if (!$product || $product->stock < $backorder->quantity) {
+        if (!$backorder->stock_reserved && (!$product || $product->stock < $backorder->quantity)) {
             $available = $product->stock ?? 0;
             return response()->json([
                 'message' => "Sorry, this item is no longer available in the required quantity. Available stock: {$available}. Please contact us for assistance.",
@@ -296,6 +319,95 @@ class BackorderController extends Controller
         }
 
         return response()->json(['data' => $responseData]);
+    }
+
+    /**
+     * Public endpoint: confirm backorder without paying (token-based).
+     */
+    public function confirmWithoutPayment($token)
+    {
+        $backorder = Backorder::with(['order', 'product'])
+            ->where('payment_token', $token)
+            ->first();
+
+        if (!$backorder) {
+            return response()->json(['message' => 'Invalid payment link'], 404);
+        }
+
+        if (!$backorder->isTokenValid()) {
+            if ($backorder->status === 'notified') {
+                $backorder->update(['status' => 'expired']);
+            }
+            return response()->json(['message' => 'This payment link has expired'], 410);
+        }
+
+        if (in_array($backorder->status, ['paid', 'confirmed'])) {
+            return response()->json(['message' => 'This backorder has already been processed'], 422);
+        }
+
+        $backorder->update([
+            'status' => 'confirmed',
+            'payment_token' => null,
+            'token_expires_at' => null,
+            // stock_reserved stays true — stock remains held until admin processes
+        ]);
+
+        // Notify customer
+        Mail::to($backorder->order->customer_email)->send(
+            new \App\Mail\BackorderConfirmationMail($backorder)
+        );
+
+        // Notify admin
+        $adminEmail = SiteConfig::first()?->admin_email;
+        if ($adminEmail) {
+            Mail::to($adminEmail)->send(
+                new \App\Mail\BackorderConfirmedAdminMail($backorder)
+            );
+        }
+
+        return response()->json([
+            'message' => 'Order confirmed. You will be contacted for payment.',
+            'data' => ['status' => 'confirmed'],
+        ]);
+    }
+
+    /**
+     * Admin endpoint: mark a confirmed backorder as paid (manual payment).
+     */
+    public function markAsPaid($id)
+    {
+        $backorder = Backorder::with(['order', 'product'])->findOrFail($id);
+
+        if ($backorder->status !== 'confirmed') {
+            return response()->json([
+                'message' => "Can only mark 'confirmed' backorders as paid. Current status: '{$backorder->status}'",
+            ], 422);
+        }
+
+        DB::transaction(function () use ($backorder) {
+            $backorder->update([
+                'status' => 'paid',
+                'paid_at' => now(),
+                'stock_reserved' => false,
+            ]);
+
+            // If all backorders on the parent order are now paid/cancelled, update order status
+            $order = $backorder->order;
+            if ($order) {
+                $activeBackorders = $order->backorders()
+                    ->whereNotIn('status', ['paid', 'cancelled'])
+                    ->count();
+
+                if ($activeBackorders === 0) {
+                    $order->forceFill(['status' => 'processing'])->save();
+                }
+            }
+        });
+
+        return response()->json([
+            'message' => 'Backorder marked as paid',
+            'data' => $backorder->fresh()->load(['order', 'product']),
+        ]);
     }
 
     /**

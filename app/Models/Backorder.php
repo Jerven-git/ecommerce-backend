@@ -12,6 +12,7 @@ class Backorder extends Model
         'quantity',
         'status',
         'charge_policy',
+        'stock_reserved',
         'payment_token',
         'token_expires_at',
         'notified_at',
@@ -20,6 +21,7 @@ class Backorder extends Model
 
     protected $casts = [
         'quantity' => 'integer',
+        'stock_reserved' => 'boolean',
         'token_expires_at' => 'datetime',
         'notified_at' => 'datetime',
         'paid_at' => 'datetime',
@@ -60,6 +62,11 @@ class Backorder extends Model
     public function scopeCancelled($query)
     {
         return $query->where('status', 'cancelled');
+    }
+
+    public function scopeConfirmed($query)
+    {
+        return $query->where('status', 'confirmed');
     }
 
     public function isTokenValid(): bool
