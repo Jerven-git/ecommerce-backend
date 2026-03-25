@@ -76,8 +76,6 @@ class OrderController extends Controller
             [$rawSubtotal, $totalWeight, $totalVolumeCbm, $orderItems, $taxItems, $backorderItems] =
                 $this->buildCartAndReserveStock($validated['items']);
 
-            $tax = $this->calculateTax($rawSubtotal, $taxItems);
-
             $shippingCalc = $this->calculateShipping(
                 $validated,
                 $shipping,
@@ -86,26 +84,35 @@ class OrderController extends Controller
                 $rawSubtotal
             );
 
-            $totalBeforeDiscount = $this->calculateFinalTotal($tax, $shippingCalc);
+            $shippingTotal = (float) ($shippingCalc['total'] ?? 0);
 
+            // Calculate discount on ex-tax subtotal (before tax)
             $discountAmount = 0.0;
             $discountCode = $request->input('discount_code');
             $discount = null;
 
+            $taxSetting = TaxSetting::first();
+            $exTaxSubtotal = $rawSubtotal;
+            if ($taxSetting && $taxSetting->tax_enabled && $taxSetting->tax_rate > 0 && $taxSetting->tax_display_mode === 'inclusive') {
+                $exTaxSubtotal = $rawSubtotal / (1 + $taxSetting->tax_rate / 100);
+            }
+
             if ($discountCode) {
                 $discount = Discount::where('code', $discountCode)->lockForUpdate()->first();
-                if ($discount && $discount->isValid($rawSubtotal)) {
-                    $discountAmount = $discount->calculateDiscount($rawSubtotal);
+                if ($discount && $discount->isValid($exTaxSubtotal)) {
+                    $discountAmount = $discount->calculateDiscount($exTaxSubtotal);
                 }
             }
 
-            $finalTotal = max(0, $totalBeforeDiscount - $discountAmount);
+            // Calculate tax on (discounted subtotal + shipping)
+            $tax = $this->calculateOrderTax($taxItems, $discountAmount, $shippingTotal);
 
+            $finalTotal = (float) ($tax['total'] ?? 0);
             $taxAmount = (float) ($tax['tax_amount'] ?? 0);
-            $shippingTotal = (float) ($shippingCalc['total'] ?? 0);
 
             $hasBackorders = !empty($backorderItems);
-            $order = $this->createOrder($validated, $finalTotal, $rawSubtotal, $taxAmount, $shippingTotal, $discountCode, $discountAmount, $hasBackorders);
+            $exTaxSubtotal = (float) ($tax['ex_tax_subtotal'] ?? $rawSubtotal);
+            $order = $this->createOrder($validated, $finalTotal, $exTaxSubtotal, $taxAmount, $shippingTotal, $discountCode, $discountAmount, $hasBackorders);
             $this->createOrderItems($order, $orderItems);
 
             // Create backorder records for out-of-stock items
@@ -297,22 +304,33 @@ class OrderController extends Controller
         return [$rawSubtotal, $totalWeight, $totalVolumeCbm, $orderItems, $taxItems, $backorderItems];
     }
 
-    private function calculateTax(float $rawSubtotal, array $taxItems): array
+    private function calculateOrderTax(array $taxItems, float $discountAmount, float $shippingAmount): array
     {
         $taxSetting = TaxSetting::first();
 
         if (!$taxSetting) {
+            $rawSubtotal = 0;
+            foreach ($taxItems as $item) {
+                $rawSubtotal += $item['price'] * $item['quantity'];
+            }
+            $discountedSubtotal = max(0, $rawSubtotal - $discountAmount);
+            $taxableAmount = $discountedSubtotal + $shippingAmount;
+
             return [
-                'subtotal' => round($rawSubtotal, 2),
+                'raw_subtotal' => round($rawSubtotal, 2),
+                'ex_tax_subtotal' => round($rawSubtotal, 2),
+                'discounted_subtotal' => round($discountedSubtotal, 2),
+                'shipping' => round($shippingAmount, 2),
+                'taxable_amount' => round($taxableAmount, 2),
                 'tax_amount' => 0,
-                'total' => round($rawSubtotal, 2),
+                'total' => round($taxableAmount, 2),
                 'tax_display_mode' => 'exclusive',
                 'tax_rate' => 0,
                 'tax_name' => 'Tax',
             ];
         }
 
-        return $taxSetting->calculateCartTax($taxItems);
+        return $taxSetting->calculateOrderTotals($taxItems, $discountAmount, $shippingAmount);
     }
 
     private function calculateShipping(
@@ -360,14 +378,6 @@ class OrderController extends Controller
             'free_shipping' => false,
             'zone' => 'pickup',
         ];
-    }
-
-    private function calculateFinalTotal(array $tax, array $shippingCalc): float
-    {
-        $taxTotal = (float) ($tax['total'] ?? 0);
-        $shippingTotal = (float) ($shippingCalc['total'] ?? 0);
-
-        return $taxTotal + $shippingTotal;
     }
 
     private function createOrder(
