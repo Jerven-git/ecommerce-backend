@@ -91,10 +91,15 @@ class OrderController extends Controller
             $discountCode = $request->input('discount_code');
             $discount = null;
 
+            $buyerCountry = $validated['country'] ?? null;
+            $buyerState = $validated['state'] ?? null;
+
+            // Resolve regional tax to determine ex-tax subtotal for discount
             $taxSetting = TaxSetting::first();
+            $resolved = $taxSetting ? $taxSetting->resolveForRegion($buyerCountry, $buyerState) : null;
             $exTaxSubtotal = $rawSubtotal;
-            if ($taxSetting && $taxSetting->tax_enabled && $taxSetting->tax_rate > 0 && $taxSetting->tax_display_mode === 'inclusive') {
-                $exTaxSubtotal = $rawSubtotal / (1 + $taxSetting->tax_rate / 100);
+            if ($resolved && $resolved['rate'] > 0 && $resolved['mode'] === 'inclusive') {
+                $exTaxSubtotal = $rawSubtotal / (1 + $resolved['rate'] / 100);
             }
 
             if ($discountCode) {
@@ -104,15 +109,20 @@ class OrderController extends Controller
                 }
             }
 
-            // Calculate tax on (discounted subtotal + shipping)
-            $tax = $this->calculateOrderTax($taxItems, $discountAmount, $shippingTotal);
+            // Calculate tax on (discounted subtotal + shipping) with regional rate
+            $tax = $this->calculateOrderTax($taxItems, $discountAmount, $shippingTotal, $buyerCountry, $buyerState);
 
             $finalTotal = (float) ($tax['total'] ?? 0);
             $taxAmount = (float) ($tax['tax_amount'] ?? 0);
 
             $hasBackorders = !empty($backorderItems);
             $exTaxSubtotal = (float) ($tax['ex_tax_subtotal'] ?? $rawSubtotal);
-            $order = $this->createOrder($validated, $finalTotal, $exTaxSubtotal, $taxAmount, $shippingTotal, $discountCode, $discountAmount, $hasBackorders);
+            $order = $this->createOrder(
+                $validated, $finalTotal, $exTaxSubtotal, $taxAmount, $shippingTotal,
+                $discountCode, $discountAmount, $hasBackorders,
+                $tax['rule_id'] ?? null,
+                $tax['region_label'] ?? null
+            );
             $this->createOrderItems($order, $orderItems);
 
             // Create backorder records for out-of-stock items
@@ -173,8 +183,8 @@ class OrderController extends Controller
             'delivery_method' => 'required|in:delivery,pickup',
             'shipping_address' => 'required_if:delivery_method,delivery|nullable|string',
 
-            'country' => 'nullable|string',
-            'state' => 'nullable|string',
+            'country' => 'required|string',
+            'state' => 'required|string',
             'city' => 'nullable|string',
 
             'shipping_options' => 'nullable|array',
@@ -304,8 +314,13 @@ class OrderController extends Controller
         return [$rawSubtotal, $totalWeight, $totalVolumeCbm, $orderItems, $taxItems, $backorderItems];
     }
 
-    private function calculateOrderTax(array $taxItems, float $discountAmount, float $shippingAmount): array
-    {
+    private function calculateOrderTax(
+        array $taxItems,
+        float $discountAmount,
+        float $shippingAmount,
+        ?string $country = null,
+        ?string $state = null
+    ): array {
         $taxSetting = TaxSetting::first();
 
         if (!$taxSetting) {
@@ -327,10 +342,27 @@ class OrderController extends Controller
                 'tax_display_mode' => 'exclusive',
                 'tax_rate' => 0,
                 'tax_name' => 'Tax',
+                'rule_id' => null,
+                'region_label' => null,
             ];
         }
 
-        return $taxSetting->calculateOrderTotals($taxItems, $discountAmount, $shippingAmount);
+        // Resolve regional tax rate
+        $resolved = $taxSetting->resolveForRegion($country, $state);
+
+        $result = $taxSetting->calculateOrderTotals(
+            $taxItems,
+            $discountAmount,
+            $shippingAmount,
+            $resolved['rate'],
+            $resolved['name'],
+            $resolved['mode']
+        );
+
+        $result['rule_id'] = $resolved['rule_id'];
+        $result['region_label'] = $resolved['region_label'];
+
+        return $result;
     }
 
     private function calculateShipping(
@@ -388,7 +420,9 @@ class OrderController extends Controller
         float $shippingAmount,
         ?string $discountCode = null,
         float $discountAmount = 0,
-        bool $hasBackorders = false
+        bool $hasBackorders = false,
+        ?int $taxRuleId = null,
+        ?string $taxRegion = null
     ): Order {
         return Order::create([
             'customer_name' => $validated['customer_name'],
@@ -405,6 +439,8 @@ class OrderController extends Controller
             'shipping_amount' => round($shippingAmount, 2),
             'discount_code' => $discountCode,
             'discount_amount' => round($discountAmount, 2),
+            'tax_rule_id' => $taxRuleId,
+            'tax_region' => $taxRegion,
             'status' => $hasBackorders ? 'backorder_awaiting_stock' : 'pending',
             'has_backorder_items' => $hasBackorders,
         ]);

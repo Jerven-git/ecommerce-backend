@@ -53,13 +53,13 @@ No existing gateway code needs to change.
 ### Payment Flow (Step by Step)
 
 #### 1. Order Creation
-**Route:** `POST /api/orders`
+**Route:** `POST /api/v1/orders`
 **Controller:** `OrderController::store()`
 
 The customer submits their order. For cash payments, a pending `Payment` record is created immediately via `PaymentService::createPending()`.
 
 #### 2. Payment Initiation
-**Route:** `POST /api/orders/{order}/pay`
+**Route:** `POST /api/v1/orders/{order}/pay`
 **Controller:** `PaymentController::pay()`
 
 For redirect-based payments (PayPal, Square), the frontend calls this endpoint. It resolves the correct gateway via `GatewayManager`, creates a pending `Payment` record, and returns a `redirect_url` for the customer to complete checkout on the provider's site.
@@ -67,7 +67,7 @@ For redirect-based payments (PayPal, Square), the frontend calls this endpoint. 
 **Note:** Stripe is not accepted on this endpoint — it has its own dedicated flow below.
 
 #### 2b. Stripe Payment Intent
-**Route:** `POST /api/orders/{order}/stripe/intent`
+**Route:** `POST /api/v1/orders/{order}/stripe/intent`
 **Controller:** `PaymentController::stripeIntent()`
 
 Stripe uses a card form rendered on your frontend via Stripe.js, not a redirect. This endpoint creates a Stripe PaymentIntent via `StripeGateway::createPayment()`, saves a pending `Payment` record, and returns a `client_secret` that the frontend uses to render the card form and handle 3D Secure authentication.
@@ -77,11 +77,11 @@ Payment gets confirmed through one of these paths:
 
 | Path | Route | When |
 |------|-------|------|
-| **Webhook** | `POST /api/webhooks/{provider}` | Stripe/Square sends async notification |
-| **PayPal Capture** | `POST /api/paypal/capture` | Frontend captures after PayPal approval |
-| **PayPal Return** | `GET /api/paypal/return` | PayPal redirects back after approval |
-| **Status Check** | `GET /api/payments/{payment}` | Frontend polls; if provider says paid, we mark it |
-| **Cash Confirm** | `POST /api/orders/{id}/confirm-payment` | Admin manually confirms cash payment |
+| **Webhook** | `POST /api/v1/webhooks/{provider}` | Stripe/Square sends async notification |
+| **PayPal Capture** | `POST /api/v1/paypal/capture` | Frontend captures after PayPal approval |
+| **PayPal Return** | `GET /api/v1/paypal/return` | PayPal redirects back after approval |
+| **Status Check** | `GET /api/v1/payments/{payment}` | Frontend polls; if provider says paid, we mark it |
+| **Cash Confirm** | `POST /api/v1/orders/{id}/confirm-payment` | Admin manually confirms cash payment |
 
 All paths end up calling `PaymentService::markPaid()`.
 
@@ -91,7 +91,7 @@ Failed/incomplete payments are detected through three layers:
 | Layer | How | When |
 |-------|-----|------|
 | **Webhook** | Provider sends failure event (e.g., `payment_intent.payment_failed`) | Real-time (requires Cloudflare tunnel) |
-| **Status Polling** | `GET /api/payments/{payment}` checks provider and marks `failed` | When frontend polls |
+| **Status Polling** | `GET /api/v1/payments/{payment}` checks provider and marks `failed` | When frontend polls |
 | **Scheduled Cleanup** | `payments:expire-stale` command runs every 15 minutes | Catches abandoned payments (customer closed browser, never returned) |
 
 Payments older than 30 minutes that are still `pending` are marked `expired`, and their associated orders are `cancelled`.
@@ -108,6 +108,7 @@ The event triggers these **listeners** (registered in `AppServiceProvider`):
 |----------|-------------|
 | `UpdateOrderStatus` | Changes order status from `pending` → `processing` |
 | `DeductStock` | Validates inventory and decrements product stock. If stock is insufficient, flags the order as `failed_needs_refund` and dispatches `OrderRequiresRefund` |
+| `FulfillBackorder` | Handles backorder fulfillment — deducts stock, updates backorder status, transitions parent order when all backorders are resolved |
 | `SendOrderConfirmation` | Sends an order confirmation email to the customer with itemized receipt (subtotal, discount, tax, shipping, total) |
 | `HandleFailedOrder` | Logs the failure for admin review (placeholder for automated refunds and notifications) |
 
@@ -120,6 +121,10 @@ The event triggers these **listeners** (registered in `AppServiceProvider`):
 | `failed` | Payment declined or cancelled by provider |
 | `expired` | Payment abandoned — no response within 30 minutes (set by scheduler) |
 | `refunded` | Order cancelled after payment — admin must process refund through payment provider |
+
+### Webhook Event Storage
+
+Incoming webhook payloads are stored in a `payment_webhook_events` table via the `PaymentWebhookEvent` model. This provides an audit trail independent of payment records and enables replaying failed webhooks.
 
 ### File Reference
 
@@ -149,17 +154,30 @@ app/Events/
 app/Listeners/
 ├── UpdateOrderStatus.php              # Sets order to "processing" after payment
 ├── DeductStock.php                    # Validates and decrements product inventory
+├── FulfillBackorder.php               # Handles backorder stock deduction + status on payment
 ├── SendOrderConfirmation.php          # Sends order confirmation email to customer
 └── HandleFailedOrder.php              # Handles orders that need refunds
 
-app/Http/Controllers/Api/
+app/Http/Controllers/Api/V1/
 ├── OrderController.php                # Order CRUD + cash payment confirmation (uses OrderRepository)
 ├── PaymentController.php              # Stripe intent, PayPal/Square pay, status checks
 ├── PayPalReturnController.php         # PayPal redirect/capture handling
-└── WebhookController.php              # Incoming webhooks from Stripe/PayPal/Square
+├── WebhookController.php              # Incoming webhooks from Stripe/PayPal/Square
+├── DashboardController.php            # Dashboard statistics (cached)
+├── BackorderController.php            # All backorder endpoints
+├── ShipmentController.php             # Shipment management + public tracking + barcode
+├── TaxRuleController.php              # Regional tax rule CRUD + bulk sync
+└── TaxReportController.php            # Tax report generation + CSV export
+
+app/Http/Controllers/Auth/
+├── AdminPasswordResetLinkController.php   # Password reset link (admin-only, anti-enumeration)
+└── AdminNewPasswordController.php         # Password reset execution
 
 app/Repositories/
 └── OrderRepository.php                # Shared order queries + stock restoration logic
+
+app/Models/
+└── PaymentWebhookEvent.php            # Stores raw webhook payloads for audit/replay
 
 app/Console/Commands/
 ├── ExpireStalePendingPayments.php     # Scheduled: expires stale pending payments + cancels orders
@@ -191,6 +209,7 @@ scripts/
 | `delivered` | Order received by customer |
 | `cancelled` | Order was cancelled or payment expired (abandoned) |
 | `failed_needs_refund` | Payment succeeded but stock deduction failed — needs manual refund |
+| `backorder_awaiting_stock` | Order contains backorder items waiting for stock |
 
 ### Order Status Transitions
 
@@ -205,7 +224,7 @@ cancelled  cancelled
 - `delivered` and `cancelled` are **terminal states** — no further transitions allowed.
 - **Cancelling restores stock** — if `stock_deducted_at` is set, all item quantities are incremented back on the product. The `stock_deducted_at` timestamp is cleared.
 - **Cancelling fails pending payments** — if the order has a pending payment, it's marked `failed`.
-- **Cancel & Refund** — for orders with a completed payment (`paid`), use `POST /orders/{id}/cancel-refund`. This cancels the order, restores stock, marks the payment as `refunded`, and sends a cancellation email. The admin must then process the actual refund through their payment provider (Stripe/PayPal/Square dashboard).
+- **Cancel & Refund** — for orders with a completed payment (`paid`), use `POST /v1/orders/{id}/cancel-refund`. This cancels the order, restores stock, marks the payment as `refunded`, and sends a cancellation email. The admin must then process the actual refund through their payment provider (Stripe/PayPal/Square dashboard).
 - **Deletion is restricted** — only `pending` or `cancelled` orders can be deleted, and only if stock hasn't been deducted (`stock_deducted_at` is null).
 
 ### Scheduled Tasks
@@ -246,7 +265,7 @@ Each backorder-enabled product has a charge policy that determines when the cust
 ### Backorder Flow (Step by Step)
 
 #### 1. Order Creation with Backorder Items
-**Route:** `POST /api/orders`
+**Route:** `POST /api/v1/orders`
 **Controller:** `OrderController::store()`
 
 During checkout, `buildCartAndReserveStock()` separates cart items into **in-stock** and **backorder** buckets:
@@ -287,6 +306,18 @@ The customer accesses a public, token-based payment page (no login required):
 4. Payment is processed through the selected gateway (Stripe, PayPal, or Square)
 5. Payment metadata includes `backorder_id` for fulfillment routing
 
+#### 4b. Confirm Without Payment
+**Route:** `POST /api/v1/backorders/pay/{token}/confirm`
+**Controller:** `BackorderController::confirmWithoutPayment()`
+
+For backorders that don't require payment (e.g., `charged_now` items already paid at checkout), the customer confirms receipt via this token-based endpoint. The backorder status transitions to `confirmed`, and the admin can then mark it as `paid` to trigger stock deduction.
+
+#### 4c. Admin Mark as Paid
+**Route:** `POST /api/v1/backorders/{id}/mark-paid`
+**Controller:** `BackorderController::markAsPaid()`
+
+For `confirmed` backorders, the admin triggers stock deduction and transitions the backorder to `paid`. This deducts product stock and, if all backorders on the parent order are resolved, transitions the order to `processing`.
+
 #### 5. Fulfillment
 **Listener:** `FulfillBackorder`
 
@@ -302,6 +333,7 @@ On payment confirmation:
 | `awaiting_stock` | Backorder created, waiting for stock to arrive |
 | `notified` | Admin sent payment link, waiting for customer to pay |
 | `expired` | Payment link expired (customer didn't pay in time) |
+| `confirmed` | Customer confirmed (charged_now items) — awaiting admin to mark as paid |
 | `paid` | Customer paid, stock deducted |
 | `cancelled` | Admin cancelled the backorder |
 
@@ -310,6 +342,8 @@ On payment confirmation:
 awaiting_stock → notified → paid
                     ↓
                  expired → (resend) → notified
+
+notified → confirmed → paid (via admin mark-paid)
 
 Any non-paid status → cancelled
 ```
@@ -325,6 +359,7 @@ Any non-paid status → cancelled
 | `POST` | `/v1/backorders/{id}/notify` | Send payment link to customer |
 | `POST` | `/v1/backorders/{id}/resend` | Resend payment link |
 | `POST` | `/v1/backorders/{id}/cancel` | Cancel backorder and notify customer |
+| `POST` | `/v1/backorders/{id}/mark-paid` | Mark confirmed backorder as paid (triggers stock deduction) |
 | `GET` | `/v1/backorder-settings` | Get global backorder settings |
 | `PATCH` | `/v1/backorder-settings` | Update global backorder settings |
 
@@ -334,6 +369,7 @@ Any non-paid status → cancelled
 |--------|----------|---------|
 | `GET` | `/v1/backorders/pay/{token}` | Verify token and get backorder payment details |
 | `POST` | `/v1/backorders/pay/{token}` | Process backorder payment |
+| `POST` | `/v1/backorders/pay/{token}/confirm` | Confirm backorder without payment (charged_now items) |
 
 ### Email Notifications
 
@@ -343,6 +379,10 @@ Any non-paid status → cancelled
 | `OrderCancellationMail` | `emails/order-cancellation` | Admin cancels an order |
 | `BackorderPaymentLinkMail` | `emails/backorder-payment-link` | Admin sends/resends payment link (includes tax & shipping breakdown) |
 | `BackorderCancellationMail` | `emails/backorder-cancellation` | Admin cancels a backorder |
+| `BackorderConfirmationMail` | — | Backorder confirmed by customer |
+| `BackorderConfirmedAdminMail` | — | Admin notification when customer confirms backorder |
+| `TwoFactorCodeMail` | — | 2FA verification code during login |
+| `ContactFormMail` | — | Contact form submission forwarded to admin |
 
 ### Stock Protection
 
@@ -356,16 +396,133 @@ Any non-paid status → cancelled
 app/Models/Backorder.php                          # Backorder model with scopes and token validation
 app/Http/Controllers/Api/V1/BackorderController.php  # All backorder endpoints
 app/Listeners/FulfillBackorder.php                 # Handles stock deduction + status update on payment
-app/Mail/OrderConfirmationMail.php                    # Order confirmation email (sent on payment)
-app/Mail/OrderCancellationMail.php                    # Order cancellation email (sent on cancel)
+app/Mail/OrderConfirmationMail.php                 # Order confirmation email (sent on payment)
+app/Mail/OrderCancellationMail.php                 # Order cancellation email (sent on cancel)
 app/Mail/BackorderPaymentLinkMail.php              # Payment link email (with tax & shipping)
 app/Mail/BackorderCancellationMail.php             # Cancellation email
+app/Mail/BackorderConfirmationMail.php             # Customer confirmation email
+app/Mail/BackorderConfirmedAdminMail.php           # Admin notification on customer confirmation
+app/Mail/TwoFactorCodeMail.php                     # 2FA code email
+app/Mail/ContactFormMail.php                       # Contact form email
 app/Listeners/SendOrderConfirmation.php            # Listener that sends confirmation on PaymentConfirmed
 resources/views/emails/order-confirmation.blade.php
+resources/views/emails/order-cancellation.blade.php
 resources/views/emails/backorder-payment-link.blade.php
 resources/views/emails/backorder-cancellation.blade.php
 database/migrations/2026_03_17_010002_create_backorders_table.php
 ```
+
+## Site Configuration
+
+**Routes:** `GET /api/v1/site-config` (public), `PATCH /api/v1/site-config` (admin)
+**Controller:** `SiteConfigController`
+**Model:** `SiteConfig` (single-row table)
+
+Manages storefront appearance, content, and feature toggles.
+
+### Feature Toggles
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `favorites_enabled` | `false` | Allow customers to favorite products with a heart icon |
+| `show_stock_quantity` | `false` | Display the exact number of remaining stocks to customers. When off, customers see "In Stock" / "Out of Stock" without a number. When on, they see "In Stock (23)" |
+| `backorder_enabled` | `false` | Global master switch for the backorder system |
+
+These toggles are managed from the admin Settings page under the **Features** section.
+
+### Media
+
+Site images (logo, favicon, cart icon, hero, about, contact) are stored via polymorphic `media` table relationships.
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/v1/site-config/media/{collection}` | Upload site image |
+| `DELETE` | `/v1/site-config/media/{collection}` | Delete site image |
+
+## Dashboard
+
+**Route:** `GET /api/v1/dashboard/stats` (authenticated)
+**Controller:** `DashboardController::stats()`
+
+Returns cached (60-second TTL) dashboard statistics:
+- `total_products` — product count
+- `total_orders` / `pending_orders` — order counts
+- `total_revenue` / `pending_revenue` — revenue from paid/pending payments
+- `recent_orders` — last 5 orders with payment data
+
+## Tax System
+
+### Global Settings
+**Routes:** `GET/PATCH /api/v1/tax-settings` (admin)
+**Controller:** `TaxSettingsController`
+
+Manages global tax configuration: `tax_enabled`, `tax_rate`, `tax_display_mode` (inclusive/exclusive), `tax_name`, and default display country/state.
+
+### Regional Tax Rules
+**Routes:** `GET/POST/PATCH/DELETE /api/v1/tax-rules`, `POST /api/v1/tax-rules/sync` (admin)
+**Controller:** `TaxRuleController`
+
+Regional overrides with priority-based resolution:
+- **Priority 2 (state):** Most specific — matches state + country
+- **Priority 1 (country):** Matches country only
+- **Priority 0 (all):** Fallback for all regions
+
+The `sync` endpoint enables bulk update/replace of all rules at once (used by the admin settings page).
+
+### Tax Calculation (Public)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/v1/tax/calculate` | Calculate tax for a single amount |
+| `POST` | `/v1/tax/calculate-cart` | Calculate tax for cart items (with regional resolution) |
+| `GET` | `/v1/tax/resolve` | Resolve tax rate/name for a given region |
+
+### Tax Reports
+**Routes:** `GET /api/v1/tax-report`, `GET /api/v1/tax-report/export` (admin)
+**Controller:** `TaxReportController`
+
+Generates tax reports grouped by region (country/state). Supports date range and status filters. Export endpoint returns a CSV file.
+
+## Shipment Tracking
+
+### Admin
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/v1/orders/{id}/ship` | Create shipment (auto-generates tracking number: `SSU-YYYYMMDD-XXXXXX`) |
+| `PATCH` | `/v1/shipments/{id}` | Update shipment status (`label_created` → `in_transit` → `delivered` → `returned`) |
+
+Marking a shipment as `delivered` automatically updates the order status to `delivered`.
+
+### Public
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/v1/tracking/{trackingNumber}` | Track shipment by tracking number (returns shipment + order info) |
+| `GET` | `/v1/tracking/{trackingNumber}/barcode` | Get Code 128 barcode as SVG |
+
+## Authentication
+
+### Login Flow (Two-Factor)
+
+1. `POST /v1/login` — Validates credentials, generates 6-digit 2FA code, emails it to the user. Returns `two_factor_required: true`.
+2. `POST /v1/two-factor/verify` — Verifies the code (hashed comparison). On success, fully authenticates the user with a 24-hour session.
+3. `POST /v1/two-factor/resend` — Resends a new 2FA code (rate-limited to 2/min).
+
+### Password Reset (Admin Only)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/forgot-password` | Sends reset link (admin/super_admin only, anti-enumeration) |
+| `POST` | `/reset-password` | Resets password with token |
+
+These routes are outside the `/v1` prefix. The reset link controller prevents email enumeration by returning the same response regardless of whether the email exists.
+
+### Session Management
+
+- **Session driver:** cookie
+- **Session lifetime:** 24 hours (1440 minutes)
+- **Inactivity timeout:** 60 minutes
+- `SessionLifetimeMiddleware` enforces absolute session expiry by tracking `session_created_at`
+- **Sanctum** stateful domains configured for `localhost:3000` and `127.0.0.1:3000`
 
 ## SMS (Pre-configured)
 
@@ -457,8 +614,6 @@ SMS_PROVIDER=log
 
 - **Payment audit trail** — Log every status transition (pending → paid, pending → expired, paid → refunded) with timestamps in a `payment_events` table. Critical for handling customer disputes and chargebacks.
 
-- **Webhook event storage** — Store raw webhook payloads in a `webhook_events` table. This lets you replay failed webhooks, debug provider issues, and provides an audit trail independent of your payment records.
-
 - **Admin refund notification** — Add an admin email notification on `OrderRequiresRefund` so admins are alerted when a payment succeeds but stock deduction fails.
 
 ### Low Priority
@@ -471,59 +626,105 @@ SMS_PROVIDER=log
 
 ## API Routes Overview
 
-All routes are prefixed with `/api`. See `routes/api.php` for the full definition.
+All routes are prefixed with `/api`. Versioned routes use `/api/v1`. See `routes/api.php` for the full definition.
 
 ### Public (no auth)
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `POST` | `/login` | Admin login |
-| `POST` | `/two-factor/verify` | 2FA verification |
-| `POST` | `/two-factor/resend` | Resend 2FA code |
-| `GET` | `/products` | List products |
-| `GET` | `/products/{id}` | Product detail |
-| `GET` | `/categories` | List categories |
-| `GET` | `/site-config` | Storefront configuration |
-| `POST` | `/contact` | Contact form |
-| `POST` | `/discounts/validate` | Validate a discount code |
-| `GET/POST` | `/shipping/*` | Shipping options, zones, calculate |
-| `POST` | `/tax/calculate`, `/tax/calculate-cart` | Tax calculation |
+| `POST` | `/forgot-password` | Admin password reset link |
+| `POST` | `/reset-password` | Reset password with token |
+| `POST` | `/v1/login` | Admin login (triggers 2FA) |
+| `POST` | `/v1/two-factor/verify` | 2FA verification |
+| `POST` | `/v1/two-factor/resend` | Resend 2FA code |
+| `GET` | `/v1/user` | Get current authenticated user |
+| `GET` | `/v1/products` | List products |
+| `GET` | `/v1/products/{slug}` | Product detail (by slug) |
+| `GET` | `/v1/categories` | List categories |
+| `GET` | `/v1/site-config` | Storefront configuration |
+| `POST` | `/v1/contact` | Contact form |
+| `GET` | `/v1/tracking/{trackingNumber}` | Track shipment |
+| `GET` | `/v1/tracking/{trackingNumber}/barcode` | Tracking barcode (SVG) |
+| `POST` | `/v1/discounts/validate` | Validate a discount code |
+| `GET` | `/v1/shipping/options` | Shipping methods |
+| `GET` | `/v1/shipping/zones` | Shipping zones |
+| `POST` | `/v1/shipping/calculate` | Calculate shipping cost |
+| `POST` | `/v1/tax/calculate` | Tax calculation |
+| `POST` | `/v1/tax/calculate-cart` | Cart tax calculation |
+| `GET` | `/v1/tax/resolve` | Resolve tax for region |
 
 ### Checkout & Payment (no auth)
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `POST` | `/orders` | Create an order |
-| `POST` | `/orders/{order}/pay` | Initiate PayPal/Square payment |
-| `POST` | `/orders/{order}/stripe/intent` | Create Stripe PaymentIntent |
-| `GET` | `/payments/{payment}` | Check payment status (polls provider) |
-| `GET` | `/paypal/return` | PayPal redirect return |
-| `POST` | `/paypal/capture` | Capture PayPal payment |
-| `POST` | `/webhooks/{provider}` | Incoming webhooks (stripe/paypal/square) |
+| `POST` | `/v1/orders` | Create an order |
+| `POST` | `/v1/orders/{order}/pay` | Initiate PayPal/Square payment |
+| `POST` | `/v1/orders/{order}/stripe/intent` | Create Stripe PaymentIntent |
+| `GET` | `/v1/payments/{payment}` | Check payment status (polls provider) |
+| `GET` | `/v1/payment-settings/methods` | Get enabled payment methods |
+| `GET` | `/v1/paypal/return` | PayPal redirect return |
+| `GET` | `/v1/paypal/cancel` | PayPal cancellation return |
+| `POST` | `/v1/paypal/capture` | Capture PayPal payment |
+| `POST` | `/v1/webhooks/{provider}` | Incoming webhooks (stripe/paypal/square) |
+| `GET` | `/v1/backorders/pay/{token}` | Verify backorder payment token |
+| `POST` | `/v1/backorders/pay/{token}` | Process backorder payment |
+| `POST` | `/v1/backorders/pay/{token}/confirm` | Confirm backorder without payment |
 
 ### Authenticated (Sanctum)
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/orders` | List all orders |
-| `GET` | `/orders/{id}` | Order detail |
-| `PATCH` | `/orders/{id}` | Update order status (state machine enforced) |
-| `POST` | `/orders/{id}/confirm-payment` | Admin confirms cash payment |
-| `POST` | `/orders/{id}/undo-payment` | Admin reverses a payment |
-| `POST` | `/orders/{id}/cancel-refund` | Cancel paid order, restore stock, mark for refund |
-| `DELETE` | `/orders/{id}` | Delete order (pending/cancelled only) |
-| `POST` | `/orders/{id}/ship` | Create shipment |
-| `PATCH` | `/shipments/{id}` | Update shipment |
+| `POST` | `/v1/logout` | Logout |
+| `GET` | `/v1/dashboard/stats` | Dashboard statistics |
+| `GET` | `/v1/orders` | List all orders |
+| `GET` | `/v1/orders/{id}` | Order detail |
+| `PATCH` | `/v1/orders/{id}` | Update order status (state machine enforced) |
+| `POST` | `/v1/orders/{id}/confirm-payment` | Admin confirms cash payment |
+| `POST` | `/v1/orders/{id}/undo-payment` | Admin reverses a payment |
+| `POST` | `/v1/orders/{id}/cancel-refund` | Cancel paid order, restore stock, mark for refund |
+| `DELETE` | `/v1/orders/{id}` | Delete order (pending/cancelled only) |
+| `POST` | `/v1/orders/{id}/ship` | Create shipment |
+| `PATCH` | `/v1/shipments/{id}` | Update shipment |
+| `GET` | `/v1/backorders` | List backorders (filter by status, product_id, search) |
+| `GET` | `/v1/backorders/{id}` | Backorder detail |
+| `POST` | `/v1/backorders/{id}/notify` | Send payment link |
+| `POST` | `/v1/backorders/{id}/resend` | Resend payment link |
+| `POST` | `/v1/backorders/{id}/cancel` | Cancel backorder |
+| `POST` | `/v1/backorders/{id}/mark-paid` | Mark confirmed backorder as paid |
+| `GET` | `/v1/backorder-settings` | Get backorder settings |
+| `PATCH` | `/v1/backorder-settings` | Update backorder settings |
 
 ### Admin Only (Sanctum + admin middleware)
 
-CRUD for products, categories, site config, and settings (shipping, tax, payment).
-
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/discounts` | List all discount codes |
-| `GET` | `/discounts/{id}` | Discount detail |
-| `POST/PATCH/DELETE` | `/discounts/*` | Discount CRUD |
+| `POST` | `/v1/products` | Create product |
+| `PUT/PATCH` | `/v1/products/{id}` | Update product |
+| `DELETE` | `/v1/products/{id}` | Delete product |
+| `POST` | `/v1/products/{id}/images` | Upload product images |
+| `DELETE` | `/v1/products/{id}/images/{mediaId}` | Delete product image |
+| `POST` | `/v1/categories` | Create category |
+| `PATCH` | `/v1/categories/{id}` | Update category |
+| `DELETE` | `/v1/categories/{id}` | Delete category |
+| `PATCH` | `/v1/site-config` | Update site config |
+| `POST` | `/v1/site-config/media/{collection}` | Upload site media |
+| `DELETE` | `/v1/site-config/media/{collection}` | Delete site media |
+| `GET` | `/v1/discounts` | List all discount codes |
+| `GET` | `/v1/discounts/{id}` | Discount detail |
+| `POST/PATCH/DELETE` | `/v1/discounts/*` | Discount CRUD |
+| `GET` | `/v1/shipping-settings` | Get shipping settings |
+| `PATCH` | `/v1/shipping-settings` | Update shipping settings |
+| `GET` | `/v1/tax-settings` | Get tax settings |
+| `PATCH` | `/v1/tax-settings` | Update tax settings |
+| `GET` | `/v1/tax-rules` | List regional tax rules |
+| `POST` | `/v1/tax-rules` | Create tax rule |
+| `PATCH` | `/v1/tax-rules/{id}` | Update tax rule |
+| `DELETE` | `/v1/tax-rules/{id}` | Delete tax rule |
+| `POST` | `/v1/tax-rules/sync` | Bulk sync tax rules |
+| `GET` | `/v1/tax-report` | Tax report (filterable by date/status) |
+| `GET` | `/v1/tax-report/export` | Export tax report as CSV |
+| `GET` | `/v1/payment-settings` | Get payment settings |
+| `PATCH` | `/v1/payment-settings` | Update payment settings |
 
 ## Input Sanitization
 
@@ -557,25 +758,26 @@ All rate limiters are defined in `AppServiceProvider` and keyed by IP.
 | Limiter | Rate | Applied To |
 |---------|------|-----------|
 | `api` (global) | 120/min | All API requests |
-| `login` | 5/min + 20/hour | `POST /login` (keyed by email+IP) |
-| `two-factor` | 5/min | `POST /two-factor/verify` |
-| `two-factor-resend` | 2/min | `POST /two-factor/resend` |
-| `order-store` | 10/min | `POST /orders` |
-| `order-pay` | 5/min | `POST /orders/{order}/pay`, `POST /backorders/pay/{token}` |
-| `stripe-intent` | 10/min | `POST /orders/{order}/stripe/intent` |
-| `discount-validate` | 15/min | `POST /discounts/validate` |
-| `paypal-capture` | 10/min | `POST /paypal/capture` |
-| `contact` | 3/min | `POST /contact` |
+| `login` | 5/min + 20/hour | `POST /v1/login` (keyed by email+IP) |
+| `two-factor` | 5/min | `POST /v1/two-factor/verify` |
+| `two-factor-resend` | 2/min | `POST /v1/two-factor/resend` |
+| `order-store` | 10/min | `POST /v1/orders` |
+| `order-pay` | 5/min | `POST /v1/orders/{order}/pay`, `POST /v1/backorders/pay/{token}` |
+| `stripe-intent` | 10/min | `POST /v1/orders/{order}/stripe/intent` |
+| `discount-validate` | 15/min | `POST /v1/discounts/validate` |
+| `paypal-capture` | 10/min | `POST /v1/paypal/capture` |
+| `contact` | 3/min | `POST /v1/contact` |
 | `password-reset` | 5/min | `POST /forgot-password` (keyed by email+IP) |
-| `payment-show` | 15/min | `GET /payments/{payment}` |
-| `backorder-token` | 10/min | `GET /backorders/pay/{token}` |
-| `tracking` | 15/min | `GET /tracking/{trackingNumber}` |
+| `payment-show` | 15/min | `GET /v1/payments/{payment}` |
+| `backorder-token` | 10/min | `GET /v1/backorders/pay/{token}` |
+| `tracking` | 15/min | `GET /v1/tracking/{trackingNumber}` |
 
 ### Access Control
 
-- **Discount listing** (`GET /discounts`, `GET /discounts/{id}`) is behind admin auth — prevents public code enumeration
+- **Discount listing** (`GET /v1/discounts`, `GET /v1/discounts/{id}`) is behind admin auth — prevents public code enumeration
 - **Order/backorder management** requires `auth:sanctum` + session middleware
 - **Product/category/settings CRUD** requires admin role
+- **Password reset** is restricted to admin/super_admin users with anti-enumeration response
 
 ## Repository Pattern
 
@@ -595,7 +797,7 @@ Other controllers use Eloquent directly — they don't have enough duplication t
 
 ### Unit/Feature Tests
 
-102 tests covering all API endpoints, auth, sanitization, and model mutators.
+104 tests covering all API endpoints, auth, sanitization, and model mutators.
 
 ```bash
 php artisan test

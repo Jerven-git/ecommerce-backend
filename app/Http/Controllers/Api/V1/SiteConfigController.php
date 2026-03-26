@@ -34,6 +34,7 @@ class SiteConfigController extends Controller
                 'contact_phone' => $config->contact_phone,
                 'contact_entries' => $config->contact_entries ?? [],
                 'favorites_enabled' => (bool) $config->favorites_enabled,
+                'show_stock_quantity' => (bool) $config->show_stock_quantity,
                 'backorder_enabled' => (bool) $config->backorder_enabled,
                 'updated_at' => $config->updated_at,
 
@@ -69,6 +70,7 @@ class SiteConfigController extends Controller
             'contact_entries.*.email' => 'nullable|email|max:255',
             'contact_entries.*.phone' => 'nullable|string|max:30',
             'favorites_enabled' => 'nullable|boolean',
+            'show_stock_quantity' => 'nullable|boolean',
         ]);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);

@@ -29,6 +29,8 @@ class Order extends Model
         'shipping_amount',
         'discount_code',
         'discount_amount',
+        'tax_rule_id',
+        'tax_region',
         'status',
         'has_backorder_items',
     ];

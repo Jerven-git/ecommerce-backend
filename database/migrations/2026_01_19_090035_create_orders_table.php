@@ -20,6 +20,8 @@ return new class extends Migration
             $table->decimal('total_amount', 10, 2)->default(0);
             $table->decimal('subtotal', 10, 2)->default(0);
             $table->decimal('tax_amount', 10, 2)->default(0);
+            $table->foreignId('tax_rule_id')->nullable()->constrained('tax_rules')->nullOnDelete();
+            $table->string('tax_region')->nullable();
             $table->decimal('shipping_amount', 10, 2)->default(0);
             $table->string('discount_code')->nullable();
             $table->decimal('discount_amount', 10, 2)->default(0);
