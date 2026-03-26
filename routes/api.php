@@ -17,6 +17,8 @@ use App\Http\Controllers\Api\V1\CategoryController;
 use App\Http\Controllers\Api\V1\ShipmentController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\BackorderController;
+use App\Http\Controllers\Api\V1\TaxRuleController;
+use App\Http\Controllers\Api\V1\TaxReportController;
 use App\Http\Controllers\Auth\AdminPasswordResetLinkController;
 use App\Http\Controllers\Auth\AdminNewPasswordController;
 
@@ -70,6 +72,7 @@ Route::prefix('v1')->group(function () {
     // Tax
     Route::post('/tax/calculate', [TaxSettingsController::class, 'calculate']);
     Route::post('/tax/calculate-cart', [TaxSettingsController::class, 'calculateCart']);
+    Route::get('/tax/resolve', [TaxSettingsController::class, 'resolve']);
 
     /*
     |--------------------------------------------------------------------------
@@ -174,6 +177,17 @@ Route::prefix('v1')->group(function () {
             // Tax settings
             Route::get('/tax-settings', [TaxSettingsController::class, 'show']);
             Route::patch('/tax-settings', [TaxSettingsController::class, 'update']);
+
+            // Tax rules (regional)
+            Route::get('/tax-rules', [TaxRuleController::class, 'index']);
+            Route::post('/tax-rules', [TaxRuleController::class, 'store']);
+            Route::patch('/tax-rules/{id}', [TaxRuleController::class, 'update']);
+            Route::delete('/tax-rules/{id}', [TaxRuleController::class, 'destroy']);
+            Route::post('/tax-rules/sync', [TaxRuleController::class, 'sync']);
+
+            // Tax report
+            Route::get('/tax-report', [TaxReportController::class, 'index']);
+            Route::get('/tax-report/export', [TaxReportController::class, 'export']);
 
             // Payment settings
             Route::get('/payment-settings', [PaymentSettingsController::class, 'show']);

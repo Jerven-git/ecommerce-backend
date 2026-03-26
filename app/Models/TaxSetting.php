@@ -12,6 +12,8 @@ class TaxSetting extends Model
         'tax_rate',
         'tax_display_mode',
         'tax_name',
+        'default_display_country',
+        'default_display_state',
     ];
 
     protected function taxName(): Attribute
@@ -25,6 +27,50 @@ class TaxSetting extends Model
         'tax_enabled' => 'boolean',
         'tax_rate' => 'decimal:2',
     ];
+
+    /**
+     * Resolve the applicable tax rate, name, and mode for a given buyer region.
+     * Checks regional tax rules first, falls back to global defaults.
+     */
+    public function resolveForRegion(?string $country, ?string $state): array
+    {
+        if (!$this->tax_enabled) {
+            return [
+                'rate' => 0,
+                'name' => $this->tax_name ?? 'Tax',
+                'mode' => $this->tax_display_mode ?? 'exclusive',
+                'rule_id' => null,
+                'region_label' => null,
+            ];
+        }
+
+        $rule = TaxRule::forRegion($country, $state);
+
+        if ($rule) {
+            $regionLabel = match ($rule->region_type) {
+                'state' => ($rule->state ? $rule->state . ', ' : '') . ($rule->country ?? ''),
+                'country' => $rule->country ?? 'All regions',
+                default => 'All regions',
+            };
+
+            return [
+                'rate' => (float) $rule->tax_rate,
+                'name' => $rule->tax_name,
+                'mode' => $rule->tax_display_mode,
+                'rule_id' => $rule->id,
+                'region_label' => $regionLabel,
+            ];
+        }
+
+        // Fall back to global defaults
+        return [
+            'rate' => (float) $this->tax_rate,
+            'name' => $this->tax_name,
+            'mode' => $this->tax_display_mode,
+            'rule_id' => null,
+            'region_label' => null,
+        ];
+    }
 
     public function calculateTax($basePrice)
     {
@@ -69,15 +115,26 @@ class TaxSetting extends Model
     /**
      * Calculate full order totals with discount and shipping in the tax base.
      * Both inclusive and exclusive modes produce the same final total.
+     * Accepts optional regional overrides for rate/name/mode.
      */
-    public function calculateOrderTotals(array $items, float $discountAmount = 0, float $shippingAmount = 0): array
-    {
+    public function calculateOrderTotals(
+        array $items,
+        float $discountAmount = 0,
+        float $shippingAmount = 0,
+        ?float $overrideRate = null,
+        ?string $overrideName = null,
+        ?string $overrideMode = null
+    ): array {
+        $rate = $overrideRate ?? (float) $this->tax_rate;
+        $name = $overrideName ?? $this->tax_name;
+        $mode = $overrideMode ?? $this->tax_display_mode;
+
         $rawSubtotal = 0;
         foreach ($items as $item) {
             $rawSubtotal += $item['price'] * $item['quantity'];
         }
 
-        if (!$this->tax_enabled || $this->tax_rate == 0) {
+        if (!$this->tax_enabled || $rate == 0) {
             $exTaxSubtotal = $rawSubtotal;
             $discountedSubtotal = max(0, $exTaxSubtotal - $discountAmount);
             $taxableAmount = $discountedSubtotal + $shippingAmount;
@@ -92,21 +149,21 @@ class TaxSetting extends Model
                 'tax_amount' => 0,
                 'total' => round($taxableAmount, 2),
                 'tax_rate' => 0,
-                'tax_name' => $this->tax_name ?? 'Tax',
-                'tax_display_mode' => $this->tax_display_mode ?? 'exclusive',
+                'tax_name' => $name ?? 'Tax',
+                'tax_display_mode' => $mode ?? 'exclusive',
             ];
         }
 
         // Convert to ex-tax if prices are tax-inclusive
-        if ($this->tax_display_mode === 'inclusive') {
-            $exTaxSubtotal = $rawSubtotal / (1 + $this->tax_rate / 100);
+        if ($mode === 'inclusive') {
+            $exTaxSubtotal = $rawSubtotal / (1 + $rate / 100);
         } else {
             $exTaxSubtotal = $rawSubtotal;
         }
 
         $discountedSubtotal = max(0, $exTaxSubtotal - $discountAmount);
         $taxableAmount = $discountedSubtotal + $shippingAmount;
-        $taxAmount = $taxableAmount * ($this->tax_rate / 100);
+        $taxAmount = $taxableAmount * ($rate / 100);
         $total = $taxableAmount + $taxAmount;
 
         return [
@@ -118,9 +175,9 @@ class TaxSetting extends Model
             'taxable_amount' => round($taxableAmount, 2),
             'tax_amount' => round($taxAmount, 2),
             'total' => round($total, 2),
-            'tax_rate' => $this->tax_rate,
-            'tax_name' => $this->tax_name,
-            'tax_display_mode' => $this->tax_display_mode,
+            'tax_rate' => $rate,
+            'tax_name' => $name,
+            'tax_display_mode' => $mode,
         ];
     }
 

@@ -29,6 +29,7 @@ class SiteConfig extends Model
         'contact_phone',
         'contact_entries',
         'favorites_enabled',
+        'show_stock_quantity',
         'backorder_enabled',
         'backorder_payment_link_expiry_hours',
     ];
@@ -88,6 +89,7 @@ class SiteConfig extends Model
         'theme' => 'array',
         'contact_entries' => 'array',
         'favorites_enabled' => 'boolean',
+        'show_stock_quantity' => 'boolean',
         'backorder_enabled' => 'boolean',
         'backorder_payment_link_expiry_hours' => 'integer',
     ];

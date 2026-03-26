@@ -24,6 +24,15 @@ class ShippingCalculator
         $orderAmount = $params['order_amount'] ?? 0;
         $options = $params['options'] ?? [];
 
+        $zoneType = $this->determineZone($country, $state, $city);
+        $zone = ShippingZone::where('zone_type', $zoneType)->where('enabled', true)->first();
+
+        if (!$zone) {
+            return [
+                'error' => 'Shipping not available for this location'
+            ];
+        }
+
         if ($this->settings && $this->settings->free_shipping_threshold > 0 && $orderAmount >= $this->settings->free_shipping_threshold) {
             return [
                 'base_shipping' => 0,
@@ -32,16 +41,7 @@ class ShippingCalculator
                 'options_fee' => $this->calculateOptionsFee($options),
                 'total' => $this->calculateOptionsFee($options),
                 'free_shipping' => true,
-                'zone' => 'free_shipping'
-            ];
-        }
-
-        $zoneType = $this->determineZone($country, $state, $city);
-        $zone = ShippingZone::where('zone_type', $zoneType)->where('enabled', true)->first();
-
-        if (!$zone) {
-            return [
-                'error' => 'Shipping not available for this location'
+                'zone' => $zoneType
             ];
         }
 
