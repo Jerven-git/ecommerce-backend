@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Modules\Realtime\Traits\BroadcastsChanges;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class SiteConfig extends Model
 {
+    use BroadcastsChanges;
     const CREATED_AT = null;
     protected $table = 'site_config';
 

@@ -602,6 +602,175 @@ SMS_PROVIDER=log
 
 **Vonage** is a solid alternative if you need competitive international rates or already use their voice/video APIs.
 
+## Realtime Module
+
+The Realtime Module provides live updates to connected clients using WebSocket via **Laravel Reverb**. It broadcasts model changes and deployment notifications to the frontend, with automatic fallback to HTTP polling when WebSocket is unavailable.
+
+### How It Works
+
+```
+Backend (Laravel)
+  ├─ Model created/updated/deleted
+  │   └─ BroadcastsChanges trait fires ModelChanged event
+  ├─ Deployment triggered
+  │   └─ artisan realtime:notify-deployment fires DeploymentNotification event
+  │
+  └─> Laravel Reverb (WebSocket server)
+       │
+       └─> Frontend (Nuxt/Vue)
+            ├─ Echo receives event on "ssu.updates" channel
+            ├─ useRealtime() composable invokes callbacks
+            ├─ RealtimeStore updates state
+            └─ Components react (e.g., refetch data, show update banner)
+```
+
+### Configuration
+
+**Config file:** `app/Modules/Realtime/Config/realtime.php`
+
+```php
+'enabled' => env('REALTIME_ENABLED', true),
+'version_file' => storage_path('app/version.txt'),
+'channels' => [
+    'updates' => 'ssu.updates',        // Public channel
+    'admin' => 'private-ssu.admin',    // Private admin channel
+],
+'broadcast_models' => [
+    Product::class,
+    SiteConfig::class,
+    Category::class,
+    Discount::class,
+],
+```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `REALTIME_ENABLED` | Enable/disable broadcasting (default: `true`) |
+| `REVERB_APP_ID` | Reverb application ID |
+| `REVERB_APP_KEY` | Reverb application key |
+| `REVERB_APP_SECRET` | Reverb application secret |
+| `REVERB_HOST` | Reverb WebSocket host |
+| `REVERB_PORT` | Reverb WebSocket port |
+| `REVERB_SCHEME` | `http` or `https` |
+
+### Channels
+
+| Channel | Type | Authorization |
+|---------|------|---------------|
+| `ssu.updates` | Public | Always returns `true` |
+| `ssu.admin` | Private | Requires `$user->is_admin === true` |
+
+Channel authorization is defined in `Modules/Realtime/Routes/channels.php`.
+
+### Events
+
+#### `.model.changed`
+
+Broadcast automatically when a model using the `BroadcastsChanges` trait is created, updated, or deleted. Queued via `ShouldBroadcast`.
+
+**Payload:**
+```json
+{
+  "model": "Product",
+  "id": 42,
+  "action": "updated",
+  "data": { "price": 29.99 },
+  "timestamp": "2026-03-27T12:00:00.000Z"
+}
+```
+
+- On `created`: `data` contains the full model attributes
+- On `updated`: `data` contains only the changed (dirty) attributes
+- On `deleted`: `data` is empty
+
+#### `.deployment.new`
+
+Broadcast immediately (bypasses queue via `ShouldBroadcastNow`) when a deployment is notified.
+
+**Payload:**
+```json
+{
+  "version": "20260327120000",
+  "timestamp": "2026-03-27T12:00:00.000Z"
+}
+```
+
+### Adding Broadcasting to a Model
+
+1. Add the trait to your Eloquent model:
+
+```php
+use App\Modules\Realtime\Traits\BroadcastsChanges;
+
+class MyModel extends Model
+{
+    use BroadcastsChanges;
+}
+```
+
+2. Register it in `Modules/Realtime/Config/realtime.php`:
+
+```php
+'broadcast_models' => [
+    // ...existing models
+    \App\Models\MyModel::class,
+],
+```
+
+The trait hooks into Eloquent's `created`, `updated`, and `deleted` events via `bootBroadcastsChanges()`. No explicit broadcast calls are needed.
+
+### Deployment Notifications
+
+```bash
+# Auto-generates a timestamp-based version
+php artisan realtime:notify-deployment
+
+# Or specify a version
+php artisan realtime:notify-deployment 2.1.0
+```
+
+This writes the version to `storage/app/version.txt` and broadcasts the event to all connected clients. The frontend shows an update banner prompting users to refresh.
+
+### Version Polling Endpoint
+
+**Route:** `GET /api/version` (public, no auth)
+
+Returns the current application version from `storage/app/version.txt`. The frontend polls this every 60 seconds as a fallback when WebSocket is unavailable.
+
+### File Reference
+
+```
+app/Modules/Realtime/
+├── Config/realtime.php                        # Channel names, broadcast models, version file path
+├── Events/
+│   ├── BaseRealtimeEvent.php                  # Abstract base implementing ShouldBroadcast
+│   ├── ModelChanged.php                       # Broadcasts model create/update/delete
+│   └── DeploymentNotification.php             # Broadcasts deployment (ShouldBroadcastNow)
+├── Traits/
+│   └── BroadcastsChanges.php                  # Eloquent trait — auto-broadcasts on model events
+├── Services/
+│   └── RealtimeService.php                    # Version file management and event dispatching
+├── Http/Controllers/
+│   └── VersionController.php                  # GET /api/version endpoint
+├── Console/
+│   └── NotifyDeploymentCommand.php            # php artisan realtime:notify-deployment
+├── Routes/
+│   ├── api.php                                # Registers /version route
+│   └── channels.php                           # Channel authorization rules
+└── Providers/
+    └── RealtimeServiceProvider.php            # Module service provider
+```
+
+### Graceful Degradation
+
+| Scenario | Behavior |
+|----------|----------|
+| `REALTIME_ENABLED=false` | `BroadcastsChanges` trait skips all event dispatching |
+| Reverb server down | Events are queued but not delivered; frontend falls back to polling `/api/version` |
+| No Reverb app key on frontend | Echo skipped; polling-only mode |
+
 ## Future Improvements
 
 ### High Priority
