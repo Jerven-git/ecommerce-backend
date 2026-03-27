@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Modules\Realtime\Traits\BroadcastsChanges;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -9,7 +10,7 @@ use Illuminate\Support\Str;
 
 class Product extends Model
 {
-    use HasFactory;
+    use HasFactory, BroadcastsChanges;
 
     public static function generateUniqueSlug(string $name, ?int $excludeId = null): string
     {

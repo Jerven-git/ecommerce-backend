@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Modules\Realtime\Traits\BroadcastsChanges;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class Discount extends Model
 {
-    use HasFactory;
+    use HasFactory, BroadcastsChanges;
     protected $fillable = [
         'code',
         'description',
