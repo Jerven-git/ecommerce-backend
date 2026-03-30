@@ -4,6 +4,7 @@ namespace App\Modules\Realtime\Services;
 
 use App\Modules\Realtime\Events\DeploymentNotification;
 use App\Modules\Realtime\Events\ModelChanged;
+use Illuminate\Support\Facades\Log;
 
 class RealtimeService
 {
@@ -26,8 +27,19 @@ class RealtimeService
     {
         $file = config('realtime.version_file');
 
-        if (file_exists($file)) {
-            return trim(file_get_contents($file));
+        try {
+            if ($file && file_exists($file)) {
+                $content = file_get_contents($file);
+
+                if ($content !== false) {
+                    return trim($content);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Realtime: failed to read version file', [
+                'file' => $file,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return config('app.version', '0.0.0');
@@ -35,12 +47,24 @@ class RealtimeService
 
     public function setVersion(string $version): void
     {
-        $dir = dirname(config('realtime.version_file'));
+        $file = config('realtime.version_file');
 
-        if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
+        try {
+            $dir = dirname($file);
+
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
+
+            file_put_contents($file, $version);
+        } catch (\Throwable $e) {
+            Log::error('Realtime: failed to write version file', [
+                'file' => $file,
+                'version' => $version,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
         }
-
-        file_put_contents(config('realtime.version_file'), $version);
     }
 }
