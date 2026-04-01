@@ -44,6 +44,8 @@ class SiteConfigController extends Controller
                 'homepage_features' => $config->homepage_features,
                 'homepage_stats' => $config->homepage_stats,
                 'homepage_newsletter' => $config->homepage_newsletter,
+                'shop_header' => $config->shop_header,
+                'shop_promo' => $config->shop_promo,
                 'updated_at' => $config->updated_at,
 
                 // urls come from media
@@ -104,6 +106,17 @@ class SiteConfigController extends Controller
             'homepage_newsletter.heading' => 'nullable|string|max:100',
             'homepage_newsletter.subtitle' => 'nullable|string|max:255',
             'homepage_newsletter.disclaimer' => 'nullable|string|max:255',
+            'shop_header' => 'nullable|array',
+            'shop_header.label' => 'nullable|string|max:100',
+            'shop_header.heading' => 'nullable|string|max:255',
+            'shop_header.subtitle' => 'nullable|string|max:255',
+            'shop_promo' => 'nullable|array',
+            'shop_promo.badge' => 'nullable|string|max:100',
+            'shop_promo.heading' => 'nullable|string|max:255',
+            'shop_promo.subtitle' => 'nullable|string|max:500',
+            'shop_promo.button_text' => 'nullable|string|max:100',
+            'shop_promo.perks' => 'nullable|array|max:6',
+            'shop_promo.perks.*' => 'required|string|max:100',
         ]);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
