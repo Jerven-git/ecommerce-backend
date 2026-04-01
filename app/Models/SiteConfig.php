@@ -42,6 +42,8 @@ class SiteConfig extends Model
         'homepage_features',
         'homepage_stats',
         'homepage_newsletter',
+        'shop_header',
+        'shop_promo',
     ];
 
     /**
@@ -127,6 +129,8 @@ class SiteConfig extends Model
         'homepage_features' => 'array',
         'homepage_stats' => 'array',
         'homepage_newsletter' => 'array',
+        'shop_header' => 'array',
+        'shop_promo' => 'array',
     ];
 
     public function media()
