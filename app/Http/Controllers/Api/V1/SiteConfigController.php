@@ -40,6 +40,10 @@ class SiteConfigController extends Controller
                 'welcome_popup_heading' => $config->welcome_popup_heading,
                 'welcome_popup_body' => $config->welcome_popup_body,
                 'welcome_popup_discount_id' => $config->welcome_popup_discount_id,
+                'homepage_steps' => $config->homepage_steps,
+                'homepage_features' => $config->homepage_features,
+                'homepage_stats' => $config->homepage_stats,
+                'homepage_newsletter' => $config->homepage_newsletter,
                 'updated_at' => $config->updated_at,
 
                 // urls come from media
@@ -80,6 +84,26 @@ class SiteConfigController extends Controller
             'welcome_popup_heading' => 'nullable|string|max:255',
             'welcome_popup_body' => 'nullable|string|max:1000',
             'welcome_popup_discount_id' => 'nullable|integer|exists:discounts,id',
+            'homepage_steps' => 'nullable|array',
+            'homepage_steps.label' => 'nullable|string|max:100',
+            'homepage_steps.heading' => 'nullable|string|max:100',
+            'homepage_steps.subtitle' => 'nullable|string|max:255',
+            'homepage_steps.items' => 'nullable|array|max:6',
+            'homepage_steps.items.*.title' => 'required|string|max:100',
+            'homepage_steps.items.*.description' => 'required|string|max:255',
+            'homepage_features' => 'nullable|array',
+            'homepage_features.items' => 'nullable|array|max:6',
+            'homepage_features.items.*.title' => 'required|string|max:100',
+            'homepage_features.items.*.description' => 'required|string|max:255',
+            'homepage_stats' => 'nullable|array',
+            'homepage_stats.items' => 'nullable|array|max:8',
+            'homepage_stats.items.*.value' => 'required|string|max:50',
+            'homepage_stats.items.*.label' => 'required|string|max:100',
+            'homepage_newsletter' => 'nullable|array',
+            'homepage_newsletter.label' => 'nullable|string|max:100',
+            'homepage_newsletter.heading' => 'nullable|string|max:100',
+            'homepage_newsletter.subtitle' => 'nullable|string|max:255',
+            'homepage_newsletter.disclaimer' => 'nullable|string|max:255',
         ]);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
