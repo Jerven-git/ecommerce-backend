@@ -38,6 +38,10 @@ class SiteConfig extends Model
         'welcome_popup_heading',
         'welcome_popup_body',
         'welcome_popup_discount_id',
+        'homepage_steps',
+        'homepage_features',
+        'homepage_stats',
+        'homepage_newsletter',
     ];
 
     /**
@@ -119,6 +123,10 @@ class SiteConfig extends Model
         'backorder_payment_link_expiry_hours' => 'integer',
         'welcome_popup_enabled' => 'boolean',
         'welcome_popup_discount_id' => 'integer',
+        'homepage_steps' => 'array',
+        'homepage_features' => 'array',
+        'homepage_stats' => 'array',
+        'homepage_newsletter' => 'array',
     ];
 
     public function media()
