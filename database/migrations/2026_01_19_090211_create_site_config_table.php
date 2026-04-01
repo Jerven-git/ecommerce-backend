@@ -25,6 +25,9 @@ return new class extends Migration
             $table->boolean('show_stock_quantity')->default(false);
             $table->boolean('backorder_enabled')->default(false);
             $table->unsignedInteger('backorder_payment_link_expiry_hours')->default(24);
+            $table->boolean('welcome_popup_enabled')->default(false);
+            $table->string('welcome_popup_heading')->default('Get 10% Off');
+            $table->string('welcome_popup_body', 1000)->default('Sign up and get a discount code sent right to your inbox.');
             $table->timestamps();
         });
     }
