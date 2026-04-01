@@ -34,6 +34,10 @@ class SiteConfig extends Model
         'show_stock_quantity',
         'backorder_enabled',
         'backorder_payment_link_expiry_hours',
+        'welcome_popup_enabled',
+        'welcome_popup_heading',
+        'welcome_popup_body',
+        'welcome_popup_discount_id',
     ];
 
     /**
@@ -86,6 +90,25 @@ class SiteConfig extends Model
         );
     }
 
+    protected function welcomePopupHeading(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
+        );
+    }
+
+    protected function welcomePopupBody(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
+        );
+    }
+
+    public function welcomePopupDiscount()
+    {
+        return $this->belongsTo(Discount::class, 'welcome_popup_discount_id');
+    }
+
     protected $casts = [
         'updated_at' => 'datetime',
         'theme' => 'array',
@@ -94,6 +117,8 @@ class SiteConfig extends Model
         'show_stock_quantity' => 'boolean',
         'backorder_enabled' => 'boolean',
         'backorder_payment_link_expiry_hours' => 'integer',
+        'welcome_popup_enabled' => 'boolean',
+        'welcome_popup_discount_id' => 'integer',
     ];
 
     public function media()

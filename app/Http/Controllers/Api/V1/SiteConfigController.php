@@ -36,6 +36,10 @@ class SiteConfigController extends Controller
                 'favorites_enabled' => (bool) $config->favorites_enabled,
                 'show_stock_quantity' => (bool) $config->show_stock_quantity,
                 'backorder_enabled' => (bool) $config->backorder_enabled,
+                'welcome_popup_enabled' => (bool) $config->welcome_popup_enabled,
+                'welcome_popup_heading' => $config->welcome_popup_heading,
+                'welcome_popup_body' => $config->welcome_popup_body,
+                'welcome_popup_discount_id' => $config->welcome_popup_discount_id,
                 'updated_at' => $config->updated_at,
 
                 // urls come from media
@@ -43,6 +47,7 @@ class SiteConfigController extends Controller
                 'favicon_url' => optional($config->faviconMedia)->url,
                 'cart_icon_url' => optional($config->cartIconMedia)->url,
                 'hero_image_url' => optional($config->heroMedia)->url,
+                'hero_media_mime' => optional($config->heroMedia)->mime_type,
                 'about_image_url' => optional($config->aboutMedia)->url,
                 'contact_image_url' => optional($config->contactMedia)->url,
             ]
@@ -71,6 +76,10 @@ class SiteConfigController extends Controller
             'contact_entries.*.phone' => 'nullable|string|max:30',
             'favorites_enabled' => 'nullable|boolean',
             'show_stock_quantity' => 'nullable|boolean',
+            'welcome_popup_enabled' => 'nullable|boolean',
+            'welcome_popup_heading' => 'nullable|string|max:255',
+            'welcome_popup_body' => 'nullable|string|max:1000',
+            'welcome_popup_discount_id' => 'nullable|integer|exists:discounts,id',
         ]);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
@@ -95,8 +104,13 @@ class SiteConfigController extends Controller
 
         $max = in_array($collection, ['logo', 'favicon', 'cart_icon']) ? 2048 : 10120; // KB (2MB vs 10MB)
 
+        $mimes = 'jpeg,png,gif,webp,svg,svgz';
+        if ($collection === 'hero') {
+            $mimes .= ',mp4,webm';
+        }
+
         $validated = $request->validate([
-            'file' => ['required', 'file', 'mimes:jpeg,png,gif,webp,svg,svgz', "max:$max"],
+            'file' => ['required', 'file', "mimes:$mimes", "max:$max"],
         ]);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);

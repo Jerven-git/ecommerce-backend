@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\PaymentController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use App\Http\Controllers\Api\V1\PayPalReturnController;
 use App\Http\Controllers\Api\V1\ContactController;
+use App\Http\Controllers\Api\V1\SubscribeController;
 use App\Http\Controllers\Api\V1\CategoryController;
 use App\Http\Controllers\Api\V1\ShipmentController;
 use App\Http\Controllers\Api\V1\DashboardController;
@@ -56,6 +57,9 @@ Route::prefix('v1')->group(function () {
 
     // Contact form
     Route::post('/contact', [ContactController::class, 'store'])->middleware('throttle:contact');
+
+    // Subscribe (welcome popup)
+    Route::post('/subscribe', [SubscribeController::class, 'store'])->middleware('throttle:contact');
 
     // Shipment tracking (public, rate-limited)
     Route::get('/tracking/{trackingNumber}', [ShipmentController::class, 'track'])->middleware('throttle:tracking');
