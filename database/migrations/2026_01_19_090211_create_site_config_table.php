@@ -32,8 +32,10 @@ return new class extends Migration
             $table->json('homepage_features')->nullable();
             $table->json('homepage_stats')->nullable();
             $table->json('homepage_newsletter')->nullable();
+            $table->json('about_highlights')->nullable();
             $table->json('shop_header')->nullable();
             $table->json('shop_promo')->nullable();
+            $table->json('contact_page')->nullable();
             $table->timestamps();
         });
     }
