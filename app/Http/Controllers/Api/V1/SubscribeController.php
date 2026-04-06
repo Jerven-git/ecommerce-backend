@@ -15,47 +15,52 @@ class SubscribeController extends Controller
     {
         $request->validate([
             'email' => 'required|email|max:255',
+            'source' => 'nullable|string|in:welcome_popup,newsletter',
         ]);
 
         $email = strtolower(trim($request->email));
+        $source = $request->input('source', 'welcome_popup');
 
         // Check if already subscribed
         $existing = Subscriber::where('email', $email)->first();
         if ($existing) {
             return response()->json([
                 'message' => 'You\'re already subscribed!',
-                'discount_code' => $existing->discount_code_sent,
+                'discount_code' => $source === 'welcome_popup' ? $existing->discount_code_sent : null,
             ]);
         }
 
-        $config = SiteConfig::first();
         $discountCode = null;
 
-        // Generate a unique single-use discount code from the template
-        if ($config?->welcome_popup_discount_id) {
-            $template = Discount::find($config->welcome_popup_discount_id);
+        // Only generate discount codes for welcome popup subscribers
+        if ($source === 'welcome_popup') {
+            $config = SiteConfig::first();
 
-            if ($template && $template->is_active) {
-                $uniqueCode = $this->generateUniqueCode();
+            if ($config?->welcome_popup_discount_id) {
+                $template = Discount::find($config->welcome_popup_discount_id);
 
-                Discount::create([
-                    'code' => $uniqueCode,
-                    'description' => 'Welcome popup discount for ' . $email,
-                    'type' => $template->type,
-                    'value' => $template->value,
-                    'min_order_amount' => $template->min_order_amount,
-                    'max_uses' => 1,
-                    'is_active' => true,
-                    'valid_until' => $template->valid_until,
-                ]);
+                if ($template && $template->is_active) {
+                    $uniqueCode = $this->generateUniqueCode();
 
-                $discountCode = $uniqueCode;
+                    Discount::create([
+                        'code' => $uniqueCode,
+                        'description' => 'Welcome popup discount for ' . $email,
+                        'type' => $template->type,
+                        'value' => $template->value,
+                        'min_order_amount' => $template->min_order_amount,
+                        'max_uses' => 1,
+                        'is_active' => true,
+                        'valid_until' => $template->valid_until,
+                    ]);
+
+                    $discountCode = $uniqueCode;
+                }
             }
         }
 
         Subscriber::create([
             'email' => $email,
-            'source' => 'welcome_popup',
+            'source' => $source,
             'discount_code_sent' => $discountCode,
         ]);
 
