@@ -33,6 +33,15 @@ class ShippingSettingsController extends Controller
             'express_post_fee' => 'nullable|numeric|min:0',
             'registered_post_fee' => 'nullable|numeric|min:0',
             'insurance_fee' => 'nullable|numeric|min:0',
+            'insurance_rate_percent' => 'nullable|numeric|min:0|max:100',
+            'insurance_min_fee' => 'nullable|numeric|min:0',
+            'express_label' => 'nullable|string|max:100',
+            'express_pricing_mode' => 'nullable|string|in:flat,weight_tiered',
+            'express_weight_tiers' => 'nullable|array',
+            'express_weight_tiers.*.max_weight_g' => 'required|numeric|min:1',
+            'express_weight_tiers.*.rate' => 'required|numeric|min:0',
+            'registered_label' => 'nullable|string|max:100',
+            'insurance_label' => 'nullable|string|max:100',
             'free_shipping_threshold' => 'nullable|numeric|min:0',
             'store_country' => 'nullable|string|max:255',
             'store_state' => 'nullable|string|max:255',
@@ -83,8 +92,9 @@ class ShippingSettingsController extends Controller
             'weight' => 'nullable|numeric|min:0',
             'volume_cbm' => 'nullable|numeric|min:0',
             'order_amount' => 'required|numeric|min:0',
+            'method' => 'nullable|string|in:standard,express,registered',
             'options' => 'nullable|array',
-            'options.*' => 'in:express_post,registered_post,insurance',
+            'options.*' => 'in:insurance',
         ]);
 
         $calculator = new ShippingCalculator();
@@ -96,9 +106,13 @@ class ShippingSettingsController extends Controller
     public function options()
     {
         $calculator = new ShippingCalculator();
-        $options = $calculator->getAvailableOptions();
 
-        return response()->json(['data' => $options]);
+        return response()->json([
+            'data' => [
+                'methods' => $calculator->getShippingMethods(),
+                'add_ons' => $calculator->getShippingAddOns(),
+            ]
+        ]);
     }
 
     public function zones()

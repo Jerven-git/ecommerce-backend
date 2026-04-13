@@ -187,8 +187,9 @@ class OrderController extends Controller
             'state' => 'required|string',
             'city' => 'nullable|string',
 
+            'shipping_method' => 'nullable|string|in:standard,express,registered',
             'shipping_options' => 'nullable|array',
-            'shipping_options.*' => 'string',
+            'shipping_options.*' => 'string|in:insurance',
 
             'payment_method' => 'nullable|string|in:cash,stripe,paypal,square',
 
@@ -378,6 +379,7 @@ class OrderController extends Controller
             return $shippingCalc;
         }
 
+        $shippingMethod = $validated['shipping_method'] ?? 'standard';
         $shippingOptions = $validated['shipping_options'] ?? [];
 
         $shippingCalc = $shipping->calculateShipping([
@@ -387,6 +389,7 @@ class OrderController extends Controller
             'weight' => $totalWeight,
             'volume_cbm' => $totalVolumeCbm,
             'order_amount' => $rawSubtotal,
+            'method' => $shippingMethod,
             'options' => $shippingOptions,
         ]);
 
