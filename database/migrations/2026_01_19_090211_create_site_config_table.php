@@ -17,6 +17,11 @@ return new class extends Migration
             $table->json('theme')->nullable();
             $table->string('hero_title')->default('Welcome to Our Store');
             $table->string('hero_subtitle')->default('Discover amazing products at great prices');
+            $table->string('hero_overlay_color', 7)->default('#000000');
+            $table->unsignedTinyInteger('hero_overlay_opacity')->default(45);
+            // When true, hero image flows under the (transparent) header.
+            // When false (default), header sits as a solid band above the hero.
+            $table->boolean('hero_full_bleed')->default(false);
             $table->text('about_content')->nullable();
             $table->string('contact_email')->default('contact@store.com');
             $table->string('contact_phone')->default('+1234567890');

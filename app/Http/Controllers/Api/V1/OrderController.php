@@ -466,7 +466,7 @@ class OrderController extends Controller
             'pending' => ['processing', 'cancelled'],
             'processing' => ['shipped', 'cancelled'],
             'shipped' => ['delivered'],
-            'delivered' => ['processing'],
+            'delivered' => ['processing'], // possible bug
             'cancelled' => ['pending'],
             'backorder_awaiting_stock' => [],
             'backorder_notified' => [],
