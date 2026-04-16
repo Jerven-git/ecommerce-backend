@@ -22,6 +22,11 @@ return new class extends Migration
             // When true, hero image flows under the (transparent) header.
             // When false (default), header sits as a solid band above the hero.
             $table->boolean('hero_full_bleed')->default(false);
+            // Focal point as percentages (0–100). Maps to CSS `object-position`
+            // so the chosen spot stays visible when the hero is cropped for
+            // different viewport aspect ratios. Default 50/50 = centre.
+            $table->unsignedTinyInteger('hero_focal_x')->default(50);
+            $table->unsignedTinyInteger('hero_focal_y')->default(50);
             $table->text('about_content')->nullable();
             $table->string('contact_email')->default('contact@store.com');
             $table->string('contact_phone')->default('+1234567890');

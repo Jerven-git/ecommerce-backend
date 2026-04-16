@@ -155,6 +155,9 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'sometimes|numeric|min:0',
             'image' => 'nullable|image|max:2048',
+            // Allow clients to clear a legacy image_url (products seeded with
+            // a raw URL but no Media record) by sending image_url=null.
+            'image_url' => 'nullable|string',
             'stock' => 'nullable|integer|min:0',
             'weight' => 'nullable|numeric|min:0',
             'length_cm' => 'nullable|numeric|min:0',
