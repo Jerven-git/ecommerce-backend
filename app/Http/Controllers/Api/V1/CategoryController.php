@@ -62,6 +62,20 @@ class CategoryController extends Controller
         return response()->json(['data' => $category]);
     }
 
+    public function reorder(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids'   => 'required|array|min:1',
+            'ids.*' => 'integer|exists:categories,id',
+        ]);
+
+        foreach ($validated['ids'] as $order => $id) {
+            Category::where('id', $id)->update(['sort_order' => $order]);
+        }
+
+        return response()->json(['message' => 'Reordered.']);
+    }
+
     public function destroy(int $id): JsonResponse
     {
         $category = Category::findOrFail($id);

@@ -159,6 +159,7 @@ Route::prefix('v1')->group(function () {
 
             // Categories
             Route::post('/categories', [CategoryController::class, 'store']);
+            Route::post('/categories/reorder', [CategoryController::class, 'reorder']);
             Route::patch('/categories/{id}', [CategoryController::class, 'update']);
             Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
 

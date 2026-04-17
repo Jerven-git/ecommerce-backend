@@ -176,13 +176,13 @@ class SanitizationTest extends TestCase
     public function test_tax_setting_name_strips_tags(): void
     {
         $tax = TaxSetting::create([
-            'tax_name' => '<b>VAT</b><script>x</script>',
+            'tax_name' => '<b>Tax</b><script>x</script>',
             'tax_enabled' => true,
             'tax_rate' => 10,
         ]);
 
         $this->assertStringNotContainsString('<script>', $tax->tax_name);
-        $this->assertStringContainsString('VAT', $tax->tax_name);
+        $this->assertStringContainsString('Tax', $tax->tax_name);
     }
 
     public function test_order_item_product_name_strips_tags(): void

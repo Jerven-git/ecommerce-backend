@@ -16,7 +16,7 @@ class ProductController extends Controller
     
     public function index(Request $request)
     {
-        $query = Product::query();
+        $query = Product::with('categories');
 
         // Filter by active status
         if ($request->has('is_active')) {
@@ -29,10 +29,11 @@ class ProductController extends Controller
             $category = Category::with('childrenRecursive')->find($categoryId);
             $allIds = $category ? array_merge([$categoryId], $category->allDescendantIds()) : [$categoryId];
 
-            // Match by category_id OR legacy category string name
+            // Match via pivot table OR legacy category_id/category string
             $categoryNames = Category::whereIn('id', $allIds)->pluck('name')->toArray();
             $query->where(function ($q) use ($allIds, $categoryNames) {
-                $q->whereIn('category_id', $allIds)
+                $q->whereHas('categories', fn ($sub) => $sub->whereIn('categories.id', $allIds))
+                  ->orWhereIn('category_id', $allIds)
                   ->orWhereIn('category', $categoryNames);
             });
         } elseif ($request->has('category')) {
@@ -61,7 +62,7 @@ class ProductController extends Controller
 
     public function show($slug)
     {
-        $product = Product::with('media')->where('slug', $slug)->firstOrFail();
+        $product = Product::with(['media', 'categories'])->where('slug', $slug)->firstOrFail();
         return response()->json(['data' => $product]);
     }
 
@@ -126,14 +127,21 @@ class ProductController extends Controller
             'shipping_calc_type' => 'nullable|in:weight,dimensions',
             'category' => 'nullable|string',
             'category_id' => 'nullable|exists:categories,id',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'exists:categories,id',
             'is_active' => 'nullable|boolean',
             'allow_backorder' => 'nullable|boolean',
             'backorder_charge_policy' => 'nullable|in:charged_now,charged_later',
         ]);
 
-        unset($validated['image']);
+        $categoryIds = $validated['category_ids'] ?? [];
+        unset($validated['image'], $validated['category_ids']);
         $validated['slug'] = Product::generateUniqueSlug($validated['name']);
         $product = Product::create($validated);
+
+        if (!empty($categoryIds)) {
+            $product->categories()->sync($categoryIds);
+        }
 
         if ($request->hasFile('image')) {
             $media = $this->mediaService->upload($request->file('image'), $product, 'image', 'products');
@@ -142,7 +150,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Product created successfully',
-            'data' => $product->fresh()
+            'data' => $product->fresh()->load('categories')
         ], 201);
     }
 
@@ -166,16 +174,23 @@ class ProductController extends Controller
             'shipping_calc_type' => 'nullable|in:weight,dimensions',
             'category' => 'nullable|string',
             'category_id' => 'nullable|exists:categories,id',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'exists:categories,id',
             'is_active' => 'nullable|boolean',
             'allow_backorder' => 'nullable|boolean',
             'backorder_charge_policy' => 'nullable|in:charged_now,charged_later',
         ]);
 
-        unset($validated['image']);
+        $categoryIds = $validated['category_ids'] ?? null;
+        unset($validated['image'], $validated['category_ids']);
         if (isset($validated['name']) && $validated['name'] !== $product->name) {
             $validated['slug'] = Product::generateUniqueSlug($validated['name'], $product->id);
         }
         $product->update($validated);
+
+        if ($categoryIds !== null) {
+            $product->categories()->sync($categoryIds);
+        }
 
         if ($request->hasFile('image')) {
             $media = $this->mediaService->upload($request->file('image'), $product, 'image', 'products');
@@ -184,7 +199,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Product updated successfully',
-            'data' => $product->fresh()
+            'data' => $product->fresh()->load('categories')
         ]);
     }
 

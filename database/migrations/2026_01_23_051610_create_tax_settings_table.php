@@ -16,7 +16,7 @@ return new class extends Migration
             $table->boolean('tax_enabled')->default(false);
             $table->decimal('tax_rate', 5, 2)->default(0);
             $table->enum('tax_display_mode', ['inclusive', 'exclusive'])->default('exclusive');
-            $table->string('tax_name')->default('VAT');
+            $table->string('tax_name')->default('Tax');
             $table->string('default_display_country')->nullable();
             $table->string('default_display_state')->nullable();
             $table->timestamps();
