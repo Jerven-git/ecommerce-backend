@@ -60,7 +60,7 @@ class ShippingAndTaxSeeder extends Seeder
             'tax_enabled' => true,
             'tax_rate' => 12.00,
             'tax_display_mode' => 'exclusive',
-            'tax_name' => 'VAT',
+            'tax_name' => 'Tax',
         ]);
     }
 }
