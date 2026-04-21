@@ -35,6 +35,10 @@ class SiteConfigController extends Controller
                 'hero_focal_x' => (int) $config->hero_focal_x,
                 'hero_focal_y' => (int) $config->hero_focal_y,
                 'about_content' => $config->about_content,
+                'about_overlay_color' => $config->about_overlay_color,
+                'about_overlay_opacity' => (int) $config->about_overlay_opacity,
+                'contact_overlay_color' => $config->contact_overlay_color,
+                'contact_overlay_opacity' => (int) $config->contact_overlay_opacity,
                 'contact_email' => $config->contact_email,
                 'contact_phone' => $config->contact_phone,
                 'contact_entries' => $config->contact_entries ?? [],
@@ -59,8 +63,8 @@ class SiteConfigController extends Controller
                 'logo_url' => optional($config->logoMedia)->url,
                 'favicon_url' => optional($config->faviconMedia)->url,
                 'cart_icon_url' => optional($config->cartIconMedia)->url,
-                'hero_image_url' => optional($config->heroMedia)->url,
-                'hero_media_mime' => optional($config->heroMedia)->mime_type,
+                'hero_image_url' => $config->hero_image_url ?: optional($config->heroMedia)->url,
+                'hero_media_mime' => $config->hero_media_mime ?: optional($config->heroMedia)->mime_type,
                 'about_image_url' => optional($config->aboutMedia)->url,
                 'contact_image_url' => optional($config->contactMedia)->url,
             ]
@@ -85,7 +89,13 @@ class SiteConfigController extends Controller
             'hero_full_bleed' => 'nullable|boolean',
             'hero_focal_x' => 'nullable|integer|min:0|max:100',
             'hero_focal_y' => 'nullable|integer|min:0|max:100',
+            'hero_image_url' => 'nullable|string|max:500',
+            'hero_media_mime' => 'nullable|string|max:100',
             'about_content' => 'nullable|string',
+            'about_overlay_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'about_overlay_opacity' => 'nullable|integer|min:0|max:100',
+            'contact_overlay_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'contact_overlay_opacity' => 'nullable|integer|min:0|max:100',
             'contact_email' => 'nullable|email',
             'contact_phone' => 'nullable|string|max:20',
             'contact_entries' => 'nullable|array|max:20',
@@ -186,6 +196,11 @@ class SiteConfigController extends Controller
             $collection,
             'site-config'
         );
+
+        // Clear any preset/external hero URL override so the uploaded file wins.
+        if ($collection === 'hero') {
+            $config->update(['hero_image_url' => null, 'hero_media_mime' => null]);
+        }
 
         return response()->json([
             'id' => $media->id,

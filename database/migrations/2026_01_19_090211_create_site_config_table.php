@@ -27,7 +27,13 @@ return new class extends Migration
             // different viewport aspect ratios. Default 50/50 = centre.
             $table->unsignedTinyInteger('hero_focal_x')->default(50);
             $table->unsignedTinyInteger('hero_focal_y')->default(50);
+            $table->string('hero_image_url')->nullable();
+            $table->string('hero_media_mime')->nullable();
             $table->text('about_content')->nullable();
+            $table->string('about_overlay_color', 7)->default('#000000');
+            $table->unsignedTinyInteger('about_overlay_opacity')->default(45);
+            $table->string('contact_overlay_color', 7)->default('#000000');
+            $table->unsignedTinyInteger('contact_overlay_opacity')->default(45);
             $table->string('contact_email')->default('contact@store.com');
             $table->string('contact_phone')->default('+1234567890');
             $table->json('contact_entries')->nullable();
