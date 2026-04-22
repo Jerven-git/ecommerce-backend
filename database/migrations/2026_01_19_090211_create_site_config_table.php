@@ -34,6 +34,7 @@ return new class extends Migration
             $table->unsignedTinyInteger('about_overlay_opacity')->default(45);
             $table->string('contact_overlay_color', 7)->default('#000000');
             $table->unsignedTinyInteger('contact_overlay_opacity')->default(45);
+            $table->string('badge_in_stock_color', 7)->default('#16a34a');
             $table->string('contact_email')->default('contact@store.com');
             $table->string('contact_phone')->default('+1234567890');
             $table->json('contact_entries')->nullable();
