@@ -38,6 +38,7 @@ class SiteConfig extends Model
         'about_overlay_opacity',
         'contact_overlay_color',
         'contact_overlay_opacity',
+        'badge_in_stock_color',
         'contact_email',
         'contact_phone',
         'contact_entries',
