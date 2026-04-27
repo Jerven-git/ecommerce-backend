@@ -58,6 +58,13 @@ class SiteConfig extends Model
         'shop_header',
         'shop_promo',
         'contact_page',
+        'blog_page',
+        'blog_overlay_color',
+        'blog_overlay_opacity',
+        'services_page',
+        'services_overlay_color',
+        'services_overlay_opacity',
+        'modules_enabled',
     ];
 
     /**
@@ -153,6 +160,11 @@ class SiteConfig extends Model
         'shop_header' => 'array',
         'shop_promo' => 'array',
         'contact_page' => 'array',
+        'blog_page' => 'array',
+        'blog_overlay_opacity' => 'integer',
+        'services_page' => 'array',
+        'services_overlay_opacity' => 'integer',
+        'modules_enabled' => 'array',
     ];
 
     public function media()
@@ -188,5 +200,15 @@ class SiteConfig extends Model
     public function contactMedia()
     {
         return $this->morphOne(Media::class, 'imageable')->where('collection', 'contact');
+    }
+
+    public function blogMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'blog');
+    }
+
+    public function servicesMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'services');
     }
 }

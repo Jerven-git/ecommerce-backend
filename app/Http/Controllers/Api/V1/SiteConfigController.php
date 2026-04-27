@@ -12,9 +12,27 @@ class SiteConfigController extends Controller
 {
     public function __construct(private MediaService $mediaService) {}
 
+    private const MODULE_KEYS = ['shop', 'blog', 'services', 'about', 'contact'];
+
+    /**
+     * Merge stored module flags over the default (all enabled). Keeps the API
+     * response shape stable even if the stored JSON is null or missing keys.
+     */
+    private function resolveModulesEnabled(?array $stored): array
+    {
+        $defaults = array_fill_keys(self::MODULE_KEYS, true);
+        $stored = is_array($stored) ? $stored : [];
+
+        $out = [];
+        foreach (self::MODULE_KEYS as $key) {
+            $out[$key] = (bool) ($stored[$key] ?? $defaults[$key]);
+        }
+        return $out;
+    }
+
     private function config(): SiteConfig
     {
-        return SiteConfig::with(['logoMedia', 'faviconMedia', 'cartIconMedia', 'heroMedia', 'aboutMedia', 'contactMedia'])->first()
+        return SiteConfig::with(['logoMedia', 'faviconMedia', 'cartIconMedia', 'heroMedia', 'aboutMedia', 'contactMedia', 'blogMedia', 'servicesMedia'])->first()
             ?? SiteConfig::create([]);
     }
 
@@ -58,6 +76,13 @@ class SiteConfigController extends Controller
                 'shop_header' => $config->shop_header,
                 'shop_promo' => $config->shop_promo,
                 'contact_page' => $config->contact_page,
+                'blog_page' => $config->blog_page,
+                'blog_overlay_color' => $config->blog_overlay_color,
+                'blog_overlay_opacity' => (int) $config->blog_overlay_opacity,
+                'services_page' => $config->services_page,
+                'services_overlay_color' => $config->services_overlay_color,
+                'services_overlay_opacity' => (int) $config->services_overlay_opacity,
+                'modules_enabled' => $this->resolveModulesEnabled($config->modules_enabled),
                 'updated_at' => $config->updated_at,
 
                 // urls come from media
@@ -68,6 +93,8 @@ class SiteConfigController extends Controller
                 'hero_media_mime' => $config->hero_media_mime ?: optional($config->heroMedia)->mime_type,
                 'about_image_url' => optional($config->aboutMedia)->url,
                 'contact_image_url' => optional($config->contactMedia)->url,
+                'blog_image_url' => optional($config->blogMedia)->url,
+                'services_image_url' => optional($config->servicesMedia)->url,
             ]
         ]);
     }
@@ -157,6 +184,59 @@ class SiteConfigController extends Controller
             'contact_page.promises.*.icon' => 'nullable|string|max:100',
             'contact_page.promises.*.title' => 'required|string|max:100',
             'contact_page.promises.*.description' => 'required|string|max:255',
+            'blog_page' => 'nullable|array',
+            'blog_page.header' => 'nullable|array',
+            'blog_page.header.label' => 'nullable|string|max:100',
+            'blog_page.header.heading' => 'nullable|string|max:255',
+            'blog_page.header.subtitle' => 'nullable|string|max:500',
+            'blog_page.cta' => 'nullable|array',
+            'blog_page.cta.heading' => 'nullable|string|max:255',
+            'blog_page.cta.subtitle' => 'nullable|string|max:500',
+            'blog_page.cta.button_label' => 'nullable|string|max:100',
+            'blog_page.cta.button_link' => 'nullable|string|max:500',
+            'blog_overlay_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'blog_overlay_opacity' => 'nullable|integer|min:0|max:100',
+            'services_page' => 'nullable|array',
+            'services_page.header' => 'nullable|array',
+            'services_page.header.label' => 'nullable|string|max:100',
+            'services_page.header.heading' => 'nullable|string|max:255',
+            'services_page.header.subtitle' => 'nullable|string|max:500',
+            'services_page.header.primary_cta' => 'nullable|array',
+            'services_page.header.primary_cta.label' => 'nullable|string|max:100',
+            'services_page.header.primary_cta.link' => 'nullable|string|max:500',
+            'services_page.header.secondary_cta' => 'nullable|array',
+            'services_page.header.secondary_cta.label' => 'nullable|string|max:100',
+            'services_page.header.secondary_cta.link' => 'nullable|string|max:500',
+            'services_page.summary' => 'nullable|array',
+            'services_page.summary.items' => 'nullable|array|max:6',
+            'services_page.summary.items.*.title' => 'required|string|max:100',
+            'services_page.summary.items.*.description' => 'required|string|max:255',
+            'services_page.stats' => 'nullable|array',
+            'services_page.stats.items' => 'nullable|array|max:6',
+            'services_page.stats.items.*.value' => 'required|string|max:50',
+            'services_page.stats.items.*.label' => 'required|string|max:150',
+            'services_page.groups' => 'nullable|array|max:6',
+            'services_page.groups.*.heading' => 'required|string|max:150',
+            'services_page.groups.*.items' => 'nullable|array|max:12',
+            'services_page.groups.*.items.*.eyebrow' => 'nullable|string|max:100',
+            'services_page.groups.*.items.*.title' => 'required|string|max:150',
+            'services_page.groups.*.items.*.description' => 'required|string|max:500',
+            'services_page.groups.*.items.*.image_url' => 'nullable|string|max:500',
+            'services_page.groups.*.items.*.cta_label' => 'nullable|string|max:100',
+            'services_page.groups.*.items.*.cta_link' => 'nullable|string|max:500',
+            'services_page.cta' => 'nullable|array',
+            'services_page.cta.heading' => 'nullable|string|max:255',
+            'services_page.cta.subtitle' => 'nullable|string|max:500',
+            'services_page.cta.button_label' => 'nullable|string|max:100',
+            'services_page.cta.button_link' => 'nullable|string|max:500',
+            'services_overlay_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'services_overlay_opacity' => 'nullable|integer|min:0|max:100',
+            'modules_enabled' => 'nullable|array',
+            'modules_enabled.shop' => 'nullable|boolean',
+            'modules_enabled.blog' => 'nullable|boolean',
+            'modules_enabled.services' => 'nullable|boolean',
+            'modules_enabled.about' => 'nullable|boolean',
+            'modules_enabled.contact' => 'nullable|boolean',
         ]);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
@@ -171,13 +251,42 @@ class SiteConfigController extends Controller
 
         $config->update($validated);
 
+        $this->sweepServicesGalleryOrphans($config);
+
         // return fresh data including urls
         return $this->show();
     }
 
+    /**
+     * Delete any services_gallery media whose public URL is no longer referenced
+     * by a services_page.groups[*].items[*].image_url. Handles both explicit
+     * removals and uploads that were never saved (user navigated away, etc.).
+     */
+    private function sweepServicesGalleryOrphans(SiteConfig $config): void
+    {
+        $referenced = [];
+        foreach (($config->services_page['groups'] ?? []) as $group) {
+            foreach (($group['items'] ?? []) as $item) {
+                if (!empty($item['image_url'])) {
+                    $referenced[] = $item['image_url'];
+                }
+            }
+        }
+
+        $orphans = $config->media()
+            ->where('collection', 'services_gallery')
+            ->get()
+            ->filter(fn ($m) => !in_array($m->url, $referenced, true));
+
+        foreach ($orphans as $media) {
+            Storage::disk('public')->delete($media->path);
+            $media->delete();
+        }
+    }
+
     public function uploadMedia(Request $request, string $collection)
     {
-        abort_unless(in_array($collection, ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact']), 404);
+        abort_unless(in_array($collection, ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact', 'blog', 'services']), 404);
 
         $max = in_array($collection, ['logo', 'favicon', 'cart_icon']) ? 2048 : 10120; // KB (2MB vs 10MB)
 
@@ -213,7 +322,7 @@ class SiteConfigController extends Controller
 
     public function deleteMedia(string $collection)
     {
-        abort_unless(in_array($collection, ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact']), 404);
+        abort_unless(in_array($collection, ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact', 'blog', 'services']), 404);
 
         $config = SiteConfig::first();
         if (!$config) return response()->noContent();
@@ -225,5 +334,26 @@ class SiteConfigController extends Controller
         $media->delete();
 
         return response()->noContent();
+    }
+
+    public function uploadServicesItemMedia(Request $request)
+    {
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'mimes:jpeg,png,gif,webp,svg,svgz', 'max:10120'],
+        ]);
+
+        $config = SiteConfig::first() ?? SiteConfig::create([]);
+
+        $media = $this->mediaService->addToCollection(
+            $validated['file'],
+            $config,
+            'services_gallery',
+            'site-config'
+        );
+
+        return response()->json([
+            'id' => $media->id,
+            'url' => $media->url,
+        ]);
     }
 }
