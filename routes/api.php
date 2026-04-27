@@ -15,6 +15,10 @@ use App\Http\Controllers\Api\V1\PayPalReturnController;
 use App\Http\Controllers\Api\V1\ContactController;
 use App\Http\Controllers\Api\V1\SubscribeController;
 use App\Http\Controllers\Api\V1\CategoryController;
+use App\Http\Controllers\Api\V1\PostController;
+use App\Http\Controllers\Api\V1\PostCategoryController;
+use App\Http\Controllers\Api\V1\ServiceController;
+use App\Http\Controllers\Api\V1\ServiceCategoryController;
 use App\Http\Controllers\Api\V1\ShipmentController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\BackorderController;
@@ -51,6 +55,14 @@ Route::prefix('v1')->group(function () {
 
     // Categories
     Route::get('/categories', [CategoryController::class, 'index']);
+
+    // Blog (public)
+    Route::get('/posts', [PostController::class, 'index']);
+    Route::get('/posts/{slug}', [PostController::class, 'show']);
+    Route::get('/post-categories', [PostCategoryController::class, 'index']);
+    Route::get('/services', [ServiceController::class, 'index']);
+    Route::get('/services/{slug}', [ServiceController::class, 'show']);
+    Route::get('/service-categories', [ServiceCategoryController::class, 'index']);
 
     // Site config
     Route::get('/site-config', [SiteConfigController::class, 'show']);
@@ -163,10 +175,40 @@ Route::prefix('v1')->group(function () {
             Route::patch('/categories/{id}', [CategoryController::class, 'update']);
             Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
 
+            // Blog posts (admin)
+            Route::get('/admin/posts', [PostController::class, 'adminIndex']);
+            Route::get('/admin/posts/{id}', [PostController::class, 'adminShow']);
+            Route::post('/admin/posts', [PostController::class, 'store']);
+            Route::patch('/admin/posts/{id}', [PostController::class, 'update']);
+            Route::delete('/admin/posts/{id}', [PostController::class, 'destroy']);
+
+            // Blog categories (admin)
+            Route::post('/post-categories', [PostCategoryController::class, 'store']);
+            Route::post('/post-categories/reorder', [PostCategoryController::class, 'reorder']);
+            Route::patch('/post-categories/{id}', [PostCategoryController::class, 'update']);
+            Route::delete('/post-categories/{id}', [PostCategoryController::class, 'destroy']);
+            Route::delete('/post-categories/{id}/image', [PostCategoryController::class, 'deleteImage']);
+
+            // Services (admin)
+            Route::get('/admin/services', [ServiceController::class, 'adminIndex']);
+            Route::get('/admin/services/{id}', [ServiceController::class, 'adminShow']);
+            Route::post('/admin/services', [ServiceController::class, 'store']);
+            Route::post('/admin/services/reorder', [ServiceController::class, 'reorder']);
+            Route::patch('/admin/services/{id}', [ServiceController::class, 'update']);
+            Route::delete('/admin/services/{id}', [ServiceController::class, 'destroy']);
+
+            // Service categories (admin)
+            Route::post('/service-categories', [ServiceCategoryController::class, 'store']);
+            Route::post('/service-categories/reorder', [ServiceCategoryController::class, 'reorder']);
+            Route::patch('/service-categories/{id}', [ServiceCategoryController::class, 'update']);
+            Route::delete('/service-categories/{id}', [ServiceCategoryController::class, 'destroy']);
+            Route::delete('/service-categories/{id}/image', [ServiceCategoryController::class, 'deleteImage']);
+
             // Site config
             Route::patch('/site-config', [SiteConfigController::class, 'update']);
             Route::post('/site-config/media/{collection}', [SiteConfigController::class, 'uploadMedia']);
             Route::delete('/site-config/media/{collection}', [SiteConfigController::class, 'deleteMedia']);
+            Route::post('/site-config/services-items/media', [SiteConfigController::class, 'uploadServicesItemMedia']);
 
             // Discounts
             Route::get('/discounts', [DiscountController::class, 'index']);

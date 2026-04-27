@@ -26,6 +26,8 @@ class DatabaseSeeder extends Seeder
             ProductSeeder::class,
             ShippingAndTaxSeeder::class,
             AdminSeeder::class,
+            BlogSeeder::class,
+            ServicesSeeder::class,
         ]);
     }
 }

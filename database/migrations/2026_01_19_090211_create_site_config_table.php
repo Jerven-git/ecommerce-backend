@@ -53,6 +53,13 @@ return new class extends Migration
             $table->json('shop_header')->nullable();
             $table->json('shop_promo')->nullable();
             $table->json('contact_page')->nullable();
+            $table->json('blog_page')->nullable();
+            $table->string('blog_overlay_color', 7)->default('#000000');
+            $table->integer('blog_overlay_opacity')->default(40);
+            $table->json('services_page')->nullable();
+            $table->string('services_overlay_color', 7)->default('#000000');
+            $table->integer('services_overlay_opacity')->default(40);
+            $table->json('modules_enabled')->nullable();
             $table->timestamps();
         });
     }
