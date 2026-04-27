@@ -215,15 +215,6 @@ class SiteConfigController extends Controller
             'services_page.stats.items' => 'nullable|array|max:6',
             'services_page.stats.items.*.value' => 'required|string|max:50',
             'services_page.stats.items.*.label' => 'required|string|max:150',
-            'services_page.groups' => 'nullable|array|max:6',
-            'services_page.groups.*.heading' => 'required|string|max:150',
-            'services_page.groups.*.items' => 'nullable|array|max:12',
-            'services_page.groups.*.items.*.eyebrow' => 'nullable|string|max:100',
-            'services_page.groups.*.items.*.title' => 'required|string|max:150',
-            'services_page.groups.*.items.*.description' => 'required|string|max:500',
-            'services_page.groups.*.items.*.image_url' => 'nullable|string|max:500',
-            'services_page.groups.*.items.*.cta_label' => 'nullable|string|max:100',
-            'services_page.groups.*.items.*.cta_link' => 'nullable|string|max:500',
             'services_page.cta' => 'nullable|array',
             'services_page.cta.heading' => 'nullable|string|max:255',
             'services_page.cta.subtitle' => 'nullable|string|max:500',
@@ -251,37 +242,8 @@ class SiteConfigController extends Controller
 
         $config->update($validated);
 
-        $this->sweepServicesGalleryOrphans($config);
-
         // return fresh data including urls
         return $this->show();
-    }
-
-    /**
-     * Delete any services_gallery media whose public URL is no longer referenced
-     * by a services_page.groups[*].items[*].image_url. Handles both explicit
-     * removals and uploads that were never saved (user navigated away, etc.).
-     */
-    private function sweepServicesGalleryOrphans(SiteConfig $config): void
-    {
-        $referenced = [];
-        foreach (($config->services_page['groups'] ?? []) as $group) {
-            foreach (($group['items'] ?? []) as $item) {
-                if (!empty($item['image_url'])) {
-                    $referenced[] = $item['image_url'];
-                }
-            }
-        }
-
-        $orphans = $config->media()
-            ->where('collection', 'services_gallery')
-            ->get()
-            ->filter(fn ($m) => !in_array($m->url, $referenced, true));
-
-        foreach ($orphans as $media) {
-            Storage::disk('public')->delete($media->path);
-            $media->delete();
-        }
     }
 
     public function uploadMedia(Request $request, string $collection)
@@ -336,24 +298,4 @@ class SiteConfigController extends Controller
         return response()->noContent();
     }
 
-    public function uploadServicesItemMedia(Request $request)
-    {
-        $validated = $request->validate([
-            'file' => ['required', 'file', 'mimes:jpeg,png,gif,webp,svg,svgz', 'max:10120'],
-        ]);
-
-        $config = SiteConfig::first() ?? SiteConfig::create([]);
-
-        $media = $this->mediaService->addToCollection(
-            $validated['file'],
-            $config,
-            'services_gallery',
-            'site-config'
-        );
-
-        return response()->json([
-            'id' => $media->id,
-            'url' => $media->url,
-        ]);
-    }
 }
