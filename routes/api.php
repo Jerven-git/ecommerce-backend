@@ -208,7 +208,6 @@ Route::prefix('v1')->group(function () {
             Route::patch('/site-config', [SiteConfigController::class, 'update']);
             Route::post('/site-config/media/{collection}', [SiteConfigController::class, 'uploadMedia']);
             Route::delete('/site-config/media/{collection}', [SiteConfigController::class, 'deleteMedia']);
-            Route::post('/site-config/services-items/media', [SiteConfigController::class, 'uploadServicesItemMedia']);
 
             // Discounts
             Route::get('/discounts', [DiscountController::class, 'index']);
