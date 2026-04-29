@@ -3,13 +3,15 @@
 namespace App\Models;
 
 use App\Modules\Realtime\Traits\BroadcastsChanges;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
 
 class SiteConfig extends Model
 {
     use BroadcastsChanges;
+
     const CREATED_AT = null;
+
     protected $table = 'site_config';
 
     const THEME_DEFAULTS = [
@@ -54,6 +56,7 @@ class SiteConfig extends Model
         'homepage_features',
         'homepage_stats',
         'homepage_newsletter',
+        'homepage_showcase',
         'about_highlights',
         'shop_header',
         'shop_promo',
@@ -156,6 +159,7 @@ class SiteConfig extends Model
         'homepage_features' => 'array',
         'homepage_stats' => 'array',
         'homepage_newsletter' => 'array',
+        'homepage_showcase' => 'array',
         'about_highlights' => 'array',
         'shop_header' => 'array',
         'shop_promo' => 'array',
@@ -210,5 +214,15 @@ class SiteConfig extends Model
     public function servicesMedia()
     {
         return $this->morphOne(Media::class, 'imageable')->where('collection', 'services');
+    }
+
+    public function showcaseVideoMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'showcase_video');
+    }
+
+    public function showcaseVideoPosterMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'showcase_video_poster');
     }
 }

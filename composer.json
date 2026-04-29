@@ -16,6 +16,7 @@
         "laravel/reverb": "*",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
+        "pbmedia/laravel-ffmpeg": "^8.7",
         "picqer/php-barcode-generator": "*",
         "predis/predis": "*",
         "square/square": "^44.0",
