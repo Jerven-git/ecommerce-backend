@@ -14,6 +14,9 @@ COPY composer.lock composer.json /var/www/html/
 WORKDIR /var/www/html
 
 # Install dependencies
+# `ffmpeg` is required by pbmedia/laravel-ffmpeg to transcode homepage-showcase
+# uploads (re-encode to H.264, faststart, generate poster frame). Without it the
+# OptimizeShowcaseVideoJob falls back to serving the unoptimized upload.
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpng-dev \
@@ -22,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     locales \
     zip \
     jpegoptim optipng pngquant gifsicle \
+    ffmpeg \
     vim \
     unzip \
     git \

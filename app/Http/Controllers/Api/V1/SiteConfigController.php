@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\OptimizeShowcaseVideoJob;
+use App\Models\Product;
 use App\Models\SiteConfig;
-use Illuminate\Http\Request;
 use App\Modules\Media\MediaService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class SiteConfigController extends Controller
@@ -13,6 +15,51 @@ class SiteConfigController extends Controller
     public function __construct(private MediaService $mediaService) {}
 
     private const MODULE_KEYS = ['shop', 'blog', 'services', 'about', 'contact'];
+
+    /**
+     * Build the showcase block returned to clients. Always returns a stable
+     * shape (4 tiles, video URL+poster from media, resolved tile image URLs)
+     * so the homepage can render without a second request.
+     *
+     * @return array{enabled: bool, label: string, heading: string, subtitle: string, video_url: string|null, video_poster_url: string|null, video_status: string, tiles: array<int, array{title: string, cta_label: string, category_id: int|null, featured_product_id: int|null, image_url: string|null}>}
+     */
+    private function resolveShowcase(SiteConfig $config): array
+    {
+        $stored = is_array($config->homepage_showcase) ? $config->homepage_showcase : [];
+        $tiles = array_values($stored['tiles'] ?? []);
+
+        $productIds = array_filter(array_map(
+            fn ($t) => isset($t['featured_product_id']) ? (int) $t['featured_product_id'] : null,
+            $tiles,
+        ));
+        $productImages = $productIds
+            ? Product::query()->whereIn('id', $productIds)->pluck('image_url', 'id')->all()
+            : [];
+
+        $resolvedTiles = [];
+        for ($i = 0; $i < 4; $i++) {
+            $tile = $tiles[$i] ?? [];
+            $productId = isset($tile['featured_product_id']) ? (int) $tile['featured_product_id'] : null;
+            $resolvedTiles[] = [
+                'title' => (string) ($tile['title'] ?? ''),
+                'cta_label' => (string) ($tile['cta_label'] ?? 'SHOP NOW'),
+                'category_id' => isset($tile['category_id']) ? (int) $tile['category_id'] : null,
+                'featured_product_id' => $productId,
+                'image_url' => $productId !== null ? ($productImages[$productId] ?? null) : null,
+            ];
+        }
+
+        return [
+            'enabled' => (bool) ($stored['enabled'] ?? false),
+            'label' => (string) ($stored['label'] ?? ''),
+            'heading' => (string) ($stored['heading'] ?? ''),
+            'subtitle' => (string) ($stored['subtitle'] ?? ''),
+            'video_url' => optional($config->showcaseVideoMedia)->url,
+            'video_poster_url' => optional($config->showcaseVideoPosterMedia)->url,
+            'video_status' => (string) ($stored['video_status'] ?? 'idle'),
+            'tiles' => $resolvedTiles,
+        ];
+    }
 
     /**
      * Merge stored module flags over the default (all enabled). Keeps the API
@@ -27,13 +74,17 @@ class SiteConfigController extends Controller
         foreach (self::MODULE_KEYS as $key) {
             $out[$key] = (bool) ($stored[$key] ?? $defaults[$key]);
         }
+
         return $out;
     }
 
     private function config(): SiteConfig
     {
-        return SiteConfig::with(['logoMedia', 'faviconMedia', 'cartIconMedia', 'heroMedia', 'aboutMedia', 'contactMedia', 'blogMedia', 'servicesMedia'])->first()
-            ?? SiteConfig::create([]);
+        return SiteConfig::with([
+            'logoMedia', 'faviconMedia', 'cartIconMedia', 'heroMedia',
+            'aboutMedia', 'contactMedia', 'blogMedia', 'servicesMedia',
+            'showcaseVideoMedia', 'showcaseVideoPosterMedia',
+        ])->first() ?? SiteConfig::create([]);
     }
 
     public function show()
@@ -72,6 +123,7 @@ class SiteConfigController extends Controller
                 'homepage_features' => $config->homepage_features,
                 'homepage_stats' => $config->homepage_stats,
                 'homepage_newsletter' => $config->homepage_newsletter,
+                'homepage_showcase' => $this->resolveShowcase($config),
                 'about_highlights' => $config->about_highlights,
                 'shop_header' => $config->shop_header,
                 'shop_promo' => $config->shop_promo,
@@ -95,7 +147,7 @@ class SiteConfigController extends Controller
                 'contact_image_url' => optional($config->contactMedia)->url,
                 'blog_image_url' => optional($config->blogMedia)->url,
                 'services_image_url' => optional($config->servicesMedia)->url,
-            ]
+            ],
         ]);
     }
 
@@ -159,6 +211,16 @@ class SiteConfigController extends Controller
             'homepage_newsletter.heading' => 'nullable|string|max:100',
             'homepage_newsletter.subtitle' => 'nullable|string|max:255',
             'homepage_newsletter.disclaimer' => 'nullable|string|max:255',
+            'homepage_showcase' => 'nullable|array',
+            'homepage_showcase.enabled' => 'nullable|boolean',
+            'homepage_showcase.label' => 'nullable|string|max:100',
+            'homepage_showcase.heading' => 'nullable|string|max:150',
+            'homepage_showcase.subtitle' => 'nullable|string|max:255',
+            'homepage_showcase.tiles' => 'nullable|array|size:4',
+            'homepage_showcase.tiles.*.title' => 'nullable|string|max:100',
+            'homepage_showcase.tiles.*.cta_label' => 'nullable|string|max:30',
+            'homepage_showcase.tiles.*.category_id' => 'nullable|integer|exists:categories,id',
+            'homepage_showcase.tiles.*.featured_product_id' => 'nullable|integer|exists:products,id',
             'about_highlights' => 'nullable|array',
             'about_highlights.items' => 'nullable|array|max:12',
             'about_highlights.items.*.icon' => 'nullable|string|max:50',
@@ -240,6 +302,16 @@ class SiteConfigController extends Controller
             );
         }
 
+        // Preserve the video_status set by OptimizeShowcaseVideoJob — admin updates
+        // never carry a status (the job owns that field) so we merge it back in.
+        if (isset($validated['homepage_showcase'])) {
+            $existing = is_array($config->homepage_showcase) ? $config->homepage_showcase : [];
+            $existingStatus = $existing['video_status'] ?? null;
+            if ($existingStatus !== null) {
+                $validated['homepage_showcase']['video_status'] = $existingStatus;
+            }
+        }
+
         $config->update($validated);
 
         // return fresh data including urls
@@ -248,14 +320,20 @@ class SiteConfigController extends Controller
 
     public function uploadMedia(Request $request, string $collection)
     {
-        abort_unless(in_array($collection, ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact', 'blog', 'services']), 404);
+        $allowed = ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video'];
+        abort_unless(in_array($collection, $allowed, true), 404);
 
-        $max = in_array($collection, ['logo', 'favicon', 'cart_icon']) ? 2048 : 10120; // KB (2MB vs 10MB)
+        $max = match (true) {
+            in_array($collection, ['logo', 'favicon', 'cart_icon'], true) => 2048,    // 2MB
+            $collection === 'showcase_video' => 102400,                                // 100MB
+            default => 10120,                                                          // 10MB
+        };
 
-        $mimes = 'jpeg,png,gif,webp,svg,svgz';
-        if ($collection === 'hero') {
-            $mimes .= ',mp4,webm';
-        }
+        $mimes = match ($collection) {
+            'hero' => 'jpeg,png,gif,webp,svg,svgz,mp4,webm',
+            'showcase_video' => 'mp4,webm,mov,quicktime',
+            default => 'jpeg,png,gif,webp,svg,svgz',
+        };
 
         $validated = $request->validate([
             'file' => ['required', 'file', "mimes:$mimes", "max:$max"],
@@ -275,6 +353,22 @@ class SiteConfigController extends Controller
             $config->update(['hero_image_url' => null, 'hero_media_mime' => null]);
         }
 
+        // Showcase video: drop any stale poster, mark as processing, dispatch
+        // FFmpeg job to faststart-encode the upload + generate a poster frame.
+        if ($collection === 'showcase_video') {
+            $existingPoster = $config->media()->where('collection', 'showcase_video_poster')->first();
+            if ($existingPoster) {
+                Storage::disk('public')->delete($existingPoster->path);
+                $existingPoster->delete();
+            }
+
+            $showcase = $config->homepage_showcase ?? [];
+            $showcase['video_status'] = 'processing';
+            $config->update(['homepage_showcase' => $showcase]);
+
+            OptimizeShowcaseVideoJob::dispatch($media->id);
+        }
+
         return response()->json([
             'id' => $media->id,
             'collection' => $media->collection,
@@ -284,18 +378,33 @@ class SiteConfigController extends Controller
 
     public function deleteMedia(string $collection)
     {
-        abort_unless(in_array($collection, ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact', 'blog', 'services']), 404);
+        $allowed = ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video'];
+        abort_unless(in_array($collection, $allowed, true), 404);
 
         $config = SiteConfig::first();
-        if (!$config) return response()->noContent();
+        if (! $config) {
+            return response()->noContent();
+        }
 
-        $media = $config->media()->where('collection', $collection)->first();
-        if (!$media) return response()->noContent();
+        $collectionsToClear = $collection === 'showcase_video'
+            ? ['showcase_video', 'showcase_video_poster']
+            : [$collection];
 
-        Storage::disk('public')->delete($media->path);
-        $media->delete();
+        foreach ($collectionsToClear as $col) {
+            $media = $config->media()->where('collection', $col)->first();
+            if (! $media) {
+                continue;
+            }
+            Storage::disk('public')->delete($media->path);
+            $media->delete();
+        }
+
+        if ($collection === 'showcase_video') {
+            $showcase = $config->homepage_showcase ?? [];
+            $showcase['video_status'] = 'idle';
+            $config->update(['homepage_showcase' => $showcase]);
+        }
 
         return response()->noContent();
     }
-
 }
