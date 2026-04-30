@@ -1,31 +1,31 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\AuthController;
-use App\Http\Controllers\Api\V1\ProductController;
-use App\Http\Controllers\Api\V1\OrderController;
-use App\Http\Controllers\Api\V1\SiteConfigController;
-use App\Http\Controllers\Api\V1\DiscountController;
-use App\Http\Controllers\Api\V1\ShippingSettingsController;
-use App\Http\Controllers\Api\V1\TaxSettingsController;
-use App\Http\Controllers\Api\V1\PaymentSettingsController;
-use App\Http\Controllers\Api\V1\PaymentController;
-use App\Http\Controllers\Api\V1\WebhookController;
-use App\Http\Controllers\Api\V1\PayPalReturnController;
-use App\Http\Controllers\Api\V1\ContactController;
-use App\Http\Controllers\Api\V1\SubscribeController;
-use App\Http\Controllers\Api\V1\CategoryController;
-use App\Http\Controllers\Api\V1\PostController;
-use App\Http\Controllers\Api\V1\PostCategoryController;
-use App\Http\Controllers\Api\V1\ServiceController;
-use App\Http\Controllers\Api\V1\ServiceCategoryController;
-use App\Http\Controllers\Api\V1\ShipmentController;
-use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\BackorderController;
-use App\Http\Controllers\Api\V1\TaxRuleController;
+use App\Http\Controllers\Api\V1\CategoryController;
+use App\Http\Controllers\Api\V1\ContactController;
+use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\DiscountController;
+use App\Http\Controllers\Api\V1\OrderController;
+use App\Http\Controllers\Api\V1\PaymentController;
+use App\Http\Controllers\Api\V1\PaymentSettingsController;
+use App\Http\Controllers\Api\V1\PayPalReturnController;
+use App\Http\Controllers\Api\V1\PostCategoryController;
+use App\Http\Controllers\Api\V1\PostController;
+use App\Http\Controllers\Api\V1\ProductController;
+use App\Http\Controllers\Api\V1\ServiceCategoryController;
+use App\Http\Controllers\Api\V1\ServiceController;
+use App\Http\Controllers\Api\V1\ShipmentController;
+use App\Http\Controllers\Api\V1\ShippingSettingsController;
+use App\Http\Controllers\Api\V1\SiteConfigController;
+use App\Http\Controllers\Api\V1\SubscribeController;
 use App\Http\Controllers\Api\V1\TaxReportController;
-use App\Http\Controllers\Auth\AdminPasswordResetLinkController;
+use App\Http\Controllers\Api\V1\TaxRuleController;
+use App\Http\Controllers\Api\V1\TaxSettingsController;
+use App\Http\Controllers\Api\V1\WebhookController;
 use App\Http\Controllers\Auth\AdminNewPasswordController;
+use App\Http\Controllers\Auth\AdminPasswordResetLinkController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -208,6 +208,8 @@ Route::prefix('v1')->group(function () {
             Route::patch('/site-config', [SiteConfigController::class, 'update']);
             Route::post('/site-config/media/{collection}', [SiteConfigController::class, 'uploadMedia']);
             Route::delete('/site-config/media/{collection}', [SiteConfigController::class, 'deleteMedia']);
+            Route::post('/site-config/watch-shop/cards', [SiteConfigController::class, 'uploadWatchShopCard']);
+            Route::delete('/site-config/watch-shop/cards/{cardId}', [SiteConfigController::class, 'deleteWatchShopCard']);
 
             // Discounts
             Route::get('/discounts', [DiscountController::class, 'index']);

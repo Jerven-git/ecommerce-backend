@@ -57,9 +57,12 @@ class HomepageShowcaseApiTest extends TestCase
 
     public function test_admin_can_save_showcase_heading_label_and_subtitle(): void
     {
+        // Heading/label/subtitle round-trip independent of visibility — keep
+        // enabled=false so the test isn't entangled with the "visible needs a
+        // complete tile" rule.
         $payload = [
             'homepage_showcase' => [
-                'enabled' => true,
+                'enabled' => false,
                 'label' => 'Featured',
                 'heading' => 'Find your product',
                 'subtitle' => 'Hand-picked categories to start with.',
@@ -94,6 +97,7 @@ class HomepageShowcaseApiTest extends TestCase
         $payload = [
             'homepage_showcase' => [
                 'enabled' => true,
+                'heading' => 'Find your product',
                 'tiles' => [
                     ['title' => 'K-Beauty', 'cta_label' => 'SHOP NOW', 'category_id' => $category->id, 'featured_product_id' => $product->id],
                     ['title' => '', 'cta_label' => 'SHOP NOW', 'category_id' => null, 'featured_product_id' => null],
@@ -129,6 +133,68 @@ class HomepageShowcaseApiTest extends TestCase
             ->assertJsonValidationErrors('homepage_showcase.tiles');
     }
 
+    public function test_update_rejects_enabled_showcase_without_heading(): void
+    {
+        $category = Category::create(['name' => 'Skincare']);
+        $product = Product::create([
+            'name' => 'Serum', 'slug' => 'serum', 'description' => '-',
+            'price' => 1, 'stock' => 1, 'is_active' => true,
+        ]);
+
+        $this->asAdmin()
+            ->patchJson('/api/v1/site-config', [
+                'homepage_showcase' => [
+                    'enabled' => true,
+                    'heading' => '',
+                    'tiles' => [
+                        ['title' => '', 'cta_label' => 'GO', 'category_id' => $category->id, 'featured_product_id' => $product->id],
+                        ['title' => '', 'cta_label' => '', 'category_id' => null, 'featured_product_id' => null],
+                        ['title' => '', 'cta_label' => '', 'category_id' => null, 'featured_product_id' => null],
+                        ['title' => '', 'cta_label' => '', 'category_id' => null, 'featured_product_id' => null],
+                    ],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('homepage_showcase.heading');
+    }
+
+    public function test_update_rejects_enabled_showcase_with_no_complete_tile(): void
+    {
+        $this->asAdmin()
+            ->patchJson('/api/v1/site-config', [
+                'homepage_showcase' => [
+                    'enabled' => true,
+                    'heading' => 'Find your product',
+                    'tiles' => array_fill(0, 4, [
+                        'title' => '', 'cta_label' => '', 'category_id' => null, 'featured_product_id' => null,
+                    ]),
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('homepage_showcase.tiles');
+    }
+
+    public function test_update_rejects_partial_tile_with_title_but_no_category(): void
+    {
+        $this->asAdmin()
+            ->patchJson('/api/v1/site-config', [
+                'homepage_showcase' => [
+                    'enabled' => false,
+                    'tiles' => [
+                        ['title' => 'Half-finished', 'cta_label' => 'GO', 'category_id' => null, 'featured_product_id' => null],
+                        ['title' => '', 'cta_label' => '', 'category_id' => null, 'featured_product_id' => null],
+                        ['title' => '', 'cta_label' => '', 'category_id' => null, 'featured_product_id' => null],
+                        ['title' => '', 'cta_label' => '', 'category_id' => null, 'featured_product_id' => null],
+                    ],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors([
+                'homepage_showcase.tiles.0.category_id',
+                'homepage_showcase.tiles.0.featured_product_id',
+            ]);
+    }
+
     public function test_update_rejects_unknown_category_or_product_id(): void
     {
         $this->asAdmin()
@@ -154,10 +220,13 @@ class HomepageShowcaseApiTest extends TestCase
     {
         SiteConfig::create(['homepage_showcase' => ['video_status' => 'processing']]);
 
+        // enabled=false here so the test focuses on its real subject —
+        // video_status preservation across saves — without tripping the
+        // "visible section needs a heading + complete tile" rules.
         $this->asAdmin()
             ->patchJson('/api/v1/site-config', [
                 'homepage_showcase' => [
-                    'enabled' => true,
+                    'enabled' => false,
                     'tiles' => array_fill(0, 4, [
                         'title' => '', 'cta_label' => '', 'category_id' => null, 'featured_product_id' => null,
                     ]),
@@ -197,10 +266,10 @@ class HomepageShowcaseApiTest extends TestCase
     {
         Storage::fake('public');
 
-        // 101MB > 100MB ceiling
+        // 26MB > 25MB ceiling
         $this->asAdmin()
             ->postJson('/api/v1/site-config/media/showcase_video', [
-                'file' => File::fake()->create('huge.mp4', 101 * 1024, 'video/mp4'),
+                'file' => File::fake()->create('huge.mp4', 26 * 1024, 'video/mp4'),
             ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('file');

@@ -4,11 +4,15 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\OptimizeShowcaseVideoJob;
+use App\Jobs\OptimizeWatchShopMediaJob;
+use App\Models\Media;
 use App\Models\Product;
 use App\Models\SiteConfig;
 use App\Modules\Media\MediaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class SiteConfigController extends Controller
 {
@@ -59,6 +63,172 @@ class SiteConfigController extends Controller
             'video_status' => (string) ($stored['video_status'] ?? 'idle'),
             'tiles' => $resolvedTiles,
         ];
+    }
+
+    /**
+     * Build the Watch & Shop block returned to clients. Each stored card is
+     * resolved into the full shape the frontend needs: the card's media URL,
+     * its poster URL (looked up from a sibling `watch_shop_poster:{cardId}`
+     * Media row), its kind (video|image), and the linked product's name + slug
+     * + thumbnail. This keeps the homepage to a single API request.
+     *
+     * @return array{enabled: bool, label: string, heading: string, subtitle: string, cards: array<int, array{id: string, media_id: int|null, media_url: string|null, media_kind: string|null, poster_url: string|null, media_status: string, product: array{id: int, name: string, slug: string, image_url: string|null}|null}>}
+     */
+    private function resolveWatchShop(SiteConfig $config): array
+    {
+        $stored = is_array($config->homepage_watch_shop) ? $config->homepage_watch_shop : [];
+        $cards = array_values($stored['cards'] ?? []);
+
+        $mediaIds = array_filter(array_map(
+            fn ($c) => isset($c['media_id']) ? (int) $c['media_id'] : null,
+            $cards,
+        ));
+        $productIds = array_filter(array_map(
+            fn ($c) => isset($c['product_id']) ? (int) $c['product_id'] : null,
+            $cards,
+        ));
+
+        $mediaById = $mediaIds
+            ? Media::query()->whereIn('id', $mediaIds)->get()->keyBy('id')
+            : collect();
+        $productsById = $productIds
+            ? Product::query()->whereIn('id', $productIds)->get(['id', 'name', 'slug', 'image_url'])->keyBy('id')
+            : collect();
+
+        // Build a `card_id => poster_url` map in one query rather than per-card.
+        $cardIds = array_filter(array_map(fn ($c) => $c['id'] ?? null, $cards));
+        $posterCollections = array_map(fn ($id) => 'watch_shop_poster:'.$id, $cardIds);
+        $postersByCollection = $posterCollections
+            ? $config->media()->whereIn('collection', $posterCollections)->get()->keyBy('collection')
+            : collect();
+
+        $resolved = [];
+        foreach ($cards as $card) {
+            $cardId = (string) ($card['id'] ?? '');
+            $mediaId = isset($card['media_id']) ? (int) $card['media_id'] : null;
+            $media = $mediaId !== null ? $mediaById->get($mediaId) : null;
+
+            $kind = null;
+            if ($media) {
+                $kind = str_starts_with((string) $media->mime_type, 'video/') ? 'video' : 'image';
+            }
+
+            $productId = isset($card['product_id']) ? (int) $card['product_id'] : null;
+            $product = $productId !== null ? $productsById->get($productId) : null;
+
+            $resolved[] = [
+                'id' => $cardId,
+                'media_id' => $mediaId,
+                'media_url' => $media?->url,
+                'media_kind' => $kind,
+                'poster_url' => optional($postersByCollection->get('watch_shop_poster:'.$cardId))->url,
+                'media_status' => (string) ($media?->processing_status ?? 'ready'),
+                'product' => $product ? [
+                    'id' => (int) $product->id,
+                    'name' => $product->name,
+                    'slug' => $product->slug,
+                    'image_url' => $product->image_url,
+                ] : null,
+            ];
+        }
+
+        return [
+            'enabled' => (bool) ($stored['enabled'] ?? false),
+            'label' => (string) ($stored['label'] ?? ''),
+            'heading' => (string) ($stored['heading'] ?? ''),
+            'subtitle' => (string) ($stored['subtitle'] ?? ''),
+            'cards' => $resolved,
+        ];
+    }
+
+    /**
+     * Cross-field validation for the showcase block. Runs after Laravel's
+     * basic shape rules. Mirrors the admin form's save-time gate so the same
+     * rules apply whether the client is the dashboard or any future API caller.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function validateShowcaseRules(array $validated): void
+    {
+        if (! isset($validated['homepage_showcase'])) {
+            return;
+        }
+
+        $showcase = $validated['homepage_showcase'];
+        $enabled = (bool) ($showcase['enabled'] ?? false);
+        $tiles = $showcase['tiles'] ?? [];
+        $errors = [];
+
+        // Heading required when the section is visible.
+        if ($enabled && trim((string) ($showcase['heading'] ?? '')) === '') {
+            $errors['homepage_showcase.heading'] = ['A heading is required when the showcase is visible.'];
+        }
+
+        // Each tile is either fully empty or fully wired (category + product).
+        foreach ($tiles as $i => $tile) {
+            $hasTitle = ! empty($tile['title']);
+            $hasCategory = ! empty($tile['category_id']);
+            $hasProduct = ! empty($tile['featured_product_id']);
+            $touched = $hasTitle || $hasCategory || $hasProduct;
+
+            if ($touched && ! $hasCategory) {
+                $errors["homepage_showcase.tiles.$i.category_id"] = ['Tile must have a category.'];
+            }
+            if ($touched && ! $hasProduct) {
+                $errors["homepage_showcase.tiles.$i.featured_product_id"] = ['Tile must have a product.'];
+            }
+        }
+
+        // When visible, at least one tile has to actually render.
+        if ($enabled) {
+            $anyComplete = collect($tiles)->contains(
+                fn ($t) => ! empty($t['category_id']) && ! empty($t['featured_product_id'])
+            );
+            if (! $anyComplete) {
+                $errors['homepage_showcase.tiles'] = ['Showcase needs at least one tile with a category and product.'];
+            }
+        }
+
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    /**
+     * Cross-field validation for Watch & Shop. Same shape as the showcase
+     * helper above — heading required when visible, every card needs a
+     * product, and at least one card has to exist when visible.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function validateWatchShopRules(array $validated): void
+    {
+        if (! isset($validated['homepage_watch_shop'])) {
+            return;
+        }
+
+        $watchShop = $validated['homepage_watch_shop'];
+        $enabled = (bool) ($watchShop['enabled'] ?? false);
+        $cards = $watchShop['cards'] ?? [];
+        $errors = [];
+
+        if ($enabled && trim((string) ($watchShop['heading'] ?? '')) === '') {
+            $errors['homepage_watch_shop.heading'] = ['A heading is required when Watch & Shop is visible.'];
+        }
+
+        foreach ($cards as $i => $card) {
+            if (empty($card['product_id'])) {
+                $errors["homepage_watch_shop.cards.$i.product_id"] = ['Each card must be linked to a product.'];
+            }
+        }
+
+        if ($enabled && empty($cards)) {
+            $errors['homepage_watch_shop.cards'] = ['Watch & Shop needs at least one card when visible.'];
+        }
+
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     /**
@@ -124,6 +294,7 @@ class SiteConfigController extends Controller
                 'homepage_stats' => $config->homepage_stats,
                 'homepage_newsletter' => $config->homepage_newsletter,
                 'homepage_showcase' => $this->resolveShowcase($config),
+                'homepage_watch_shop' => $this->resolveWatchShop($config),
                 'about_highlights' => $config->about_highlights,
                 'shop_header' => $config->shop_header,
                 'shop_promo' => $config->shop_promo,
@@ -221,6 +392,15 @@ class SiteConfigController extends Controller
             'homepage_showcase.tiles.*.cta_label' => 'nullable|string|max:30',
             'homepage_showcase.tiles.*.category_id' => 'nullable|integer|exists:categories,id',
             'homepage_showcase.tiles.*.featured_product_id' => 'nullable|integer|exists:products,id',
+            'homepage_watch_shop' => 'nullable|array',
+            'homepage_watch_shop.enabled' => 'nullable|boolean',
+            'homepage_watch_shop.label' => 'nullable|string|max:100',
+            'homepage_watch_shop.heading' => 'nullable|string|max:150',
+            'homepage_watch_shop.subtitle' => 'nullable|string|max:255',
+            'homepage_watch_shop.cards' => 'nullable|array|max:12',
+            'homepage_watch_shop.cards.*.id' => 'required|string|max:64',
+            'homepage_watch_shop.cards.*.media_id' => 'nullable|integer|exists:media,id',
+            'homepage_watch_shop.cards.*.product_id' => 'nullable|integer|exists:products,id',
             'about_highlights' => 'nullable|array',
             'about_highlights.items' => 'nullable|array|max:12',
             'about_highlights.items.*.icon' => 'nullable|string|max:50',
@@ -292,6 +472,9 @@ class SiteConfigController extends Controller
             'modules_enabled.contact' => 'nullable|boolean',
         ]);
 
+        $this->validateShowcaseRules($validated);
+        $this->validateWatchShopRules($validated);
+
         $config = SiteConfig::first() ?? SiteConfig::create([]);
 
         // Merge theme: keep existing values, override only what's sent
@@ -312,10 +495,136 @@ class SiteConfigController extends Controller
             }
         }
 
+        // Watch & Shop: reconcile cards. Per-card `media_status` is owned by
+        // the optimize job, not the admin form, so merge it back. Cards that
+        // were removed from the incoming list have their media + poster purged
+        // so we don't leak orphan files.
+        if (isset($validated['homepage_watch_shop'])) {
+            $validated['homepage_watch_shop'] = $this->reconcileWatchShop(
+                $config,
+                $validated['homepage_watch_shop'],
+            );
+        }
+
         $config->update($validated);
 
         // return fresh data including urls
         return $this->show();
+    }
+
+    /**
+     * Merge the admin-supplied Watch & Shop block with the existing one:
+     * delete media (and per-card poster) for cards that were removed. Status is
+     * tracked on each card's Media row directly, so it doesn't need merging.
+     *
+     * @param  array<string, mixed>  $incoming
+     * @return array<string, mixed>
+     */
+    private function reconcileWatchShop(SiteConfig $config, array $incoming): array
+    {
+        $existing = is_array($config->homepage_watch_shop) ? $config->homepage_watch_shop : [];
+        $existingCards = collect($existing['cards'] ?? [])->keyBy('id');
+
+        $incomingIds = collect($incoming['cards'] ?? [])->pluck('id')->filter()->all();
+
+        // Purge media + posters for cards that were removed.
+        $removedIds = $existingCards->keys()->diff($incomingIds);
+        foreach ($removedIds as $removedId) {
+            $prior = $existingCards->get($removedId);
+            $this->deleteWatchShopCardAssets($config, (string) $removedId, isset($prior['media_id']) ? (int) $prior['media_id'] : null);
+        }
+
+        return $incoming;
+    }
+
+    /**
+     * Upload a video/image/gif for a single Watch & Shop card. The card_id is
+     * generated server-side so the optimize job can target the right card and
+     * the poster collection name is unique per card. The card itself isn't yet
+     * persisted in `homepage_watch_shop` — the admin still has to assign a
+     * product and save — but the Media row exists immediately so the form can
+     * preview the upload while the optimize job runs in the background.
+     */
+    public function uploadWatchShopCard(Request $request)
+    {
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'mimes:mp4,webm,mov,quicktime,gif,jpeg,png,webp', 'max:25600'], // 25MB
+        ]);
+
+        $config = SiteConfig::first() ?? SiteConfig::create([]);
+        $cardId = (string) Str::uuid();
+
+        $media = $this->mediaService->addToCollection(
+            $validated['file'],
+            $config,
+            'watch_shop_card',
+            'site-config',
+        );
+
+        $mime = strtolower((string) $media->mime_type);
+        $isVideoLike = str_starts_with($mime, 'video/') || $mime === 'image/gif';
+
+        // Stamp status on the Media row up front so any /site-config read
+        // between the dispatch and the job picking up the work shows the
+        // spinner — not an incorrect "ready". The job will flip this to
+        // 'ready' or 'failed' on completion.
+        $media->update(['processing_status' => $isVideoLike ? 'processing' : 'ready']);
+
+        if ($isVideoLike) {
+            OptimizeWatchShopMediaJob::dispatch($media->id, $cardId);
+        }
+
+        return response()->json([
+            'card_id' => $cardId,
+            'media_id' => $media->id,
+            'media_url' => $media->url,
+            'media_kind' => str_starts_with($mime, 'video/') ? 'video' : 'image',
+            'media_status' => $isVideoLike ? 'processing' : 'ready',
+        ]);
+    }
+
+    /**
+     * Hard-delete a Watch & Shop card's media + poster. Used when the admin
+     * removes a card from the list before saving the wider site_config.
+     */
+    public function deleteWatchShopCard(string $cardId)
+    {
+        $config = SiteConfig::first();
+        if (! $config) {
+            return response()->noContent();
+        }
+
+        $cards = collect(($config->homepage_watch_shop['cards'] ?? []));
+        $prior = $cards->firstWhere('id', $cardId);
+        $mediaId = $prior !== null && isset($prior['media_id']) ? (int) $prior['media_id'] : null;
+
+        $this->deleteWatchShopCardAssets($config, $cardId, $mediaId);
+
+        // Drop the card from the JSON, too — keeps everything consistent if
+        // the admin doesn't subsequently save the form.
+        $remaining = $cards->reject(fn ($c) => ($c['id'] ?? null) === $cardId)->values()->all();
+        $watchShop = $config->homepage_watch_shop ?? [];
+        $watchShop['cards'] = $remaining;
+        $config->update(['homepage_watch_shop' => $watchShop]);
+
+        return response()->noContent();
+    }
+
+    private function deleteWatchShopCardAssets(SiteConfig $config, string $cardId, ?int $mediaId): void
+    {
+        if ($mediaId !== null) {
+            $media = Media::find($mediaId);
+            if ($media) {
+                Storage::disk('public')->delete($media->path);
+                $media->delete();
+            }
+        }
+
+        $poster = $config->media()->where('collection', 'watch_shop_poster:'.$cardId)->first();
+        if ($poster) {
+            Storage::disk('public')->delete($poster->path);
+            $poster->delete();
+        }
     }
 
     public function uploadMedia(Request $request, string $collection)
@@ -325,7 +634,7 @@ class SiteConfigController extends Controller
 
         $max = match (true) {
             in_array($collection, ['logo', 'favicon', 'cart_icon'], true) => 2048,    // 2MB
-            $collection === 'showcase_video' => 102400,                                // 100MB
+            $collection === 'showcase_video' => 25600,                                 // 25MB
             default => 10120,                                                          // 10MB
         };
 
