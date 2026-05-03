@@ -36,6 +36,29 @@ class ProductApiTest extends TestCase
             ->assertJsonCount(3, 'data');
     }
 
+    public function test_index_filters_by_ids(): void
+    {
+        $products = Product::factory()->count(4)->create();
+        $wanted = $products->take(2);
+        $idsParam = $wanted->pluck('id')->implode(',');
+
+        $response = $this->getJson("/api/v1/products?ids={$idsParam}")
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $returnedIds = collect($response->json('data'))->pluck('id')->sort()->values()->all();
+        $this->assertSame($wanted->pluck('id')->sort()->values()->all(), $returnedIds);
+    }
+
+    public function test_index_with_empty_ids_returns_no_products(): void
+    {
+        Product::factory()->count(3)->create();
+
+        $this->getJson('/api/v1/products?ids=')
+            ->assertOk()
+            ->assertExactJson(['data' => []]);
+    }
+
     public function test_can_show_single_product(): void
     {
         $product = Product::factory()->create(['name' => 'Widget']);

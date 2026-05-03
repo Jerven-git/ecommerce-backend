@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\OptimizeShowcaseVideoJob;
 use App\Jobs\OptimizeWatchShopMediaJob;
 use App\Models\Media;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\SiteConfig;
 use App\Modules\Media\MediaService;
@@ -142,6 +143,114 @@ class SiteConfigController extends Controller
     }
 
     /**
+     * Window over which we count product sales when computing "best sellers".
+     */
+    private const BEST_SELLERS_WINDOW_DAYS = 90;
+
+    /**
+     * Minimum number of distinct order rows needed for the auto query to be
+     * considered meaningful. Below this, we fall back to the admin's curated
+     * list — a single fluke order shouldn't decide what's promoted on the
+     * homepage.
+     */
+    private const BEST_SELLERS_MIN_ORDERS = 3;
+
+    /**
+     * How many products the section will show at most.
+     */
+    private const BEST_SELLERS_MAX = 8;
+
+    /**
+     * Order statuses that count toward best-seller rankings. Cancelled and
+     * expired backorders represent products that didn't actually ship/sell.
+     */
+    private const BEST_SELLERS_COUNTING_STATUSES = [
+        'pending', 'processing', 'shipped', 'delivered',
+        'backorder_awaiting_stock', 'backorder_notified',
+    ];
+
+    /**
+     * Build the Best Sellers block. Auto-queries the top N products by units
+     * sold over the last 90 days; if the signal is too weak (fewer than
+     * BEST_SELLERS_MIN_ORDERS distinct orders) the admin's curated fallback
+     * list is used instead. Returns the resolved Product rows so the homepage
+     * can render in one request.
+     *
+     * @return array{enabled: bool, label: string, heading: string, subtitle: string, source: string, products: array<int, array{id: int, name: string, slug: string, image_url: string|null, price: string, stock: int, allow_backorder: bool, backorder_charge_policy: string|null, can_backorder: bool, is_active: bool}>}
+     */
+    private function resolveBestSellers(SiteConfig $config): array
+    {
+        $stored = is_array($config->homepage_best_sellers) ? $config->homepage_best_sellers : [];
+
+        $autoIds = OrderItem::query()
+            ->select('product_id')
+            ->selectRaw('SUM(quantity) as units_sold')
+            ->selectRaw('COUNT(DISTINCT order_id) as order_count')
+            ->whereNotNull('product_id')
+            ->whereHas('order', function ($q) {
+                $q->whereIn('status', self::BEST_SELLERS_COUNTING_STATUSES)
+                    ->where('created_at', '>=', now()->subDays(self::BEST_SELLERS_WINDOW_DAYS));
+            })
+            ->groupBy('product_id')
+            ->orderByDesc('units_sold')
+            ->limit(self::BEST_SELLERS_MAX)
+            ->get();
+
+        $hasSignal = $autoIds->sum('order_count') >= self::BEST_SELLERS_MIN_ORDERS;
+        $source = $hasSignal ? 'auto' : 'fallback';
+
+        $ids = $hasSignal
+            ? $autoIds->pluck('product_id')->all()
+            : array_values(array_filter(array_map(
+                fn ($id) => (int) $id,
+                $stored['fallback_product_ids'] ?? [],
+            )));
+
+        $products = empty($ids)
+            ? collect()
+            : Product::query()
+                ->whereIn('id', $ids)
+                ->where('is_active', true)
+                ->get();
+
+        // Re-order to match the ranking we computed (DB whereIn doesn't preserve
+        // order). Auto: highest units first; fallback: admin's chosen order.
+        $byId = $products->keyBy('id');
+        $ordered = [];
+        foreach ($ids as $id) {
+            if ($product = $byId->get($id)) {
+                $ordered[] = $product;
+            }
+        }
+
+        return [
+            'enabled' => (bool) ($stored['enabled'] ?? false),
+            'label' => (string) ($stored['label'] ?? ''),
+            'heading' => (string) ($stored['heading'] ?? ''),
+            'subtitle' => (string) ($stored['subtitle'] ?? ''),
+            'source' => $source,
+            // Echo the admin's stored fallback list so the settings form can
+            // round-trip its selection. Public consumers ignore this field.
+            'fallback_product_ids' => array_values(array_filter(array_map(
+                fn ($id) => (int) $id,
+                $stored['fallback_product_ids'] ?? [],
+            ))),
+            'products' => array_map(fn ($p) => [
+                'id' => (int) $p->id,
+                'name' => $p->name,
+                'slug' => $p->slug,
+                'image_url' => $p->image_url,
+                'price' => (string) $p->price,
+                'stock' => (int) $p->stock,
+                'allow_backorder' => (bool) $p->allow_backorder,
+                'backorder_charge_policy' => $p->backorder_charge_policy,
+                'can_backorder' => (bool) $p->allow_backorder,
+                'is_active' => (bool) $p->is_active,
+            ], $ordered),
+        ];
+    }
+
+    /**
      * Cross-field validation for the showcase block. Runs after Laravel's
      * basic shape rules. Mirrors the admin form's save-time gate so the same
      * rules apply whether the client is the dashboard or any future API caller.
@@ -232,6 +341,35 @@ class SiteConfigController extends Controller
     }
 
     /**
+     * Cross-field validation for the Best Sellers block. The fallback list is
+     * what the section displays when there isn't enough order history yet, so
+     * if the section is enabled AND the auto query has no signal, an empty
+     * fallback would render an empty section. We can't know "is there signal?"
+     * from form state alone — but we can require a heading and bound the list
+     * size (the front-end and back-end both cap to BEST_SELLERS_MAX).
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function validateBestSellersRules(array $validated): void
+    {
+        if (! isset($validated['homepage_best_sellers'])) {
+            return;
+        }
+
+        $bestSellers = $validated['homepage_best_sellers'];
+        $enabled = (bool) ($bestSellers['enabled'] ?? false);
+        $errors = [];
+
+        if ($enabled && trim((string) ($bestSellers['heading'] ?? '')) === '') {
+            $errors['homepage_best_sellers.heading'] = ['A heading is required when Best Sellers is visible.'];
+        }
+
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    /**
      * Merge stored module flags over the default (all enabled). Keeps the API
      * response shape stable even if the stored JSON is null or missing keys.
      */
@@ -295,6 +433,7 @@ class SiteConfigController extends Controller
                 'homepage_newsletter' => $config->homepage_newsletter,
                 'homepage_showcase' => $this->resolveShowcase($config),
                 'homepage_watch_shop' => $this->resolveWatchShop($config),
+                'homepage_best_sellers' => $this->resolveBestSellers($config),
                 'about_highlights' => $config->about_highlights,
                 'shop_header' => $config->shop_header,
                 'shop_promo' => $config->shop_promo,
@@ -401,6 +540,13 @@ class SiteConfigController extends Controller
             'homepage_watch_shop.cards.*.id' => 'required|string|max:64',
             'homepage_watch_shop.cards.*.media_id' => 'nullable|integer|exists:media,id',
             'homepage_watch_shop.cards.*.product_id' => 'nullable|integer|exists:products,id',
+            'homepage_best_sellers' => 'nullable|array',
+            'homepage_best_sellers.enabled' => 'nullable|boolean',
+            'homepage_best_sellers.label' => 'nullable|string|max:100',
+            'homepage_best_sellers.heading' => 'nullable|string|max:150',
+            'homepage_best_sellers.subtitle' => 'nullable|string|max:255',
+            'homepage_best_sellers.fallback_product_ids' => 'nullable|array|max:'.self::BEST_SELLERS_MAX,
+            'homepage_best_sellers.fallback_product_ids.*' => 'integer|exists:products,id',
             'about_highlights' => 'nullable|array',
             'about_highlights.items' => 'nullable|array|max:12',
             'about_highlights.items.*.icon' => 'nullable|string|max:50',
@@ -474,6 +620,7 @@ class SiteConfigController extends Controller
 
         $this->validateShowcaseRules($validated);
         $this->validateWatchShopRules($validated);
+        $this->validateBestSellersRules($validated);
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
 
