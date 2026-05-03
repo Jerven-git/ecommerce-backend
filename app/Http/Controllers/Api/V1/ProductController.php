@@ -5,18 +5,36 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Product;
-use Illuminate\Http\Request;
 use App\Modules\Media\MediaService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
     public function __construct(private MediaService $mediaService) {}
-    
+
     public function index(Request $request)
     {
         $query = Product::with('categories');
+
+        // Filter by a fixed list of ids — used by the guest favorites page,
+        // which holds product ids in localStorage and asks the API to hydrate
+        // only those rows. Cap at 100 to avoid a runaway query if a client
+        // sends an unbounded list.
+        if ($request->has('ids')) {
+            $ids = collect(explode(',', (string) $request->input('ids')))
+                ->map(fn ($id) => (int) trim($id))
+                ->filter(fn ($id) => $id > 0)
+                ->take(100)
+                ->values()
+                ->all();
+
+            if (empty($ids)) {
+                return response()->json(['data' => []]);
+            }
+
+            $query->whereIn('id', $ids);
+        }
 
         // Filter by active status
         if ($request->has('is_active')) {
@@ -33,8 +51,8 @@ class ProductController extends Controller
             $categoryNames = Category::whereIn('id', $allIds)->pluck('name')->toArray();
             $query->where(function ($q) use ($allIds, $categoryNames) {
                 $q->whereHas('categories', fn ($sub) => $sub->whereIn('categories.id', $allIds))
-                  ->orWhereIn('category_id', $allIds)
-                  ->orWhereIn('category', $categoryNames);
+                    ->orWhereIn('category_id', $allIds)
+                    ->orWhereIn('category', $categoryNames);
             });
         } elseif ($request->has('category')) {
             $query->where('category', $request->category);
@@ -42,7 +60,7 @@ class ProductController extends Controller
 
         // Search by name
         if ($request->has('search')) {
-            $query->where('name', 'LIKE', '%' . $request->search . '%');
+            $query->where('name', 'LIKE', '%'.$request->search.'%');
         }
 
         // Sorting
@@ -53,16 +71,19 @@ class ProductController extends Controller
         // Pagination or limit
         if ($request->has('limit')) {
             $products = $query->limit($request->limit)->get();
+
             return response()->json(['data' => $products]);
         }
 
         $products = $query->paginate($request->input('per_page', 15));
+
         return response()->json($products);
     }
 
     public function show($slug)
     {
         $product = Product::with(['media', 'categories'])->where('slug', $slug)->firstOrFail();
+
         return response()->json(['data' => $product]);
     }
 
@@ -82,12 +103,12 @@ class ProductController extends Controller
         }
 
         // Set image_url from first gallery image if not already set
-        if (!$product->image_url && count($uploaded)) {
+        if (! $product->image_url && count($uploaded)) {
             $product->update(['image_url' => Storage::disk('public')->url($uploaded[0]->path)]);
         }
 
         return response()->json([
-            'message' => count($uploaded) . ' image(s) uploaded',
+            'message' => count($uploaded).' image(s) uploaded',
             'data' => $product->fresh()->load('media'),
         ]);
     }
@@ -139,7 +160,7 @@ class ProductController extends Controller
         $validated['slug'] = Product::generateUniqueSlug($validated['name']);
         $product = Product::create($validated);
 
-        if (!empty($categoryIds)) {
+        if (! empty($categoryIds)) {
             $product->categories()->sync($categoryIds);
         }
 
@@ -150,7 +171,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Product created successfully',
-            'data' => $product->fresh()->load('categories')
+            'data' => $product->fresh()->load('categories'),
         ], 201);
     }
 
@@ -199,7 +220,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Product updated successfully',
-            'data' => $product->fresh()->load('categories')
+            'data' => $product->fresh()->load('categories'),
         ]);
     }
 
@@ -209,7 +230,7 @@ class ProductController extends Controller
         $product->delete();
 
         return response()->json([
-            'message' => 'Product deleted successfully'
+            'message' => 'Product deleted successfully',
         ]);
     }
 }
