@@ -19,6 +19,7 @@ class Service extends Model
         'description',
         'body',
         'cover_image_url',
+        'cover_alt_text',
         'category_id',
         'cta_label',
         'cta_link',

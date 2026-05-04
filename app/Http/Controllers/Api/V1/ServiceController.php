@@ -206,6 +206,7 @@ class ServiceController extends Controller
             'body' => 'nullable|string',
             'cover_image' => 'nullable|image|max:5120',
             'cover_image_url' => 'nullable|string|max:500',
+            'cover_alt_text' => 'nullable|string|max:255',
             'category_id' => 'nullable|exists:service_categories,id',
             'cta_label' => 'nullable|string|max:100',
             'cta_link' => 'nullable|string|max:500',

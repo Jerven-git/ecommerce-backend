@@ -18,6 +18,7 @@ class Post extends Model
         'excerpt',
         'body',
         'cover_image_url',
+        'cover_alt_text',
         'author_name',
         'category_id',
         'is_published',

@@ -177,6 +177,7 @@ class PostController extends Controller
             'body' => 'nullable|string',
             'cover_image' => 'nullable|image|max:5120',
             'cover_image_url' => 'nullable|string|max:500',
+            'cover_alt_text' => 'nullable|string|max:255',
             'author_name' => 'nullable|string|max:255',
             'category_id' => 'nullable|exists:post_categories,id',
             'is_published' => 'nullable|boolean',
