@@ -71,6 +71,7 @@ class SeoApiTest extends TestCase
             'seo_description' => 'A short snippet that search engines will display.',
             'og_image_url' => 'https://example.test/og/post.jpg',
             'noindex' => true,
+            'cover_alt_text' => 'Open notebook beside a vintage watch movement',
         ])->assertCreated();
 
         $id = $response->json('data.id');
@@ -79,6 +80,7 @@ class SeoApiTest extends TestCase
         $this->assertSame('Custom Post Title for SEO', $post->seo_title);
         $this->assertSame('https://example.test/og/post.jpg', $post->og_image_url);
         $this->assertTrue($post->noindex);
+        $this->assertSame('Open notebook beside a vintage watch movement', $post->cover_alt_text);
     }
 
     public function test_service_seo_fields_round_trip(): void
@@ -89,6 +91,7 @@ class SeoApiTest extends TestCase
             'seo_description' => 'Professional watch servicing and repair.',
             'og_image_url' => 'https://example.test/og/service.jpg',
             'noindex' => false,
+            'cover_alt_text' => 'Watchmaker repairing a movement under a loupe',
         ])->assertCreated();
 
         $id = $response->json('data.id');
@@ -97,6 +100,7 @@ class SeoApiTest extends TestCase
         $this->assertSame('Expert Watch Repair Services', $service->seo_title);
         $this->assertSame('https://example.test/og/service.jpg', $service->og_image_url);
         $this->assertFalse($service->noindex);
+        $this->assertSame('Watchmaker repairing a movement under a loupe', $service->cover_alt_text);
     }
 
     public function test_site_config_seo_defaults_and_pages_seo_round_trip(): void

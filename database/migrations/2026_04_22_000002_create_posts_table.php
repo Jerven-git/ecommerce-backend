@@ -15,6 +15,7 @@ return new class extends Migration
             $table->string('excerpt', 500)->nullable();
             $table->longText('body')->nullable();
             $table->string('cover_image_url', 500)->nullable();
+            $table->string('cover_alt_text')->nullable();
             $table->string('author_name')->nullable();
             $table->foreignId('category_id')
                 ->nullable()
