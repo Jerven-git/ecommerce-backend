@@ -64,6 +64,8 @@ return new class extends Migration
             $table->string('default_seo_description', 500)->nullable();
             $table->string('default_og_image_url', 500)->nullable();
             $table->json('pages_seo')->nullable();
+            $table->string('canonical_base_url', 500)->nullable();
+            $table->string('logo_alt_text')->nullable();
             $table->timestamps();
         });
     }

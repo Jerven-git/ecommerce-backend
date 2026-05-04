@@ -74,6 +74,8 @@ class SiteConfig extends Model
         'default_seo_description',
         'default_og_image_url',
         'pages_seo',
+        'canonical_base_url',
+        'logo_alt_text',
     ];
 
     /**

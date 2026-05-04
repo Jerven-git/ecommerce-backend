@@ -138,6 +138,52 @@ class SeoApiTest extends TestCase
             ->assertJsonValidationErrors('default_og_image_url');
     }
 
+    public function test_site_config_canonical_and_logo_alt_round_trip(): void
+    {
+        $this->asAdmin()->patchJson('/api/v1/site-config', [
+            'canonical_base_url' => 'https://shopsystemunited.com',
+            'logo_alt_text' => 'Shop System United',
+        ])->assertOk();
+
+        $response = $this->getJson('/api/v1/site-config')->assertOk();
+
+        $response->assertJsonPath('data.canonical_base_url', 'https://shopsystemunited.com');
+        $response->assertJsonPath('data.logo_alt_text', 'Shop System United');
+    }
+
+    public function test_site_config_pages_seo_cover_alt_text_round_trip_for_all_pages(): void
+    {
+        $alts = [
+            'home' => 'Vintage chronograph watch on dark leather',
+            'about' => 'Storefront and team at the workshop',
+            'contact' => 'Studio entrance with neon sign',
+            'blog' => 'Open notebook beside disassembled watch movement',
+            'services' => 'Watchmaker repairing a movement under a loupe',
+        ];
+
+        $this->asAdmin()->patchJson('/api/v1/site-config', [
+            'pages_seo' => array_map(
+                fn (string $alt) => ['cover_alt_text' => $alt],
+                $alts,
+            ),
+        ])->assertOk();
+
+        $response = $this->getJson('/api/v1/site-config')->assertOk();
+
+        foreach ($alts as $slug => $alt) {
+            $response->assertJsonPath("data.pages_seo.$slug.cover_alt_text", $alt);
+        }
+    }
+
+    public function test_site_config_rejects_invalid_canonical_base_url(): void
+    {
+        $this->asAdmin()->patchJson('/api/v1/site-config', [
+            'canonical_base_url' => 'not-a-url',
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('canonical_base_url');
+    }
+
     public function test_media_alt_text_can_be_updated(): void
     {
         $product = Product::create([
