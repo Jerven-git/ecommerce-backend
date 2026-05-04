@@ -3,14 +3,14 @@
 namespace App\Models;
 
 use App\Modules\Realtime\Traits\BroadcastsChanges;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Str;
 
 class Product extends Model
 {
-    use HasFactory, BroadcastsChanges;
+    use BroadcastsChanges, HasFactory;
 
     public static function generateUniqueSlug(string $name, ?int $excludeId = null): string
     {
@@ -46,6 +46,10 @@ class Product extends Model
         'category',
         'category_id',
         'is_active',
+        'seo_title',
+        'seo_description',
+        'og_image_url',
+        'noindex',
     ];
 
     protected function name(): Attribute
@@ -71,6 +75,7 @@ class Product extends Model
         'height_cm' => 'decimal:2',
         'is_active' => 'boolean',
         'allow_backorder' => 'boolean',
+        'noindex' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -114,6 +119,7 @@ class Product extends Model
     {
         return $query->where('stock', '>', 0);
     }
+
     public function media()
     {
         return $this->morphMany(Media::class, 'imageable');
@@ -132,6 +138,7 @@ class Product extends Model
     public function canBackorder(): bool
     {
         $globalEnabled = SiteConfig::first()?->backorder_enabled ?? false;
+
         return $globalEnabled && $this->allow_backorder;
     }
 }

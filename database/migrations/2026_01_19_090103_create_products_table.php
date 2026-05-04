@@ -16,6 +16,10 @@ return new class extends Migration
             $table->string('name');
             $table->string('slug')->unique();
             $table->text('description')->nullable();
+            $table->string('seo_title')->nullable();
+            $table->string('seo_description', 500)->nullable();
+            $table->string('og_image_url', 500)->nullable();
+            $table->boolean('noindex')->default(false);
             $table->decimal('price', 10, 2)->default(0);
             $table->text('image_url')->nullable();
             $table->integer('stock')->default(0);

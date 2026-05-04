@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\CategoryController;
 use App\Http\Controllers\Api\V1\ContactController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DiscountController;
+use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\PaymentController;
 use App\Http\Controllers\Api\V1\PaymentSettingsController;
@@ -203,6 +204,9 @@ Route::prefix('v1')->group(function () {
             Route::patch('/service-categories/{id}', [ServiceCategoryController::class, 'update']);
             Route::delete('/service-categories/{id}', [ServiceCategoryController::class, 'destroy']);
             Route::delete('/service-categories/{id}/image', [ServiceCategoryController::class, 'deleteImage']);
+
+            // Media (alt_text edits)
+            Route::patch('/media/{id}', [MediaController::class, 'update']);
 
             // Site config
             Route::patch('/site-config', [SiteConfigController::class, 'update']);

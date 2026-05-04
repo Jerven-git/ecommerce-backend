@@ -70,6 +70,10 @@ class SiteConfig extends Model
         'services_overlay_color',
         'services_overlay_opacity',
         'modules_enabled',
+        'default_seo_title',
+        'default_seo_description',
+        'default_og_image_url',
+        'pages_seo',
     ];
 
     /**
@@ -173,6 +177,7 @@ class SiteConfig extends Model
         'services_page' => 'array',
         'services_overlay_opacity' => 'integer',
         'modules_enabled' => 'array',
+        'pages_seo' => 'array',
     ];
 
     public function media()

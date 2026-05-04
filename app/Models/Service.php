@@ -3,8 +3,8 @@
 namespace App\Models;
 
 use App\Modules\Realtime\Traits\BroadcastsChanges;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
@@ -27,12 +27,15 @@ class Service extends Model
         'published_at',
         'seo_title',
         'seo_description',
+        'og_image_url',
+        'noindex',
         'sort_order',
     ];
 
     protected $casts = [
         'is_published' => 'boolean',
         'is_featured' => 'boolean',
+        'noindex' => 'boolean',
         'published_at' => 'datetime',
         'sort_order' => 'integer',
         'created_at' => 'datetime',

@@ -60,6 +60,10 @@ return new class extends Migration
             $table->string('services_overlay_color', 7)->default('#000000');
             $table->integer('services_overlay_opacity')->default(40);
             $table->json('modules_enabled')->nullable();
+            $table->string('default_seo_title')->nullable();
+            $table->string('default_seo_description', 500)->nullable();
+            $table->string('default_og_image_url', 500)->nullable();
+            $table->json('pages_seo')->nullable();
             $table->timestamps();
         });
     }

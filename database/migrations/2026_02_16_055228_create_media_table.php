@@ -23,6 +23,8 @@ return new class extends Migration
             $table->string('format');
             $table->string('mime_type');
             $table->integer('size');
+            $table->string('processing_status', 20)->nullable();
+            $table->string('alt_text')->nullable();
             $table->timestamps();
 
             $table->index(['imageable_type', 'imageable_id', 'collection']);
