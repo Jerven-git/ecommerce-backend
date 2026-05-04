@@ -449,6 +449,8 @@ class SiteConfigController extends Controller
                 'default_seo_description' => $config->default_seo_description,
                 'default_og_image_url' => $config->default_og_image_url,
                 'pages_seo' => $config->pages_seo ?? [],
+                'canonical_base_url' => $config->canonical_base_url,
+                'logo_alt_text' => $config->logo_alt_text,
                 'updated_at' => $config->updated_at,
 
                 // urls come from media
@@ -628,6 +630,9 @@ class SiteConfigController extends Controller
             'pages_seo.*.seo_description' => 'nullable|string|max:500',
             'pages_seo.*.og_image_url' => 'nullable|url|max:500',
             'pages_seo.*.noindex' => 'nullable|boolean',
+            'pages_seo.*.cover_alt_text' => 'nullable|string|max:255',
+            'canonical_base_url' => 'nullable|url|max:500',
+            'logo_alt_text' => 'nullable|string|max:255',
         ]);
 
         $this->validateShowcaseRules($validated);
