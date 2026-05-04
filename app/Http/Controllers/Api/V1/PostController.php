@@ -34,7 +34,7 @@ class PostController extends Controller
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('title', 'LIKE', "%{$s}%")
-                  ->orWhere('excerpt', 'LIKE', "%{$s}%");
+                    ->orWhere('excerpt', 'LIKE', "%{$s}%");
             });
         }
 
@@ -50,6 +50,7 @@ class PostController extends Controller
         }
 
         $posts = $query->paginate($request->input('per_page', 12));
+
         return response()->json($posts);
     }
 
@@ -93,7 +94,7 @@ class PostController extends Controller
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('title', 'LIKE', "%{$s}%")
-                  ->orWhere('excerpt', 'LIKE', "%{$s}%");
+                    ->orWhere('excerpt', 'LIKE', "%{$s}%");
             });
         }
 
@@ -102,12 +103,14 @@ class PostController extends Controller
         $query->orderBy($sort, $order);
 
         $posts = $query->paginate($request->input('per_page', 15));
+
         return response()->json($posts);
     }
 
     public function adminShow(int $id): JsonResponse
     {
         $post = Post::with(['category', 'media'])->findOrFail($id);
+
         return response()->json(['data' => $post]);
     }
 
@@ -181,6 +184,8 @@ class PostController extends Controller
             'published_at' => 'nullable|date',
             'seo_title' => 'nullable|string|max:255',
             'seo_description' => 'nullable|string|max:500',
+            'og_image_url' => 'nullable|url|max:500',
+            'noindex' => 'nullable|boolean',
         ]);
     }
 
@@ -195,7 +200,7 @@ class PostController extends Controller
             ? (bool) $validated['is_published']
             : (bool) ($existing->is_published ?? false);
 
-        if ($willPublish && empty($validated['published_at']) && !($existing && $existing->published_at)) {
+        if ($willPublish && empty($validated['published_at']) && ! ($existing && $existing->published_at)) {
             $validated['published_at'] = now();
         }
     }

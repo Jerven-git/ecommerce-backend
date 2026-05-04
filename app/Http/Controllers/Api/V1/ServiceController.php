@@ -34,7 +34,7 @@ class ServiceController extends Controller
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('title', 'LIKE', "%{$s}%")
-                  ->orWhere('description', 'LIKE', "%{$s}%");
+                    ->orWhere('description', 'LIKE', "%{$s}%");
             });
         }
 
@@ -57,6 +57,7 @@ class ServiceController extends Controller
         }
 
         $services = $query->paginate($request->input('per_page', 12));
+
         return response()->json($services);
     }
 
@@ -101,7 +102,7 @@ class ServiceController extends Controller
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('title', 'LIKE', "%{$s}%")
-                  ->orWhere('description', 'LIKE', "%{$s}%");
+                    ->orWhere('description', 'LIKE', "%{$s}%");
             });
         }
 
@@ -110,12 +111,14 @@ class ServiceController extends Controller
         $query->orderBy($sort, $order);
 
         $services = $query->paginate($request->input('per_page', 15));
+
         return response()->json($services);
     }
 
     public function adminShow(int $id): JsonResponse
     {
         $service = Service::with(['category', 'media'])->findOrFail($id);
+
         return response()->json(['data' => $service]);
     }
 
@@ -211,6 +214,8 @@ class ServiceController extends Controller
             'published_at' => 'nullable|date',
             'seo_title' => 'nullable|string|max:255',
             'seo_description' => 'nullable|string|max:500',
+            'og_image_url' => 'nullable|url|max:500',
+            'noindex' => 'nullable|boolean',
             'sort_order' => 'nullable|integer|min:0',
         ]);
     }
@@ -226,7 +231,7 @@ class ServiceController extends Controller
             ? (bool) $validated['is_published']
             : (bool) ($existing->is_published ?? false);
 
-        if ($willPublish && empty($validated['published_at']) && !($existing && $existing->published_at)) {
+        if ($willPublish && empty($validated['published_at']) && ! ($existing && $existing->published_at)) {
             $validated['published_at'] = now();
         }
     }

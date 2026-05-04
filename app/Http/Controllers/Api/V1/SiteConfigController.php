@@ -445,6 +445,10 @@ class SiteConfigController extends Controller
                 'services_overlay_color' => $config->services_overlay_color,
                 'services_overlay_opacity' => (int) $config->services_overlay_opacity,
                 'modules_enabled' => $this->resolveModulesEnabled($config->modules_enabled),
+                'default_seo_title' => $config->default_seo_title,
+                'default_seo_description' => $config->default_seo_description,
+                'default_og_image_url' => $config->default_og_image_url,
+                'pages_seo' => $config->pages_seo ?? [],
                 'updated_at' => $config->updated_at,
 
                 // urls come from media
@@ -616,6 +620,14 @@ class SiteConfigController extends Controller
             'modules_enabled.services' => 'nullable|boolean',
             'modules_enabled.about' => 'nullable|boolean',
             'modules_enabled.contact' => 'nullable|boolean',
+            'default_seo_title' => 'nullable|string|max:255',
+            'default_seo_description' => 'nullable|string|max:500',
+            'default_og_image_url' => 'nullable|url|max:500',
+            'pages_seo' => 'nullable|array',
+            'pages_seo.*.seo_title' => 'nullable|string|max:255',
+            'pages_seo.*.seo_description' => 'nullable|string|max:500',
+            'pages_seo.*.og_image_url' => 'nullable|url|max:500',
+            'pages_seo.*.noindex' => 'nullable|boolean',
         ]);
 
         $this->validateShowcaseRules($validated);

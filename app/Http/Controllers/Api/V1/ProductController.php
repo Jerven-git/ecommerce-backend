@@ -153,6 +153,10 @@ class ProductController extends Controller
             'is_active' => 'nullable|boolean',
             'allow_backorder' => 'nullable|boolean',
             'backorder_charge_policy' => 'nullable|in:charged_now,charged_later',
+            'seo_title' => 'nullable|string|max:255',
+            'seo_description' => 'nullable|string|max:500',
+            'og_image_url' => 'nullable|url|max:500',
+            'noindex' => 'nullable|boolean',
         ]);
 
         $categoryIds = $validated['category_ids'] ?? [];
@@ -200,6 +204,10 @@ class ProductController extends Controller
             'is_active' => 'nullable|boolean',
             'allow_backorder' => 'nullable|boolean',
             'backorder_charge_policy' => 'nullable|in:charged_now,charged_later',
+            'seo_title' => 'nullable|string|max:255',
+            'seo_description' => 'nullable|string|max:500',
+            'og_image_url' => 'nullable|url|max:500',
+            'noindex' => 'nullable|boolean',
         ]);
 
         $categoryIds = $validated['category_ids'] ?? null;

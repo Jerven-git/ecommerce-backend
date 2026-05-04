@@ -25,6 +25,8 @@ return new class extends Migration
             $table->timestamp('published_at')->nullable();
             $table->string('seo_title')->nullable();
             $table->string('seo_description', 500)->nullable();
+            $table->string('og_image_url', 500)->nullable();
+            $table->boolean('noindex')->default(false);
             $table->timestamps();
 
             $table->index(['is_published', 'published_at']);
