@@ -18,174 +18,216 @@ class ServicesSeeder extends Seeder
             'services_overlay_opacity' => 55,
             'services_page' => [
                 'header' => [
-                    'label' => 'TRUSTED BY 3M+ CUSTOMERS',
-                    'heading' => 'Services, done your way',
-                    'subtitle' => 'Work with experts across every stage of your business — from setup to scale. Whatever plan you choose, our team has you covered.',
+                    'label' => 'CARE & PERSONALISATION',
+                    'heading' => 'More than just a checkout',
+                    'subtitle' => 'Free shipping, lifetime warranty, custom engraving — every service that comes with your purchase, all in one place.',
                     'primary_cta' => [
-                        'label' => 'Get started',
-                        'link' => '/contact',
+                        'label' => 'Shop now',
+                        'link' => '/shop',
                     ],
                     'secondary_cta' => [
-                        'label' => 'Learn more',
-                        'link' => '/about',
+                        'label' => 'Contact us',
+                        'link' => '/contact',
                     ],
                 ],
                 'summary' => [
                     'items' => [
                         [
-                            'title' => 'Hands-on consulting',
-                            'description' => 'Senior advisors who embed with your team and ship alongside you.',
+                            'title' => 'Free shipping & returns',
+                            'description' => 'Free standard shipping on orders over $50. Returns are free for 30 days, no questions asked.',
                         ],
                         [
-                            'title' => 'Fast turnaround',
-                            'description' => 'Kick off in under a week with a clear scope and predictable milestones.',
+                            'title' => 'Lifetime warranty',
+                            'description' => 'Every watch and electronic we sell is covered for life against manufacturing defects.',
                         ],
                         [
-                            'title' => 'Expert support',
-                            'description' => 'Pre-vetted specialists in design, engineering, and growth on demand.',
+                            'title' => 'Personal touches',
+                            'description' => 'Custom engraving, premium gift wrap, and handwritten notes — make every order feel made for them.',
                         ],
                     ],
                 ],
                 'stats' => [
                     'items' => [
                         [
-                            'value' => '3 million+',
-                            'label' => 'Customers trust us to manage and grow their business',
+                            'value' => '500K+',
+                            'label' => 'Orders shipped to customers across 35 countries',
                         ],
                         [
-                            'value' => '$100+ billion',
-                            'label' => 'In assets under management across clients of every size',
+                            'value' => '4.9 / 5',
+                            'label' => 'Average customer rating across 12,000 verified reviews',
                         ],
                         [
-                            'value' => '24/7',
-                            'label' => 'Dedicated support, with on-call experts when you need them',
-                        ],
-                    ],
-                ],
-                'groups' => [
-                    [
-                        'heading' => 'For your everyday operations',
-                        'items' => [
-                            [
-                                'eyebrow' => 'Setup & onboarding',
-                                'title' => 'Launch without the headaches',
-                                'description' => 'Skip the months of back-and-forth. Our setup team gets you fully operational — store, payments, shipping, taxes — in days, not quarters.',
-                                'image_url' => '',
-                                'cta_label' => 'Start onboarding',
-                                'cta_link' => '/contact',
-                            ],
-                            [
-                                'eyebrow' => 'Managed fulfillment',
-                                'title' => 'Orders handled end-to-end',
-                                'description' => 'From pick-and-pack to last-mile delivery, our logistics partners handle every touchpoint so you can focus on the product and the customer.',
-                                'image_url' => '',
-                                'cta_label' => 'See how it works',
-                                'cta_link' => '/contact',
-                            ],
-                        ],
-                    ],
-                    [
-                        'heading' => 'For your growth and strategy',
-                        'items' => [
-                            [
-                                'eyebrow' => 'Strategic consulting',
-                                'title' => 'Expert guidance, tailored to you',
-                                'description' => 'Work one-on-one with senior consultants who understand your industry. Whatever plan you choose, you get a dedicated advisor focused on your outcomes.',
-                                'image_url' => '',
-                                'cta_label' => 'Book a consultation',
-                                'cta_link' => '/contact',
-                            ],
-                            [
-                                'eyebrow' => 'Growth & performance',
-                                'title' => 'Turn visitors into loyal customers',
-                                'description' => 'Our growth team runs full-funnel experiments — acquisition, conversion, retention — so every channel compounds instead of competing.',
-                                'image_url' => '',
-                                'cta_label' => 'Grow with us',
-                                'cta_link' => '/contact',
-                            ],
-                            [
-                                'eyebrow' => 'Custom integrations',
-                                'title' => 'Built to fit your stack',
-                                'description' => 'Need to plug into an ERP, a legacy CRM, or a bespoke analytics pipeline? Our engineers build and maintain the connectors so your team never babysits infrastructure.',
-                                'image_url' => '',
-                                'cta_label' => 'Talk to engineering',
-                                'cta_link' => '/contact',
-                            ],
+                            'value' => '24h',
+                            'label' => 'Average response time to support enquiries, 7 days a week',
                         ],
                     ],
                 ],
                 'cta' => [
-                    'heading' => 'Ready to see what we can do for you?',
-                    'subtitle' => 'Tell us about your goals and we\'ll map out a plan in the first call — no pressure, no commitment.',
-                    'button_label' => 'Book a call',
+                    'heading' => 'Need help with an order?',
+                    'subtitle' => 'Our support team replies in under 24 hours, every day of the week.',
+                    'button_label' => 'Contact support',
                     'button_link' => '/contact',
                 ],
             ],
         ]);
 
-        $operations = ServiceCategory::create([
-            'name' => 'Operations',
-            'slug' => 'operations',
+        $customerCare = ServiceCategory::create([
+            'name' => 'Customer Care',
+            'slug' => 'customer-care',
             'gradient_from' => '#0EA5E9',
             'gradient_to' => '#1E3A8A',
+            'image_url' => 'https://picsum.photos/seed/svc-cat-care/1200/400',
             'sort_order' => 0,
         ]);
 
-        $growth = ServiceCategory::create([
-            'name' => 'Growth & Strategy',
-            'slug' => 'growth-and-strategy',
+        $personalisation = ServiceCategory::create([
+            'name' => 'Personalisation',
+            'slug' => 'personalisation',
             'gradient_from' => '#F59E0B',
             'gradient_to' => '#B91C1C',
+            'image_url' => 'https://picsum.photos/seed/svc-cat-personalisation/1200/400',
             'sort_order' => 1,
         ]);
 
         $services = [
             [
-                'eyebrow' => 'Setup & onboarding',
-                'title' => 'Launch without the headaches',
-                'description' => 'Skip the months of back-and-forth. Our setup team gets you fully operational — store, payments, shipping, taxes — in days, not quarters.',
-                'cta_label' => 'Start onboarding',
-                'category_id' => $operations->id,
+                'eyebrow' => 'Shipping',
+                'title' => 'Free shipping on orders over $50',
+                'description' => 'Standard shipping is free on every order over $50, automatically. Express upgrades available at checkout.',
+                'cta_label' => 'Shop now',
+                'cta_link' => '/shop',
+                'category_id' => $customerCare->id,
+                'body' => <<<'MD'
+We've kept it simple. Spend $50 or more and standard shipping is on us — no codes, no hidden thresholds.
+
+## What you get
+
+- **Standard (3–5 business days)** — free over $50, $4.99 below
+- **Express (1–2 business days)** — flat $9.99 anywhere we ship
+- **International** — calculated at checkout, with DDP customs handling in 28 countries
+
+## Order tracking
+
+Every order ships with a tracking link delivered the moment it leaves our warehouse. If anything goes sideways in transit, our support team has it before you do.
+MD,
             ],
             [
-                'eyebrow' => 'Managed fulfillment',
-                'title' => 'Orders handled end-to-end',
-                'description' => 'From pick-and-pack to last-mile delivery, our logistics partners handle every touchpoint so you can focus on the product and the customer.',
-                'cta_label' => 'See how it works',
-                'category_id' => $operations->id,
+                'eyebrow' => 'Warranty',
+                'title' => 'Lifetime warranty on every watch & electronic',
+                'description' => 'Manufacturing defects are covered for life. Send it back, we fix or replace — no fine print.',
+                'cta_label' => 'See coverage',
+                'cta_link' => '/contact',
+                'category_id' => $customerCare->id,
+                'body' => <<<'MD'
+Buy something from us, keep it for life. If a manufacturing defect ever shows up, we'll repair or replace it — no questions, no time limits.
+
+## What's covered
+
+- Movement defects (mechanical and quartz)
+- Battery failures within the first 5 years
+- Crystal cracking under normal use
+- Strap and bracelet hardware
+
+## What's not covered
+
+- Accidental damage (drops, water beyond rated depth)
+- Normal wear on straps after 24 months
+- Modifications by third-party watchmakers
+
+Register your watch in your account within 30 days of delivery to activate the warranty automatically.
+MD,
             ],
             [
-                'eyebrow' => 'Strategic consulting',
-                'title' => 'Expert guidance, tailored to you',
-                'description' => 'Work one-on-one with senior consultants who understand your industry. Whatever plan you choose, you get a dedicated advisor focused on your outcomes.',
-                'cta_label' => 'Book a consultation',
-                'category_id' => $growth->id,
+                'eyebrow' => 'Returns',
+                'title' => '30-day money-back guarantee',
+                'description' => 'Not the right fit? Return it within 30 days for a full refund, including the return label.',
+                'cta_label' => 'Start a return',
+                'cta_link' => '/contact',
+                'category_id' => $customerCare->id,
+                'body' => <<<'MD'
+We want you to love what you bought. If you don't, send it back within 30 days for a full refund.
+
+## How returns work
+
+1. Open the order in your account, click **Start a return**
+2. We email you a prepaid return label within 60 seconds
+3. Drop it at any local carrier point
+4. Refund processed within 3 business days of receipt
+
+## Conditions
+
+- Item must be unworn and in original packaging
+- Engraved or personalised orders are final sale (we'll tell you before checkout)
+- Sale-priced items are returnable for store credit only
+MD,
             ],
             [
-                'eyebrow' => 'Growth & performance',
-                'title' => 'Turn visitors into loyal customers',
-                'description' => 'Our growth team runs full-funnel experiments — acquisition, conversion, retention — so every channel compounds instead of competing.',
-                'cta_label' => 'Grow with us',
-                'category_id' => $growth->id,
+                'eyebrow' => 'Engraving',
+                'title' => 'Custom engraving on the case back',
+                'description' => 'Add a name, a date, or a message — engraved by our in-house team and ready in 5 business days.',
+                'cta_label' => 'Add to your order',
+                'cta_link' => '/shop',
+                'category_id' => $personalisation->id,
+                'body' => <<<'MD'
+Personalise any watch with up to 40 characters of laser engraving on the case back. A small touch that turns a gift into a keepsake.
+
+## What you can engrave
+
+- Names, initials, dates
+- Coordinates (lat / long)
+- Short quotes or messages
+- Simple icons (heart, star, infinity)
+
+## Lead time and pricing
+
+- **+5 business days** added to the standard delivery estimate
+- **$15** flat fee, regardless of message length
+- **Free** when added to orders over $300
+
+Note: engraved orders are final sale.
+MD,
             ],
             [
-                'eyebrow' => 'Custom integrations',
-                'title' => 'Built to fit your stack',
-                'description' => 'Need to plug into an ERP, a legacy CRM, or a bespoke analytics pipeline? Our engineers build and maintain the connectors so your team never babysits infrastructure.',
-                'cta_label' => 'Talk to engineering',
-                'category_id' => $growth->id,
+                'eyebrow' => 'Gift wrapping',
+                'title' => 'Premium gift wrap & handwritten note',
+                'description' => 'Linen-wrapped box, satin ribbon, and a real handwritten card — for $8 you don\'t have to do a thing.',
+                'cta_label' => 'Add at checkout',
+                'cta_link' => '/shop',
+                'category_id' => $personalisation->id,
+                'body' => <<<'MD'
+Skip the wrapping paper meltdown. We'll wrap your gift, attach a handwritten note, and ship it ready to give.
+
+## What\'s included
+
+- Linen-wrapped presentation box
+- Satin ribbon in your choice of colour
+- Real handwritten note (up to 200 characters)
+- Optional gift receipt — no prices shown
+
+## How to add it
+
+Pick **Gift wrap** in the cart, choose a ribbon colour, and type the message. We'll handle the rest. Add $8 per item.
+MD,
             ],
         ];
 
         foreach ($services as $i => $s) {
+            $seed = 'service-'.($i + 1);
+
             Service::create([
                 'slug' => Service::generateUniqueSlug($s['title']),
                 'title' => $s['title'],
                 'eyebrow' => $s['eyebrow'],
                 'description' => $s['description'],
+                'body' => $s['body'],
                 'cta_label' => $s['cta_label'],
-                'cta_link' => '/contact',
+                'cta_link' => $s['cta_link'],
                 'category_id' => $s['category_id'],
+                'cover_image_url' => "https://picsum.photos/seed/{$seed}/1600/900",
+                'cover_alt_text' => $s['title'],
+                'seo_title' => $s['title'],
+                'seo_description' => $s['description'],
+                'og_image_url' => "https://picsum.photos/seed/{$seed}-og/1200/630",
                 'is_published' => true,
                 'is_featured' => $i === 0,
                 'published_at' => now(),
@@ -193,6 +235,6 @@ class ServicesSeeder extends Seeder
             ]);
         }
 
-        $this->command->info('Services page content seeded!');
+        $this->command->info('Services page content seeded.');
     }
 }
