@@ -10,305 +10,282 @@ class BlogSeeder extends Seeder
 {
     public function run(): void
     {
-        $customerFeedback = PostCategory::create([
-            'name' => 'Customer Feedback',
-            'slug' => 'customer-feedback',
+        $newArrivals = PostCategory::create([
+            'name' => 'New Arrivals',
+            'slug' => 'new-arrivals',
             'gradient_from' => '#3B82F6',
             'gradient_to' => '#8B5CF6',
+            'image_url' => 'https://picsum.photos/seed/cat-new-arrivals/1200/400',
             'sort_order' => 1,
         ]);
 
-        $productManagement = PostCategory::create([
-            'name' => 'Product Management',
-            'slug' => 'product-management',
-            'gradient_from' => '#EC4899',
-            'gradient_to' => '#EF4444',
+        $buyingGuides = PostCategory::create([
+            'name' => 'Buying Guides',
+            'slug' => 'buying-guides',
+            'gradient_from' => '#F59E0B',
+            'gradient_to' => '#EA580C',
+            'image_url' => 'https://picsum.photos/seed/cat-guides/1200/400',
             'sort_order' => 2,
         ]);
 
-        $roadmaps = PostCategory::create([
-            'name' => 'Roadmaps',
-            'slug' => 'roadmaps',
-            'gradient_from' => '#F59E0B',
-            'gradient_to' => '#EA580C',
+        $customerStories = PostCategory::create([
+            'name' => 'Customer Stories',
+            'slug' => 'customer-stories',
+            'gradient_from' => '#EC4899',
+            'gradient_to' => '#EF4444',
+            'image_url' => 'https://picsum.photos/seed/cat-stories/1200/400',
             'sort_order' => 3,
         ]);
 
         $posts = [
             [
-                'title' => 'How to Write SMART Goals: Complete Guide for Product Managers',
-                'excerpt' => 'Master SMART goals for product managers: learn to write specific, measurable objectives with proven examples and actionable tips that drive results.',
-                'category_id' => $productManagement->id,
+                'title' => 'New In: 2026 Spring Smartwatch Lineup',
+                'excerpt' => 'Three new fitness watches join the lineup this season — lighter cases, longer battery life, and a fresh strap palette.',
+                'category_id' => $newArrivals->id,
                 'is_featured' => true,
-                'author_name' => 'Alex Turner',
-                'body' => <<<MD
-Setting goals is easy — setting goals that actually move the needle is hard. SMART goals give product managers a simple, battle-tested framework for writing objectives that teams can actually execute.
+                'author_name' => 'Editorial Team',
+                'body' => <<<'MD'
+We've spent the last six months refining the next generation of our fitness watch. This spring, three new models arrive — each lighter, longer-lasting, and more comfortable to wear all day.
 
-## What does SMART stand for?
+## What's new
 
-- **Specific** — answer *what*, *why*, and *who*
-- **Measurable** — define how you'll track progress
-- **Achievable** — push the team, but stay grounded
-- **Relevant** — tie to the bigger business outcome
-- **Time-bound** — give it a deadline
+- **Aluminium Sport** — 14% lighter case with a recycled-fibre strap
+- **Titanium Pro** — sapphire crystal, 7-day battery, 100m water rating
+- **Classic Leather Edition** — vegetable-tanned strap and a polished steel back
 
-## A weak goal vs. a SMART goal
+## Available now
 
-> "Improve the onboarding experience."
+All three drop on the storefront this Friday. Members on our newsletter get early access starting Wednesday at 9am — [sign up here](/) if you haven't already.
 
-That's a wish, not a goal. Here's the SMART version:
-
-> "Reduce time-to-first-value during onboarding from 12 minutes to under 4 minutes by end of Q3, measured by activation analytics."
-
-Notice how much easier this is to plan sprints around, report on in standups, and celebrate when it lands.
-
-## Three tips that make SMART goals stick
-
-1. Write them down where the team can see them daily.
-2. Review them in every bi-weekly retro.
-3. Kill or rewrite goals that stop being relevant — don't let them quietly expire.
-
-If you take nothing else away: **a goal without a metric is a hope**. Give every objective a number.
+> Designed for the wrist, refined for daily life.
 MD,
             ],
             [
-                'title' => 'Top 14 Feature Voting Tools for SaaS Companies',
-                'excerpt' => 'Discover the top 14 feature voting tools for SaaS companies. Learn how to prioritize product features based on real customer feedback.',
-                'category_id' => $customerFeedback->id,
+                'title' => 'How to Choose Your First Mechanical Watch',
+                'excerpt' => 'Automatic, hand-wound, or quartz? A practical guide for buying your first proper watch — without the jargon.',
+                'category_id' => $buyingGuides->id,
                 'is_featured' => true,
-                'author_name' => 'Morgan Lee',
-                'body' => <<<MD
-Feature voting is one of the fastest ways to turn a messy backlog into a prioritized roadmap your customers already believe in. Here's a shortlist of tools that do it well.
+                'author_name' => 'Maya Chen',
+                'body' => <<<'MD'
+Walking into the world of mechanical watches can feel like learning a second language. Here's the short version, in plain English.
 
-## What makes a great feature voting tool?
+## The three movement types
 
-- Public or private boards (or both)
-- Automatic deduplication of near-identical requests
-- Integrations with your CRM / support stack
-- Status updates that close the feedback loop
+- **Quartz** — battery powered, accurate to seconds per month, and the most affordable
+- **Automatic** — winds itself from the motion of your wrist; the most popular mechanical option
+- **Hand-wound** — you wind the crown yourself each day; usually the slimmest and most traditional
 
-## The shortlist
+## What to look for under $500
 
-| Tool | Best for | Starting price |
-| --- | --- | --- |
-| Canny | Mid-market SaaS | Free – $400/mo |
-| Productboard | Enterprise PMs | Paid tiers only |
-| Featureos | Early-stage startups | Generous free tier |
-| Upvoty | Bootstrapped teams | $15/mo |
+1. A reputable case material (316L stainless steel at minimum)
+2. Sapphire crystal — scratch-resistant and worth every dollar
+3. At least 3ATM water resistance for everyday wear
+4. A movement you can have serviced locally
 
-Pick the one whose pricing matches your stage — the workflow is more important than the logo on the landing page.
+## Skip the hype
+
+Marketing budgets are huge in this category. Read independent reviews, ask in collector forums, and never buy a watch online without a return policy you trust.
 MD,
             ],
             [
-                'title' => '18 UserVoice Alternatives & Competitors for Managing Customer Feedback',
-                'excerpt' => 'Top 18 UserVoice alternatives and competitors for managing customer feedback in 2026. See how the pricing, workflow, and integrations stack up.',
-                'category_id' => $customerFeedback->id,
+                'title' => 'Customer Spotlight: Jamie\'s 5-Year Collection',
+                'excerpt' => 'How one customer built a meaningful collection of five watches — one for each chapter of his life.',
+                'category_id' => $customerStories->id,
                 'is_featured' => true,
-                'author_name' => 'Jamie Chen',
-                'body' => <<<MD
-UserVoice has been around for over a decade, but it's not the right fit for every team. Whether you're priced out or just looking for a fresher workflow, there are strong alternatives worth a serious look.
+                'author_name' => 'Editorial Team',
+                'body' => <<<'MD'
+Jamie ordered his first watch from us in 2021 — a simple 38mm dress watch for a job interview. Five years and four watches later, he sat down with our team to share what each one means.
 
-## What to evaluate
+## The collection
 
-1. **Pricing transparency** — can you self-serve, or is it sales-only?
-2. **Time-to-first-value** — how fast can a new customer post feedback?
-3. **Prioritization workflow** — votes alone aren't enough; you need scoring.
-4. **Roadmap publishing** — closing the loop matters.
+1. **The dress watch** — for the job he eventually got
+2. **The dive watch** — for the honeymoon in Greece
+3. **The chronograph** — for the marathon he trained nine months for
+4. **The smartwatch** — for everything else
+5. **The grail** — a vintage piece, "for the next twenty years"
 
-### Top picks
+## The lesson
 
-- **Canny** — polished board + roadmap publishing
-- **Productboard** — deep prioritization framework
-- **Upvoty** — simplest self-serve setup
-- **Feature Upvote** — no-login voting, good for wide audiences
+> "Every watch in the box is a reminder of a moment I want to keep close. They've stopped being purchases and started being chapters."
 
-No tool is perfect. Pick the one that matches the messiest part of your current workflow.
+We love hearing stories like Jamie's. If you have one, [tell us about it](/contact) — we're always looking for the next spotlight.
 MD,
             ],
             [
-                'title' => 'Bug vs Feature: Understanding the Difference and Prioritizing Effectively',
-                'excerpt' => 'Understand the difference between bugs and features in software development. Learn how to triage, prioritize, and communicate the distinction to stakeholders.',
-                'category_id' => $productManagement->id,
+                'title' => 'Free Shipping Now on Orders Over $50',
+                'excerpt' => 'A long-requested change — free standard shipping on every order over $50, automatically applied at checkout.',
+                'category_id' => $newArrivals->id,
+                'is_featured' => false,
+                'author_name' => 'Editorial Team',
+                'body' => <<<'MD'
+You asked, we listened. Starting today, every order over $50 ships free — no codes, no fine print.
+
+## What changed
+
+- **Free standard shipping** on orders over $50 (was $75)
+- **Express upgrade** still available for $9.99
+- **International shipping** thresholds unchanged for now — we're working on it
+
+## Why we did it
+
+We ran the numbers and the previous threshold was friction for too many of you. Lower bar, simpler decision. That's it.
+MD,
+            ],
+            [
+                'title' => 'Sapphire vs Mineral Crystal: What\'s Actually Worth Paying For',
+                'excerpt' => 'Sapphire is harder, mineral is cheaper to replace. Which one belongs on your next watch?',
+                'category_id' => $buyingGuides->id,
+                'is_featured' => false,
+                'author_name' => 'Maya Chen',
+                'body' => <<<'MD'
+The crystal is the glass that protects the dial. There are three common types — and the differences matter more than the marketing suggests.
+
+## The three options
+
+- **Acrylic** — soft, scratches easily, polishes back to clear with toothpaste. Common on vintage and budget watches.
+- **Mineral** — hardened glass. Decent scratch resistance, cheap to replace if it cracks.
+- **Sapphire** — second-hardest material on Earth after diamond. Effectively scratch-proof in daily life.
+
+## Our take
+
+If you're spending more than $200, sapphire is non-negotiable. Below that, mineral is a perfectly sensible choice — especially for a beater you don't want to baby.
+MD,
+            ],
+            [
+                'title' => 'The 2026 Father\'s Day Gift Guide',
+                'excerpt' => 'Eight ideas across every budget — from a $19 graphic tee to a $299 monitor for the home office.',
+                'category_id' => $buyingGuides->id,
                 'is_featured' => false,
                 'author_name' => 'Sam Rivera',
-                'body' => <<<MD
-"Is this a bug or a feature?" is one of the oldest debates in software. The honest answer: **it doesn't matter until you agree what you're shipping and why.**
+                'body' => <<<'MD'
+Father's Day always sneaks up on us. To save you the panic, here are eight gifts from the storefront — sorted by budget.
 
-## Working definitions
+## Under $50
 
-- **Bug** — the product does something you didn't intend.
-- **Feature** — the product doesn't yet do something you intended.
+- **Cotton Graphic T-Shirt** — soft, durable, easy win
+- **Wireless Bluetooth Earbuds** — under $50 and noise-cancelling
 
-That's it. Everything else is political.
+## $50–$150
 
-## A useful triage trick
+- **Standing Desk Lamp** — for the work-from-home dad
+- **Stainless Steel Cookware Set** — if he's the cook of the house
 
-When a report comes in, ask:
+## $150+
 
-1. Does this match the spec we wrote?
-2. If yes, it's a feature request — route it to the roadmap.
-3. If no, it's a bug — route it to the backlog and estimate by severity.
+- **Smart Fitness Watch** — heart rate, sleep, music
+- **27-inch 4K Monitor** — for the office upgrade
 
-> Bugs lose you trust. Features earn you love. Triage accordingly.
+Order by Wednesday for guaranteed delivery before the weekend.
 MD,
             ],
             [
-                'title' => '15 Best Upvoty Alternatives: Top Tools for Feedback & Changelog',
-                'excerpt' => 'Upvoty alternatives for feedback and changelog management, including SaaS-friendly options with generous free tiers and fast setup.',
-                'category_id' => $customerFeedback->id,
+                'title' => 'Behind the Bench: How We Test Water Resistance',
+                'excerpt' => 'A look inside our QC lab — pressure chambers, temperature swings, and why "5ATM" actually means something.',
+                'category_id' => $newArrivals->id,
+                'is_featured' => false,
+                'author_name' => 'Editorial Team',
+                'body' => <<<'MD'
+Every watch we ship is pressure-tested before it leaves the warehouse. Here's how the process works — and why most "100m" ratings on the internet aren't worth the marketing copy they're written on.
+
+## The test bench
+
+1. **Static pressure test** — held at rated depth for 60 seconds
+2. **Dynamic pressure test** — pressure cycled to simulate motion
+3. **Thermal shock** — 40°C to 5°C transition before re-test
+4. **Random sample audit** — 1 in every 50 units gets the full battery
+
+## What the ratings really mean
+
+- **3ATM** — splash-proof, that's it. Don't shower in it.
+- **5ATM** — okay for swimming pool laps, not diving
+- **10ATM** — recreational snorkelling, beach swims
+- **20ATM+** — actual dive territory; we test to twice the rated depth
+
+When in doubt: take the watch off before it gets wet.
+MD,
+            ],
+            [
+                'title' => '6 Months In: A Reader\'s Smart Fitness Watch Review',
+                'excerpt' => 'Reader Priya breaks down what works, what doesn\'t, and what surprised her after six months of daily wear.',
+                'category_id' => $customerStories->id,
                 'is_featured' => false,
                 'author_name' => 'Priya Shah',
-                'body' => <<<MD
-Upvoty is a great tool, especially for bootstrapped teams — but it isn't the only option. Here's how its closest competitors stack up, and when to switch.
+                'body' => <<<'MD'
+I bought the Smart Fitness Watch six months ago to replace a much fancier (and much heavier) competitor. Here's the unvarnished review.
 
-## When to switch
+## The good
 
-- You need tighter integrations with your CRM
-- You want richer roadmap visualization
-- Your audience wants to vote without signing up
+- Battery genuinely lasts a full week, even with sleep tracking on
+- The bluetooth audio handoff between phone and watch is seamless
+- Heart rate tracking matches my chest strap within 2 bpm during workouts
 
-## Alternatives worth considering
+## The not-so-good
 
-- **Canny** — the default recommendation for most mid-market teams
-- **Nolt** — clean UX, transparent pricing
-- **Productboard** — heavier, but bulletproof for enterprise
-- **Feature Upvote** — no-login voting, perfect for public boards
+- The default watch faces are limited; install third-party ones immediately
+- Notifications are slow to clear if you have too many at once
+- The aluminium case scratches faster than I'd like
 
-There is no one "best" — just the one that fits where you are right now.
+## Six-month verdict
+
+Would I buy it again? Yes — at this price, nothing comes close.
+
+> Disclaimer: I bought this watch with my own money. The team didn't see this review until it went live.
 MD,
             ],
             [
-                'title' => 'Top 15 Free Release Notes Software',
-                'excerpt' => 'Top 15 free changelog tools for developers and founders to effectively broadcast product updates.',
-                'category_id' => $roadmaps->id,
+                'title' => 'How to Resize a Metal Bracelet — A Beginner\'s Guide',
+                'excerpt' => 'Done in under 20 minutes with a $10 toolkit. A step-by-step photo guide for first-timers.',
+                'category_id' => $buyingGuides->id,
                 'is_featured' => false,
-                'author_name' => 'Chris Walker',
-                'body' => <<<MD
-A great changelog turns silent shipping into a growth channel. Here's a shortlist of free tools that make it effortless.
+                'author_name' => 'Marco Liu',
+                'body' => <<<'MD'
+A loose bracelet is one of the most common reasons returns come back to us — and one of the easiest things to fix yourself at home.
 
-## Must-have features
+## What you'll need
 
-1. Markdown support
-2. Email / RSS / Slack delivery
-3. Tagging (Bug / Feature / Improvement)
-4. Public and in-app embeds
+- A spring-bar pin pusher (the $10 one from any hardware site is fine)
+- A soft cloth to lay the watch on
+- 20 minutes and decent light
 
-## Our shortlist
+## The steps
 
-- **Headway** — minimalist, embeds nicely
-- **Beamer** — marketing-friendly
-- **ReleaseNotes.io** — self-serve, lightweight
-- **Canny Changelog** — if you already use Canny
+1. Lay the watch dial-down on the cloth
+2. Find the arrows on the underside of the bracelet links — they tell you which direction the pin pushes out
+3. Push the pin out from the marked side
+4. Slide the link out
+5. Re-insert the pin from the original direction
+6. Repeat on the other side so the clasp stays centred
 
-Pick one and commit. An inconsistent changelog is worse than no changelog at all.
+## When to ask a jeweller
+
+If your bracelet uses screw links instead of pin links, take it to a watchmaker — the screws strip easily without proper tools and you'll spend more replacing them than the resize would have cost.
 MD,
             ],
             [
-                'title' => '10 Best Nolt.io Alternatives for Feedback Management',
-                'excerpt' => 'Explore the top Nolt alternatives for product feedback management in 2026, with pricing, integrations, and workflow breakdowns.',
-                'category_id' => $customerFeedback->id,
+                'title' => 'We\'re Now Shipping to 35 New Countries',
+                'excerpt' => 'International expansion is live. Here\'s the full list, the new pricing, and what\'s changed at customs.',
+                'category_id' => $newArrivals->id,
                 'is_featured' => false,
-                'author_name' => 'Taylor Brooks',
-                'body' => <<<MD
-Nolt is a solid feedback board, but it's not for everyone. If you've outgrown it — or never quite clicked with it — here are the alternatives worth trying.
+                'author_name' => 'Editorial Team',
+                'body' => <<<'MD'
+After months of warehouse and carrier work, we're now shipping to 35 new countries across Europe, Southeast Asia, and the Middle East.
 
-## Why teams move off Nolt
+## What this means for you
 
-- Limited integrations
-- Voting model feels too light for enterprise use cases
-- Roadmap customization is thin
+- **Faster delivery** — most regions now arrive in 5–9 business days
+- **Local currency at checkout** — auto-detected, with USD as fallback
+- **Customs handled** — DDP shipping in 28 of the 35 new countries
 
-## Strong alternatives
+## Where we're not yet
 
-- **Canny** — the all-rounder
-- **Productboard** — for deep prioritization
-- **Upvoty** — the cheaper cousin
-- **Featureos** — open-source leaning
-MD,
-            ],
-            [
-                'title' => '25 Best Product Management Books for 2026',
-                'excerpt' => 'Discover the top 25 best product management books for 2026 and gain essential insights for growth, strategy, and delivery.',
-                'category_id' => $productManagement->id,
-                'is_featured' => false,
-                'author_name' => 'Jordan Reese',
-                'body' => <<<MD
-Books age quickly in tech, but the fundamentals don't. Here are the essential reads every PM should have on their shelf heading into 2026.
-
-## The foundations
-
-1. *Inspired* — Marty Cagan
-2. *The Lean Product Playbook* — Dan Olsen
-3. *Escaping the Build Trap* — Melissa Perri
-4. *Continuous Discovery Habits* — Teresa Torres
-
-## Strategy and leadership
-
-- *Good Strategy, Bad Strategy* — Richard Rumelt
-- *The Hard Thing About Hard Things* — Ben Horowitz
-
-## Growth and data
-
-- *Hacking Growth* — Sean Ellis
-- *Lean Analytics* — Alistair Croll
-
-Don't try to read all 25. Pick three from the list and finish them this quarter.
-MD,
-            ],
-            [
-                'title' => '8 Examples of Product Roadmaps in 2026',
-                'excerpt' => 'Uncover product roadmap examples to guide your strategy in 2026, from release plans to Kanban boards, and align your team effectively.',
-                'category_id' => $roadmaps->id,
-                'is_featured' => false,
-                'author_name' => 'Eva Martins',
-                'body' => <<<MD
-The best roadmap is the one your team actually uses. Here are eight formats that have stood the test of time — pick the one that fits your culture.
-
-## The formats
-
-1. **Now / Next / Later** — lightweight, outcome-focused
-2. **Kanban board** — great for continuous delivery teams
-3. **Release plan** — when shipping is time-boxed
-4. **Theme-based** — when strategy is the story
-5. **Objective-based (OKRs)** — when leadership needs alignment
-6. **Gantt** — when cross-team dependencies dominate
-7. **Story map** — when UX continuity matters
-8. **No-dates public roadmap** — when you want to share *direction* without *promises*
-
-> A roadmap is a hypothesis, not a contract.
-MD,
-            ],
-            [
-                'title' => 'Types of Feedback: Exploring Feedback Types with Examples',
-                'excerpt' => 'Explore the 11 types of feedback, including positive, negative, and constructive, with real-world examples and when each works best.',
-                'category_id' => $customerFeedback->id,
-                'is_featured' => false,
-                'author_name' => 'Noah Park',
-                'body' => <<<MD
-Not all feedback is equal. Knowing what *kind* you're getting tells you how to act on it.
-
-## Common types
-
-- **Positive** — reinforce what's working
-- **Constructive** — specific, actionable improvement
-- **Negative (unstructured)** — hardest to use, but often the most honest
-- **Quantitative** — survey scores, NPS, CSAT
-- **Qualitative** — interview quotes, support tickets
-
-## How to use each
-
-1. Positive — share it publicly; it's fuel for the team.
-2. Constructive — route it to the backlog with context.
-3. Negative — dig for the root cause before reacting.
-4. Quantitative — trend it over time, not in isolation.
-5. Qualitative — pair with quantitative to find themes.
-
-> Feedback is a gift. How you unwrap it determines what you get.
+A handful of regions still have regulatory or carrier issues — we're working on Brazil, India, and Egypt next quarter. Get notified when your country goes live by adding your address to your account.
 MD,
             ],
         ];
 
-        foreach ($posts as $p) {
+        foreach ($posts as $i => $p) {
+            $seed = 'post-'.($i + 1);
+
             Post::create([
                 'slug' => Post::generateUniqueSlug($p['title']),
                 'title' => $p['title'],
@@ -316,6 +293,11 @@ MD,
                 'body' => $p['body'],
                 'author_name' => $p['author_name'],
                 'category_id' => $p['category_id'],
+                'cover_image_url' => "https://picsum.photos/seed/{$seed}/1600/900",
+                'cover_alt_text' => $p['title'],
+                'seo_title' => $p['title'],
+                'seo_description' => $p['excerpt'],
+                'og_image_url' => "https://picsum.photos/seed/{$seed}-og/1200/630",
                 'is_published' => true,
                 'is_featured' => $p['is_featured'],
                 'published_at' => now()->subDays(random_int(1, 90)),
