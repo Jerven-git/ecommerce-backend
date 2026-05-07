@@ -38,6 +38,7 @@ return new class extends Migration
             $table->string('contact_email')->default('contact@store.com');
             $table->string('contact_phone')->default('+1234567890');
             $table->json('contact_entries')->nullable();
+            $table->json('social_links')->nullable();
             $table->boolean('favorites_enabled')->default(false);
             $table->boolean('show_stock_quantity')->default(false);
             $table->boolean('backorder_enabled')->default(false);
@@ -49,6 +50,9 @@ return new class extends Migration
             $table->json('homepage_features')->nullable();
             $table->json('homepage_stats')->nullable();
             $table->json('homepage_newsletter')->nullable();
+            $table->json('homepage_showcase')->nullable();
+            $table->json('homepage_watch_shop')->nullable();
+            $table->json('homepage_best_sellers')->nullable();
             $table->json('about_highlights')->nullable();
             $table->json('shop_header')->nullable();
             $table->json('shop_promo')->nullable();
