@@ -77,6 +77,8 @@ class SiteConfig extends Model
         'pages_seo',
         'canonical_base_url',
         'logo_alt_text',
+        'header_cta',
+        'footer_banner',
     ];
 
     /**
@@ -182,6 +184,8 @@ class SiteConfig extends Model
         'services_overlay_opacity' => 'integer',
         'modules_enabled' => 'array',
         'pages_seo' => 'array',
+        'header_cta' => 'array',
+        'footer_banner' => 'array',
     ];
 
     public function media()

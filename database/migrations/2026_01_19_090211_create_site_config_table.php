@@ -70,6 +70,8 @@ return new class extends Migration
             $table->json('pages_seo')->nullable();
             $table->string('canonical_base_url', 500)->nullable();
             $table->string('logo_alt_text')->nullable();
+            $table->json('header_cta')->nullable();
+            $table->json('footer_banner')->nullable();
             $table->timestamps();
         });
     }

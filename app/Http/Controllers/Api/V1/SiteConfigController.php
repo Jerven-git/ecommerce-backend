@@ -386,6 +386,38 @@ class SiteConfigController extends Controller
         return $out;
     }
 
+    /**
+     * @return array{enabled: bool, label: string, link: string}
+     */
+    private function resolveHeaderCta(SiteConfig $config): array
+    {
+        $stored = is_array($config->header_cta) ? $config->header_cta : [];
+
+        return [
+            'enabled' => (bool) ($stored['enabled'] ?? false),
+            'label' => (string) ($stored['label'] ?? ''),
+            'link' => (string) ($stored['link'] ?? ''),
+        ];
+    }
+
+    /**
+     * @return array{enabled: bool, heading: string, subtitle: string, button_label: string, button_link: string, background_color: string, text_color: string}
+     */
+    private function resolveFooterBanner(SiteConfig $config): array
+    {
+        $stored = is_array($config->footer_banner) ? $config->footer_banner : [];
+
+        return [
+            'enabled' => (bool) ($stored['enabled'] ?? false),
+            'heading' => (string) ($stored['heading'] ?? ''),
+            'subtitle' => (string) ($stored['subtitle'] ?? ''),
+            'button_label' => (string) ($stored['button_label'] ?? ''),
+            'button_link' => (string) ($stored['button_link'] ?? ''),
+            'background_color' => (string) ($stored['background_color'] ?? '#111827'),
+            'text_color' => (string) ($stored['text_color'] ?? '#ffffff'),
+        ];
+    }
+
     private function config(): SiteConfig
     {
         return SiteConfig::with([
@@ -452,6 +484,8 @@ class SiteConfigController extends Controller
                 'pages_seo' => $config->pages_seo ?? [],
                 'canonical_base_url' => $config->canonical_base_url,
                 'logo_alt_text' => $config->logo_alt_text,
+                'header_cta' => $this->resolveHeaderCta($config),
+                'footer_banner' => $this->resolveFooterBanner($config),
                 'updated_at' => $config->updated_at,
 
                 // urls come from media
@@ -638,6 +672,18 @@ class SiteConfigController extends Controller
             'pages_seo.*.cover_alt_text' => 'nullable|string|max:255',
             'canonical_base_url' => 'nullable|url|max:500',
             'logo_alt_text' => 'nullable|string|max:255',
+            'header_cta' => 'nullable|array',
+            'header_cta.enabled' => 'nullable|boolean',
+            'header_cta.label' => 'nullable|string|max:30',
+            'header_cta.link' => 'nullable|string|max:500',
+            'footer_banner' => 'nullable|array',
+            'footer_banner.enabled' => 'nullable|boolean',
+            'footer_banner.heading' => 'nullable|string|max:150',
+            'footer_banner.subtitle' => 'nullable|string|max:255',
+            'footer_banner.button_label' => 'nullable|string|max:30',
+            'footer_banner.button_link' => 'nullable|string|max:500',
+            'footer_banner.background_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'footer_banner.text_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
         ]);
 
         $this->validateShowcaseRules($validated);
