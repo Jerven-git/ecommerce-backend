@@ -3,24 +3,25 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Mail\OrderCancellationMail;
 use App\Models\Backorder;
+use App\Models\Discount;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\SiteConfig;
-use App\Repositories\OrderRepository;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use App\Models\Discount;
 use App\Models\TaxSetting;
-use App\Services\ShippingCalculator;
 use App\Payments\PaymentService;
+use App\Repositories\OrderRepository;
+use App\Services\ShippingCalculator;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
-use App\Mail\OrderCancellationMail;
 
 class OrderController extends Controller
 {
     public function __construct(private OrderRepository $orders) {}
+
     public function index(Request $request)
     {
         $query = Order::query();
@@ -30,20 +31,20 @@ class OrderController extends Controller
         $query->with(array_intersect($includes, $allowedIncludes));
 
         $query->when($request->filled('status'), function ($q) use ($request) {
-                $status = $request->query('status');
-                if ($status === 'cancelled') {
-                    $q->whereIn('status', ['cancelled', 'backorder_cancelled']);
-                } elseif ($status === 'backorder') {
-                    $q->where('status', 'like', 'backorder_%');
-                } else {
-                    $q->where('status', $status);
-                }
-            })
+            $status = $request->query('status');
+            if ($status === 'cancelled') {
+                $q->whereIn('status', ['cancelled', 'backorder_cancelled']);
+            } elseif ($status === 'backorder') {
+                $q->where('status', 'like', 'backorder_%');
+            } else {
+                $q->where('status', $status);
+            }
+        })
             ->search($request->query('search'));
 
         $allowedSorts = ['created_at', 'id', 'status', 'total'];
         $sort = in_array($request->query('sort'), $allowedSorts, true) ? $request->query('sort') : 'created_at';
-        
+
         $order = strtolower($request->query('order', 'desc'));
         $order = in_array($order, ['asc', 'desc'], true) ? $order : 'desc';
 
@@ -62,6 +63,7 @@ class OrderController extends Controller
     public function show($id)
     {
         $order = $this->orders->findWithAll($id);
+
         return response()->json(['data' => $order]);
     }
 
@@ -115,13 +117,23 @@ class OrderController extends Controller
             $finalTotal = (float) ($tax['total'] ?? 0);
             $taxAmount = (float) ($tax['tax_amount'] ?? 0);
 
-            $hasBackorders = !empty($backorderItems);
+            $hasBackorders = ! empty($backorderItems);
             $exTaxSubtotal = (float) ($tax['ex_tax_subtotal'] ?? $rawSubtotal);
+
+            $currencyCode = $this->resolveShopCurrency();
+
             $order = $this->createOrder(
-                $validated, $finalTotal, $exTaxSubtotal, $taxAmount, $shippingTotal,
-                $discountCode, $discountAmount, $hasBackorders,
+                $validated,
+                $finalTotal,
+                $exTaxSubtotal,
+                $taxAmount,
+                $shippingTotal,
+                $discountCode,
+                $discountAmount,
+                $hasBackorders,
                 $tax['rule_id'] ?? null,
-                $tax['region_label'] ?? null
+                $tax['region_label'] ?? null,
+                $currencyCode,
             );
             $this->createOrderItems($order, $orderItems);
 
@@ -243,7 +255,7 @@ class OrderController extends Controller
 
             $product = $products->get($productId);
 
-            if (!$product) {
+            if (! $product) {
                 throw new \Exception("Product not found: {$productId}");
             }
 
@@ -251,7 +263,7 @@ class OrderController extends Controller
             $backorderQty = $qty - $inStockQty;
 
             // If not enough stock and backorder not allowed, throw
-            if ($backorderQty > 0 && !$product->canBackorder()) {
+            if ($backorderQty > 0 && ! $product->canBackorder()) {
                 throw new \Exception("Insufficient stock for product: {$product->name}");
             }
 
@@ -289,7 +301,7 @@ class OrderController extends Controller
 
                 $orderItems[] = [
                     'product_id' => $product->id,
-                    'product_name' => $product->name . ' (Backorder)',
+                    'product_name' => $product->name.' (Backorder)',
                     'product_price' => $product->price,
                     'quantity' => $backorderQty,
                     'subtotal' => round($boLineSubtotal, 2),
@@ -324,7 +336,7 @@ class OrderController extends Controller
     ): array {
         $taxSetting = TaxSetting::first();
 
-        if (!$taxSetting) {
+        if (! $taxSetting) {
             $rawSubtotal = 0;
             foreach ($taxItems as $item) {
                 $rawSubtotal += $item['price'] * $item['quantity'];
@@ -425,7 +437,8 @@ class OrderController extends Controller
         float $discountAmount = 0,
         bool $hasBackorders = false,
         ?int $taxRuleId = null,
-        ?string $taxRegion = null
+        ?string $taxRegion = null,
+        string $currency = 'USD',
     ): Order {
         return Order::create([
             'customer_name' => $validated['customer_name'],
@@ -437,6 +450,7 @@ class OrderController extends Controller
             'state' => $validated['state'] ?? null,
             'city' => $validated['city'] ?? null,
             'total_amount' => round($finalTotal, 2),
+            'currency' => $currency,
             'subtotal' => round($subtotal, 2),
             'tax_amount' => round($taxAmount, 2),
             'shipping_amount' => round($shippingAmount, 2),
@@ -449,6 +463,15 @@ class OrderController extends Controller
         ]);
     }
 
+    /**
+     * The shop runs in a single currency configured by the admin in SiteConfig.
+     * Falls back to 'USD' if unset.
+     */
+    private function resolveShopCurrency(): string
+    {
+        return SiteConfig::query()->value('currency_code') ?: 'USD';
+    }
+
     private function createOrderItems(Order $order, array $orderItems): void
     {
         $order->items()->createMany($orderItems);
@@ -457,7 +480,7 @@ class OrderController extends Controller
     public function updateStatus(Request $request, $id)
     {
         $validated = $request->validate([
-            'status' => 'required|in:pending,processing,shipped,delivered,cancelled,backorder_awaiting_stock,backorder_notified,backorder_expired,backorder_cancelled'
+            'status' => 'required|in:pending,processing,shipped,delivered,cancelled,backorder_awaiting_stock,backorder_notified,backorder_expired,backorder_cancelled',
         ]);
 
         $order = Order::findOrFail($id);
@@ -476,7 +499,7 @@ class OrderController extends Controller
 
         $allowed = $allowedTransitions[$order->status] ?? [];
 
-        if (!in_array($validated['status'], $allowed, true)) {
+        if (! in_array($validated['status'], $allowed, true)) {
             return response()->json([
                 'message' => "Cannot transition from '{$order->status}' to '{$validated['status']}'",
             ], 422);
@@ -512,7 +535,7 @@ class OrderController extends Controller
 
         return response()->json([
             'message' => 'Order status updated successfully',
-            'data' => $order->load('payment')
+            'data' => $order->load('payment'),
         ]);
     }
 
@@ -570,7 +593,7 @@ class OrderController extends Controller
 
         $payment = $order->payment;
 
-        if (!$payment || $payment->status !== 'paid') {
+        if (! $payment || $payment->status !== 'paid') {
             return response()->json([
                 'message' => 'This order has no completed payment. Use the regular cancel instead.',
             ], 422);
@@ -607,7 +630,7 @@ class OrderController extends Controller
         $order->delete();
 
         return response()->json([
-            'message' => 'Order deleted successfully'
+            'message' => 'Order deleted successfully',
         ]);
     }
 }

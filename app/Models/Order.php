@@ -2,16 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Casts\Attribute;
-use App\Models\Payment;
-use App\Models\Shipment;
-use App\Models\Backorder;
 
 class Order extends Model
 {
     use HasFactory;
+
     const UPDATED_AT = null;
 
     protected $fillable = [
@@ -24,6 +22,8 @@ class Order extends Model
         'state',
         'city',
         'total_amount',
+        'currency',
+        'exchange_rate',
         'subtotal',
         'tax_amount',
         'shipping_amount',
@@ -37,6 +37,7 @@ class Order extends Model
 
     protected $casts = [
         'total_amount' => 'decimal:2',
+        'exchange_rate' => 'decimal:8',
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'shipping_amount' => 'decimal:2',
@@ -166,7 +167,7 @@ class Order extends Model
 
         return $query->where(function ($q) use ($term, $idCandidate) {
             $q->where('customer_name', 'like', "%{$term}%")
-            ->orWhere('customer_email', 'like', "%{$term}%");
+                ->orWhere('customer_email', 'like', "%{$term}%");
 
             if (ctype_digit($idCandidate)) {
                 $q->orWhere('id', (int) $idCandidate);
