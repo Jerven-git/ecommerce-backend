@@ -79,6 +79,7 @@ class SiteConfig extends Model
         'logo_alt_text',
         'header_cta',
         'footer_banner',
+        'currency_code',
     ];
 
     /**

@@ -3,7 +3,9 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BackorderController;
 use App\Http\Controllers\Api\V1\CategoryController;
+use App\Http\Controllers\Api\V1\CommissionRequestController;
 use App\Http\Controllers\Api\V1\ContactController;
+use App\Http\Controllers\Api\V1\CurrencyController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\MediaController;
@@ -57,6 +59,9 @@ Route::prefix('v1')->group(function () {
     // Categories
     Route::get('/categories', [CategoryController::class, 'index']);
 
+    // Currencies (public storefront list)
+    Route::get('/currencies', [CurrencyController::class, 'index']);
+
     // Blog (public)
     Route::get('/posts', [PostController::class, 'index']);
     Route::get('/posts/{slug}', [PostController::class, 'show']);
@@ -70,6 +75,9 @@ Route::prefix('v1')->group(function () {
 
     // Contact form
     Route::post('/contact', [ContactController::class, 'store'])->middleware('throttle:contact');
+
+    // Commission requests (public submit)
+    Route::post('/commission-requests', [CommissionRequestController::class, 'store'])->middleware('throttle:contact');
 
     // Subscribe (welcome popup)
     Route::post('/subscribe', [SubscribeController::class, 'store'])->middleware('throttle:contact');
@@ -175,6 +183,18 @@ Route::prefix('v1')->group(function () {
             Route::post('/categories/reorder', [CategoryController::class, 'reorder']);
             Route::patch('/categories/{id}', [CategoryController::class, 'update']);
             Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
+
+            // Currencies (admin)
+            Route::get('/admin/currencies', [CurrencyController::class, 'adminIndex']);
+            Route::post('/currencies', [CurrencyController::class, 'store']);
+            Route::patch('/currencies/{currency}', [CurrencyController::class, 'update']);
+            Route::delete('/currencies/{currency}', [CurrencyController::class, 'destroy']);
+
+            // Commission requests (admin)
+            Route::get('/commission-requests', [CommissionRequestController::class, 'index']);
+            Route::get('/commission-requests/{commissionRequest}', [CommissionRequestController::class, 'show']);
+            Route::patch('/commission-requests/{commissionRequest}', [CommissionRequestController::class, 'update']);
+            Route::delete('/commission-requests/{commissionRequest}', [CommissionRequestController::class, 'destroy']);
 
             // Blog posts (admin)
             Route::get('/admin/posts', [PostController::class, 'adminIndex']);

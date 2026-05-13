@@ -19,7 +19,14 @@ class SiteConfigController extends Controller
 {
     public function __construct(private MediaService $mediaService) {}
 
-    private const MODULE_KEYS = ['shop', 'blog', 'services', 'about', 'contact'];
+    private const MODULE_KEYS = ['shop', 'blog', 'services', 'about', 'contact', 'commissions'];
+
+    /**
+     * Modules that are ON by default for a fresh install. Modules NOT listed
+     * here default to OFF — new features should start opt-in so existing
+     * tenants are not surprised by them appearing in their storefront.
+     */
+    private const MODULES_DEFAULT_ON = ['shop', 'blog', 'services', 'about', 'contact'];
 
     /**
      * Build the showcase block returned to clients. Always returns a stable
@@ -375,12 +382,12 @@ class SiteConfigController extends Controller
      */
     private function resolveModulesEnabled(?array $stored): array
     {
-        $defaults = array_fill_keys(self::MODULE_KEYS, true);
         $stored = is_array($stored) ? $stored : [];
 
         $out = [];
         foreach (self::MODULE_KEYS as $key) {
-            $out[$key] = (bool) ($stored[$key] ?? $defaults[$key]);
+            $default = in_array($key, self::MODULES_DEFAULT_ON, true);
+            $out[$key] = (bool) ($stored[$key] ?? $default);
         }
 
         return $out;
@@ -486,6 +493,7 @@ class SiteConfigController extends Controller
                 'logo_alt_text' => $config->logo_alt_text,
                 'header_cta' => $this->resolveHeaderCta($config),
                 'footer_banner' => $this->resolveFooterBanner($config),
+                'currency_code' => $config->currency_code ?: 'USD',
                 'updated_at' => $config->updated_at,
 
                 // urls come from media
@@ -661,6 +669,7 @@ class SiteConfigController extends Controller
             'modules_enabled.services' => 'nullable|boolean',
             'modules_enabled.about' => 'nullable|boolean',
             'modules_enabled.contact' => 'nullable|boolean',
+            'modules_enabled.commissions' => 'nullable|boolean',
             'default_seo_title' => 'nullable|string|max:255',
             'default_seo_description' => 'nullable|string|max:500',
             'default_og_image_url' => 'nullable|url|max:500',
@@ -684,6 +693,12 @@ class SiteConfigController extends Controller
             'footer_banner.button_link' => 'nullable|string|max:500',
             'footer_banner.background_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
             'footer_banner.text_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'currency_code' => [
+                'nullable',
+                'string',
+                'size:3',
+                \Illuminate\Validation\Rule::exists('currencies', 'code'),
+            ],
         ]);
 
         $this->validateShowcaseRules($validated);
