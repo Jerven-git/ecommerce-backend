@@ -195,8 +195,8 @@ class OrderController extends Controller
             'delivery_method' => 'required|in:delivery,pickup',
             'shipping_address' => 'required_if:delivery_method,delivery|nullable|string',
 
-            'country' => 'required|string',
-            'state' => 'required|string',
+            'country' => 'required_if:delivery_method,delivery|nullable|string',
+            'state' => 'required_if:delivery_method,delivery|nullable|string',
             'city' => 'nullable|string',
 
             'shipping_method' => 'nullable|string|in:standard,express,registered',
