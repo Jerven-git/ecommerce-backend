@@ -16,6 +16,13 @@ return new class extends Migration
             $table->decimal('express_post_fee', 10, 2)->default(0);
             $table->decimal('registered_post_fee', 10, 2)->default(0);
             $table->decimal('insurance_fee', 10, 2)->default(0);
+            $table->decimal('insurance_rate_percent', 5, 2)->default(0);
+            $table->decimal('insurance_min_fee', 10, 2)->default(0);
+            $table->string('express_label', 100)->default('Express Post');
+            $table->string('express_pricing_mode', 20)->default('flat');
+            $table->json('express_weight_tiers')->nullable();
+            $table->string('registered_label', 100)->default('Registered Post');
+            $table->string('insurance_label', 100)->default('Shipping Insurance');
             $table->decimal('free_shipping_threshold', 10, 2)->default(0);
             $table->string('store_country')->default('');
             $table->string('store_state')->default('');

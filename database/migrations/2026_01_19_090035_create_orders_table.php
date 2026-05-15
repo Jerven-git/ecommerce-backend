@@ -18,6 +18,8 @@ return new class extends Migration
             $table->string('customer_phone')->nullable();
             $table->text('shipping_address');
             $table->decimal('total_amount', 10, 2)->default(0);
+            $table->string('currency', 3)->default('USD');
+            $table->decimal('exchange_rate', 16, 8)->default(1);
             $table->decimal('subtotal', 10, 2)->default(0);
             $table->decimal('tax_amount', 10, 2)->default(0);
             $table->foreignId('tax_rule_id')->nullable()->constrained('tax_rules')->nullOnDelete();
@@ -25,6 +27,8 @@ return new class extends Migration
             $table->decimal('shipping_amount', 10, 2)->default(0);
             $table->string('discount_code')->nullable();
             $table->decimal('discount_amount', 10, 2)->default(0);
+            $table->string('gift_card_code', 20)->nullable();
+            $table->decimal('gift_card_amount', 10, 2)->default(0);
             $table->string('delivery_method', 20)->default('delivery');
             $table->string('country')->nullable();
             $table->string('state')->nullable();
