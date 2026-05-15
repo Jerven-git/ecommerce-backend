@@ -8,10 +8,6 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('site_config', function (Blueprint $table) {
-            $table->foreignId('welcome_popup_discount_id')->nullable()->constrained('discounts')->nullOnDelete();
-        });
-
         Schema::create('subscribers', function (Blueprint $table) {
             $table->id();
             $table->string('email')->unique();
@@ -23,11 +19,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('site_config', function (Blueprint $table) {
-            $table->dropForeign(['welcome_popup_discount_id']);
-            $table->dropColumn('welcome_popup_discount_id');
-        });
-
         Schema::dropIfExists('subscribers');
     }
 };

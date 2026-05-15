@@ -8,15 +8,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('site_config', function (Blueprint $table): void {
-            $table->string('currency_code', 3)->default('USD')->after('logo_alt_text');
+        Schema::table('products', function (Blueprint $table) {
+            $table->foreign('category_id')->references('id')->on('categories')->nullOnDelete();
         });
     }
 
     public function down(): void
     {
-        Schema::table('site_config', function (Blueprint $table): void {
-            $table->dropColumn('currency_code');
+        Schema::table('products', function (Blueprint $table) {
+            $table->dropForeign(['category_id']);
         });
     }
 };

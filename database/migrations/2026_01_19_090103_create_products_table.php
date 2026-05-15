@@ -32,7 +32,9 @@ return new class extends Migration
             $table->decimal('height_cm', 8, 2)->default(0);
             $table->enum('shipping_calc_type', ['weight', 'dimensions'])->default('weight');
             $table->string('category')->default('general');
+            $table->unsignedBigInteger('category_id')->nullable();
             $table->boolean('is_active')->default(true);
+            $table->boolean('hover_zoom_enabled')->default(false);
             $table->timestamps();
         });
     }

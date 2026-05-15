@@ -32,8 +32,10 @@ return new class extends Migration
             $table->text('about_content')->nullable();
             $table->string('about_overlay_color', 7)->default('#000000');
             $table->unsignedTinyInteger('about_overlay_opacity')->default(45);
+            $table->string('about_image_url', 500)->nullable();
             $table->string('contact_overlay_color', 7)->default('#000000');
             $table->unsignedTinyInteger('contact_overlay_opacity')->default(45);
+            $table->string('contact_image_url', 500)->nullable();
             $table->string('badge_in_stock_color', 7)->default('#16a34a');
             $table->string('contact_email')->default('contact@store.com');
             $table->string('contact_phone')->default('+1234567890');
@@ -46,6 +48,7 @@ return new class extends Migration
             $table->boolean('welcome_popup_enabled')->default(false);
             $table->string('welcome_popup_heading')->default('Get 10% Off');
             $table->string('welcome_popup_body', 1000)->default('Sign up and get a discount code sent right to your inbox.');
+            $table->unsignedBigInteger('welcome_popup_discount_id')->nullable();
             $table->json('homepage_steps')->nullable();
             $table->json('homepage_features')->nullable();
             $table->json('homepage_stats')->nullable();
@@ -60,9 +63,11 @@ return new class extends Migration
             $table->json('blog_page')->nullable();
             $table->string('blog_overlay_color', 7)->default('#000000');
             $table->integer('blog_overlay_opacity')->default(40);
+            $table->string('blog_image_url', 500)->nullable();
             $table->json('services_page')->nullable();
             $table->string('services_overlay_color', 7)->default('#000000');
             $table->integer('services_overlay_opacity')->default(40);
+            $table->string('services_image_url', 500)->nullable();
             $table->json('modules_enabled')->nullable();
             $table->string('default_seo_title')->nullable();
             $table->string('default_seo_description', 500)->nullable();
@@ -70,6 +75,7 @@ return new class extends Migration
             $table->json('pages_seo')->nullable();
             $table->string('canonical_base_url', 500)->nullable();
             $table->string('logo_alt_text')->nullable();
+            $table->string('currency_code', 3)->default('USD');
             $table->json('header_cta')->nullable();
             $table->json('footer_banner')->nullable();
             $table->timestamps();
