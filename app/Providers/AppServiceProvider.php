@@ -13,6 +13,7 @@ use App\Payments\PaymentService;
 use App\Services\SmsService;
 use App\Events\PaymentConfirmed;
 use App\Events\OrderRequiresRefund;
+use App\Listeners\ActivateGiftCard;
 use App\Listeners\UpdateOrderStatus;
 use App\Listeners\DeductStock;
 use App\Listeners\HandleFailedOrder;
@@ -57,6 +58,7 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(PaymentConfirmed::class, DeductStock::class);
         Event::listen(PaymentConfirmed::class, FulfillBackorder::class);
         Event::listen(PaymentConfirmed::class, SendOrderConfirmation::class);
+        Event::listen(PaymentConfirmed::class, ActivateGiftCard::class);
         Event::listen(OrderRequiresRefund::class, HandleFailedOrder::class);
 
         // GLOBAL API: cap total requests per IP across all endpoints

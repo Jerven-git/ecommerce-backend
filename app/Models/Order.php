@@ -29,6 +29,8 @@ class Order extends Model
         'shipping_amount',
         'discount_code',
         'discount_amount',
+        'gift_card_code',
+        'gift_card_amount',
         'tax_rule_id',
         'tax_region',
         'status',
@@ -42,6 +44,7 @@ class Order extends Model
         'tax_amount' => 'decimal:2',
         'shipping_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
+        'gift_card_amount' => 'decimal:2',
         'has_backorder_items' => 'boolean',
         'created_at' => 'datetime',
     ];
