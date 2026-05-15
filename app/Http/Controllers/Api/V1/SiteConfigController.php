@@ -408,7 +408,7 @@ class SiteConfigController extends Controller
     }
 
     /**
-     * @return array{enabled: bool, heading: string, subtitle: string, button_label: string, button_link: string, background_color: string, text_color: string}
+     * @return array{enabled: bool, heading: string, subtitle: string, button_label: string, button_link: string, background_color: string, background_color_to: string, text_color: string}
      */
     private function resolveFooterBanner(SiteConfig $config): array
     {
@@ -421,6 +421,7 @@ class SiteConfigController extends Controller
             'button_label' => (string) ($stored['button_label'] ?? ''),
             'button_link' => (string) ($stored['button_link'] ?? ''),
             'background_color' => (string) ($stored['background_color'] ?? '#111827'),
+            'background_color_to' => (string) ($stored['background_color_to'] ?? ''),
             'text_color' => (string) ($stored['text_color'] ?? '#ffffff'),
         ];
     }
@@ -693,6 +694,7 @@ class SiteConfigController extends Controller
             'footer_banner.button_label' => 'nullable|string|max:30',
             'footer_banner.button_link' => 'nullable|string|max:500',
             'footer_banner.background_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'footer_banner.background_color_to' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
             'footer_banner.text_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
             'currency_code' => [
                 'nullable',
