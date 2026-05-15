@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Mail\OrderCancellationMail;
 use App\Models\Backorder;
 use App\Models\Discount;
+use App\Models\GiftCard;
+use App\Models\GiftCardDenomination;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\SiteConfig;
@@ -69,6 +71,10 @@ class OrderController extends Controller
 
     public function store(Request $request, ShippingCalculator $shipping)
     {
+        if ($request->input('delivery_method') === 'gift_card') {
+            return $this->storeGiftCardOrder($request);
+        }
+
         $validated = $this->validateOrderRequest($request);
         $this->ensureDeliveryFields($validated);
 
@@ -154,6 +160,21 @@ class OrderController extends Controller
                 $discount->increment('used_count');
             }
 
+            // Apply gift card redemption
+            $giftCardCode = $request->input('gift_card_code');
+            if ($giftCardCode) {
+                $giftCard = GiftCard::where('code', strtoupper(trim($giftCardCode)))->lockForUpdate()->first();
+                if ($giftCard && $giftCard->isUsable()) {
+                    $applied = min((float) $giftCard->balance, $finalTotal);
+                    $giftCard->deduct($applied);
+                    $order->gift_card_code = $giftCard->code;
+                    $order->gift_card_amount = $applied;
+                    $order->total_amount = max(0, round($finalTotal - $applied, 2));
+                    $order->save();
+                    $finalTotal = $order->total_amount;
+                }
+            }
+
             if (($validated['payment_method'] ?? null) === 'cash') {
                 app(PaymentService::class)->createPending($order, 'cash', []);
             }
@@ -185,6 +206,77 @@ class OrderController extends Controller
         }
     }
 
+    private function storeGiftCardOrder(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'customer_name' => 'required|string|max:255',
+            'customer_email' => 'required|email',
+            'customer_phone' => 'nullable|string',
+            'payment_method' => 'required|string|in:stripe,paypal,square',
+            'gift_card_denomination_id' => 'required|exists:gift_card_denominations,id',
+            'gift_card_recipient_email' => 'required|email',
+            'gift_card_recipient_name' => 'nullable|string|max:255',
+            'gift_card_message' => 'nullable|string|max:1000',
+        ]);
+
+        $denomination = GiftCardDenomination::findOrFail($validated['gift_card_denomination_id']);
+
+        if (! $denomination->is_enabled) {
+            return response()->json(['message' => 'Selected denomination is not available.'], 422);
+        }
+
+        $currencyCode = $this->resolveShopCurrency();
+
+        DB::beginTransaction();
+
+        try {
+            $order = Order::create([
+                'customer_name' => $validated['customer_name'],
+                'customer_email' => $validated['customer_email'],
+                'customer_phone' => $validated['customer_phone'] ?? '',
+                'shipping_address' => 'Gift Card',
+                'delivery_method' => 'gift_card',
+                'total_amount' => round((float) $denomination->amount, 2),
+                'currency' => $currencyCode,
+                'subtotal' => round((float) $denomination->amount, 2),
+                'tax_amount' => 0,
+                'shipping_amount' => 0,
+                'discount_amount' => 0,
+                'gift_card_amount' => 0,
+                'status' => 'pending',
+            ]);
+
+            GiftCard::create([
+                'code' => GiftCard::generateCode(),
+                'original_amount' => $denomination->amount,
+                'balance' => $denomination->amount,
+                'currency' => $currencyCode,
+                'order_id' => $order->id,
+                'purchaser_name' => $validated['customer_name'],
+                'purchaser_email' => $validated['customer_email'],
+                'recipient_name' => $validated['gift_card_recipient_name'] ?? null,
+                'recipient_email' => $validated['gift_card_recipient_email'],
+                'message' => $validated['gift_card_message'] ?? null,
+                'status' => GiftCard::STATUS_PENDING,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Gift card order created successfully',
+                'data' => ['order' => $order],
+            ], 201);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            report($e);
+
+            return response()->json([
+                'message' => 'Failed to create gift card order',
+                'error' => app()->hasDebugModeEnabled() ? $e->getMessage() : 'Something went wrong',
+            ], 422);
+        }
+    }
+
     private function validateOrderRequest(Request $request): array
     {
         return $request->validate([
@@ -208,6 +300,8 @@ class OrderController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
+
+            'gift_card_code' => 'nullable|string|max:20',
         ]);
     }
 

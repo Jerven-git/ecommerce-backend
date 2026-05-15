@@ -29,6 +29,7 @@ class DatabaseSeeder extends Seeder
             AdminSeeder::class,
             BlogSeeder::class,
             ServicesSeeder::class,
+            GiftCardDenominationSeeder::class,
         ]);
     }
 }

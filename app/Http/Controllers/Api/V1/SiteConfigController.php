@@ -19,7 +19,7 @@ class SiteConfigController extends Controller
 {
     public function __construct(private MediaService $mediaService) {}
 
-    private const MODULE_KEYS = ['shop', 'blog', 'services', 'about', 'contact', 'commissions'];
+    private const MODULE_KEYS = ['shop', 'blog', 'services', 'about', 'contact', 'commissions', 'gift_cards'];
 
     /**
      * Modules that are ON by default for a fresh install. Modules NOT listed
@@ -670,6 +670,7 @@ class SiteConfigController extends Controller
             'modules_enabled.about' => 'nullable|boolean',
             'modules_enabled.contact' => 'nullable|boolean',
             'modules_enabled.commissions' => 'nullable|boolean',
+            'modules_enabled.gift_cards' => 'nullable|boolean',
             'default_seo_title' => 'nullable|string|max:255',
             'default_seo_description' => 'nullable|string|max:500',
             'default_og_image_url' => 'nullable|url|max:500',

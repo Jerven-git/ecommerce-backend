@@ -3,7 +3,9 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BackorderController;
 use App\Http\Controllers\Api\V1\CategoryController;
+use App\Http\Controllers\Api\V1\AdminGiftCardController;
 use App\Http\Controllers\Api\V1\CommissionRequestController;
+use App\Http\Controllers\Api\V1\GiftCardController;
 use App\Http\Controllers\Api\V1\ContactController;
 use App\Http\Controllers\Api\V1\CurrencyController;
 use App\Http\Controllers\Api\V1\DashboardController;
@@ -75,6 +77,10 @@ Route::prefix('v1')->group(function () {
 
     // Contact form
     Route::post('/contact', [ContactController::class, 'store'])->middleware('throttle:contact');
+
+    // Gift cards (public)
+    Route::get('/gift-card-denominations', [GiftCardController::class, 'denominations']);
+    Route::post('/gift-cards/validate', [GiftCardController::class, 'validate'])->middleware('throttle:discount-validate');
 
     // Commission requests (public submit)
     Route::post('/commission-requests', [CommissionRequestController::class, 'store'])->middleware('throttle:contact');
@@ -189,6 +195,15 @@ Route::prefix('v1')->group(function () {
             Route::post('/currencies', [CurrencyController::class, 'store']);
             Route::patch('/currencies/{currency}', [CurrencyController::class, 'update']);
             Route::delete('/currencies/{currency}', [CurrencyController::class, 'destroy']);
+
+            // Gift cards (admin)
+            Route::get('/admin/gift-card-denominations', [AdminGiftCardController::class, 'denominationIndex']);
+            Route::post('/gift-card-denominations', [AdminGiftCardController::class, 'denominationStore']);
+            Route::patch('/gift-card-denominations/{denomination}', [AdminGiftCardController::class, 'denominationUpdate']);
+            Route::delete('/gift-card-denominations/{denomination}', [AdminGiftCardController::class, 'denominationDestroy']);
+            Route::get('/admin/gift-cards', [AdminGiftCardController::class, 'index']);
+            Route::post('/admin/gift-cards', [AdminGiftCardController::class, 'store']);
+            Route::patch('/admin/gift-cards/{giftCard}', [AdminGiftCardController::class, 'update']);
 
             // Commission requests (admin)
             Route::get('/commission-requests', [CommissionRequestController::class, 'index']);
