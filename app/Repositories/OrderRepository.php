@@ -4,7 +4,7 @@ namespace App\Repositories;
 
 use App\Models\Order;
 use App\Models\Product;
-use Illuminate\Support\Facades\DB;
+use App\Models\ProductVariant;
 
 class OrderRepository
 {
@@ -25,14 +25,18 @@ class OrderRepository
 
     public function restoreStock(Order $order): void
     {
-        if (!$order->stock_deducted_at) {
+        if (! $order->stock_deducted_at) {
             return;
         }
 
         $order->loadMissing('items');
 
         foreach ($order->items as $item) {
-            Product::where('id', $item->product_id)->increment('stock', $item->quantity);
+            if ($item->variant_id) {
+                ProductVariant::where('id', $item->variant_id)->increment('stock', $item->quantity);
+            } else {
+                Product::where('id', $item->product_id)->increment('stock', $item->quantity);
+            }
         }
 
         $order->forceFill(['stock_deducted_at' => null])->save();

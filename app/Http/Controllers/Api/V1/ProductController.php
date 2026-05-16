@@ -15,7 +15,7 @@ class ProductController extends Controller
 
     public function index(Request $request)
     {
-        $query = Product::with('categories');
+        $query = Product::with('categories')->withCount('variants')->withSum('activeVariants', 'stock');
 
         // Filter by a fixed list of ids — used by the guest favorites page,
         // which holds product ids in localStorage and asks the API to hydrate
@@ -82,7 +82,12 @@ class ProductController extends Controller
 
     public function show($slug)
     {
-        $product = Product::with(['media', 'categories'])->where('slug', $slug)->firstOrFail();
+        $product = Product::with(['media', 'categories', 'options.values'])
+            ->where('slug', $slug)
+            ->firstOrFail();
+
+        // Load active variants under the key "variants" so the storefront can use product.variants
+        $product->setRelation('variants', $product->activeVariants()->with('optionValues')->get());
 
         return response()->json(['data' => $product]);
     }
