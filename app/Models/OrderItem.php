@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
 
 class OrderItem extends Model
 {
@@ -12,6 +12,9 @@ class OrderItem extends Model
     protected $fillable = [
         'order_id',
         'product_id',
+        'variant_id',
+        'variant_sku',
+        'selected_options',
         'product_name',
         'product_price',
         'quantity',
@@ -29,6 +32,7 @@ class OrderItem extends Model
         'product_price' => 'decimal:2',
         'quantity' => 'integer',
         'subtotal' => 'decimal:2',
+        'selected_options' => 'array',
     ];
 
     public function order()
@@ -39,5 +43,10 @@ class OrderItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function variant()
+    {
+        return $this->belongsTo(ProductVariant::class);
     }
 }

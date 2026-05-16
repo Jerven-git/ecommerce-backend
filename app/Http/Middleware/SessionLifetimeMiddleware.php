@@ -19,7 +19,7 @@ class SessionLifetimeMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!Auth::check()) {
+        if (! Auth::check() || ! $request->hasSession()) {
             return $next($request);
         }
 
@@ -27,9 +27,10 @@ class SessionLifetimeMiddleware
         $lastActiveAt = $request->session()->get('last_active_at', $sessionCreatedAt);
 
         // Pre-existing session before this feature — start tracking now
-        if (!$sessionCreatedAt) {
+        if (! $sessionCreatedAt) {
             $request->session()->put('session_created_at', now()->timestamp);
             $request->session()->put('last_active_at', now()->timestamp);
+
             return $next($request);
         }
 

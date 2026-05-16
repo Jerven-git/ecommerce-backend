@@ -1,15 +1,15 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AdminGiftCardController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BackorderController;
 use App\Http\Controllers\Api\V1\CategoryController;
-use App\Http\Controllers\Api\V1\AdminGiftCardController;
 use App\Http\Controllers\Api\V1\CommissionRequestController;
-use App\Http\Controllers\Api\V1\GiftCardController;
 use App\Http\Controllers\Api\V1\ContactController;
 use App\Http\Controllers\Api\V1\CurrencyController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DiscountController;
+use App\Http\Controllers\Api\V1\GiftCardController;
 use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\PaymentController;
@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\PayPalReturnController;
 use App\Http\Controllers\Api\V1\PostCategoryController;
 use App\Http\Controllers\Api\V1\PostController;
 use App\Http\Controllers\Api\V1\ProductController;
+use App\Http\Controllers\Api\V1\ProductVariantController;
 use App\Http\Controllers\Api\V1\ServiceCategoryController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\ShipmentController;
@@ -183,6 +184,12 @@ Route::prefix('v1')->group(function () {
             Route::delete('/products/{id}', [ProductController::class, 'destroy']);
             Route::post('/products/{id}/images', [ProductController::class, 'uploadImages']);
             Route::delete('/products/{id}/images/{mediaId}', [ProductController::class, 'deleteImage']);
+
+            // Product Variants (admin)
+            Route::get('/products/{id}/variants', [ProductVariantController::class, 'index']);
+            Route::post('/products/{id}/variants/sync', [ProductVariantController::class, 'sync']);
+            Route::post('/products/{id}/variants/{variantId}/image', [ProductVariantController::class, 'uploadVariantImage']);
+            Route::delete('/products/{id}/variants/{variantId}/image', [ProductVariantController::class, 'deleteVariantImage']);
 
             // Categories
             Route::post('/categories', [CategoryController::class, 'store']);

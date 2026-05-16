@@ -132,6 +132,21 @@ class Product extends Model
         return $this->hasMany(Backorder::class);
     }
 
+    public function options()
+    {
+        return $this->hasMany(ProductOption::class)->orderBy('position');
+    }
+
+    public function variants()
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
+
+    public function activeVariants()
+    {
+        return $this->hasMany(ProductVariant::class)->where('is_active', true);
+    }
+
     public function getCanBackorderAttribute(): bool
     {
         return $this->canBackorder();

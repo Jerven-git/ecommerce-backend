@@ -10,6 +10,7 @@ use App\Models\GiftCard;
 use App\Models\GiftCardDenomination;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\SiteConfig;
 use App\Models\TaxSetting;
 use App\Payments\PaymentService;
@@ -300,6 +301,7 @@ class OrderController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
+            'items.*.variant_id' => 'nullable|integer|exists:product_variants,id',
 
             'gift_card_code' => 'nullable|string|max:20',
         ]);
@@ -343,8 +345,21 @@ class OrderController extends Controller
         $productIds = array_column($items, 'product_id');
         $products = Product::whereIn('id', $productIds)->lockForUpdate()->get()->keyBy('id');
 
+        // Lock variant rows in ID order to prevent deadlocks
+        $variantIds = array_filter(array_column($items, 'variant_id'));
+        $variants = collect();
+        if (! empty($variantIds)) {
+            $variants = ProductVariant::with('optionValues.option')
+                ->whereIn('id', $variantIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+        }
+
         foreach ($items as $item) {
             $productId = (int) $item['product_id'];
+            $variantId = ! empty($item['variant_id']) ? (int) $item['variant_id'] : null;
             $qty = (int) $item['quantity'];
 
             $product = $products->get($productId);
@@ -353,7 +368,14 @@ class OrderController extends Controller
                 throw new \Exception("Product not found: {$productId}");
             }
 
-            $inStockQty = min($qty, $product->stock);
+            $variant = $variantId ? $variants->get($variantId) : null;
+
+            if ($variantId && ! $variant) {
+                throw new \Exception("Variant not found: {$variantId}");
+            }
+
+            $availableStock = $variant ? $variant->stock : $product->stock;
+            $inStockQty = min($qty, $availableStock);
             $backorderQty = $qty - $inStockQty;
 
             // If not enough stock and backorder not allowed, throw
@@ -361,7 +383,17 @@ class OrderController extends Controller
                 throw new \Exception("Insufficient stock for product: {$product->name}");
             }
 
-            $price = (float) $product->price;
+            $price = $variant
+                ? (float) ($variant->price ?? $product->price)
+                : (float) $product->price;
+
+            $selectedOptions = null;
+            if ($variant) {
+                $selectedOptions = $variant->optionValues->map(fn ($val) => [
+                    'option' => $val->option->name,
+                    'value' => $val->label,
+                ])->values()->toArray();
+            }
 
             // Process in-stock portion as normal order items
             if ($inStockQty > 0) {
@@ -376,8 +408,11 @@ class OrderController extends Controller
 
                 $orderItems[] = [
                     'product_id' => $product->id,
+                    'variant_id' => $variantId,
+                    'variant_sku' => $variant?->sku,
+                    'selected_options' => $selectedOptions,
                     'product_name' => $product->name,
-                    'product_price' => $product->price,
+                    'product_price' => $price,
                     'quantity' => $inStockQty,
                     'subtotal' => round($lineSubtotal, 2),
                 ];
@@ -390,13 +425,15 @@ class OrderController extends Controller
 
             // Process backorder portion
             if ($backorderQty > 0) {
-                // Still add to order items so the full order is recorded
                 $boLineSubtotal = $price * $backorderQty;
 
                 $orderItems[] = [
                     'product_id' => $product->id,
+                    'variant_id' => $variantId,
+                    'variant_sku' => $variant?->sku,
+                    'selected_options' => $selectedOptions,
                     'product_name' => $product->name.' (Backorder)',
-                    'product_price' => $product->price,
+                    'product_price' => $price,
                     'quantity' => $backorderQty,
                     'subtotal' => round($boLineSubtotal, 2),
                 ];
@@ -412,6 +449,7 @@ class OrderController extends Controller
 
                 $backorderItems[] = [
                     'product_id' => $product->id,
+                    'variant_id' => $variantId,
                     'quantity' => $backorderQty,
                     'charge_policy' => $product->backorder_charge_policy,
                 ];
