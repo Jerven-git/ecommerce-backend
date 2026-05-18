@@ -5,21 +5,21 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Mail\ContactFormMail;
 use App\Models\SiteConfig;
+use Illuminate\Http\Client\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Http\Client\Response;
 
 class ContactController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name'            => 'required|string|max:255',
-            'email'           => 'required|email:rfc,dns|max:255',
-            'subject'         => 'required|string|max:255',
-            'message'         => 'required|string|max:5000',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email:rfc,dns|max:255',
+            'subject' => 'required|string|max:255',
+            'message' => 'required|string|max:5000',
             'recaptcha_token' => 'required|string',
         ]);
 
@@ -27,7 +27,7 @@ class ContactController extends Controller
         $this->verifyRecaptcha($validated['recaptcha_token']);
 
         // Determine recipients from site config contact_entries, falling back to contact_email
-        $config = SiteConfig::first();
+        $config = SiteConfig::forDefaultStore();
         $recipients = collect($config?->contact_entries ?? [])
             ->pluck('email')
             ->filter(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL))
@@ -65,19 +65,19 @@ class ContactController extends Controller
         $secretKey = config('services.recaptcha.secret_key');
         $threshold = config('services.recaptcha.threshold', 0.5);
 
-        if (!$secretKey) {
+        if (! $secretKey) {
             return;
         }
-        
+
         /** @var Response $response */
         $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-            'secret'   => $secretKey,
+            'secret' => $secretKey,
             'response' => $token,
         ]);
 
         $result = $response->json();
 
-        if (!($result['success'] ?? false) || ($result['score'] ?? 0) < $threshold) {
+        if (! ($result['success'] ?? false) || ($result['score'] ?? 0) < $threshold) {
             abort(422, 'reCAPTCHA verification failed. Please try again.');
         }
     }

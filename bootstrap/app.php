@@ -1,12 +1,14 @@
 <?php
 
+use App\Http\Middleware\AdminMiddleware;
+use App\Http\Middleware\ResolveAdminStore;
+use App\Http\Middleware\SanitizeInput;
+use App\Http\Middleware\SessionLifetimeMiddleware;
+use App\Http\Middleware\SuperAdminMiddleware;
+use App\Providers\RouteServiceProvider;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use App\Http\Middleware\AdminMiddleware;
-use App\Http\Middleware\SanitizeInput;
-use App\Http\Middleware\SessionLifetimeMiddleware;
-use App\Providers\RouteServiceProvider;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withProviders([
@@ -24,7 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(prepend: [
             SanitizeInput::class,
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-            \Illuminate\Routing\Middleware\ThrottleRequests::class . ':api',
+            \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
         ]);
 
         $middleware->api(append: [
@@ -33,6 +35,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin' => AdminMiddleware::class,
+            'super_admin' => SuperAdminMiddleware::class,
+            'tenant' => ResolveAdminStore::class,
             'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
             'session.lifetime' => SessionLifetimeMiddleware::class,
         ]);
@@ -43,5 +47,4 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/*',
         ]);
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
-    })->create();
+    ->withExceptions(function (Exceptions $exceptions): void {})->create();

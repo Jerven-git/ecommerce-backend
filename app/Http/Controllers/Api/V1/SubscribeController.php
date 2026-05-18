@@ -34,7 +34,7 @@ class SubscribeController extends Controller
 
         // Only generate discount codes for welcome popup subscribers
         if ($source === 'welcome_popup') {
-            $config = SiteConfig::first();
+            $config = SiteConfig::forDefaultStore();
 
             if ($config?->welcome_popup_discount_id) {
                 $template = Discount::find($config->welcome_popup_discount_id);
@@ -44,7 +44,7 @@ class SubscribeController extends Controller
 
                     Discount::create([
                         'code' => $uniqueCode,
-                        'description' => 'Welcome popup discount for ' . $email,
+                        'description' => 'Welcome popup discount for '.$email,
                         'type' => $template->type,
                         'value' => $template->value,
                         'min_order_amount' => $template->min_order_amount,
@@ -73,7 +73,7 @@ class SubscribeController extends Controller
     private function generateUniqueCode(): string
     {
         do {
-            $code = 'WELCOME-' . strtoupper(Str::random(6));
+            $code = 'WELCOME-'.strtoupper(Str::random(6));
         } while (Discount::where('code', $code)->exists());
 
         return $code;

@@ -109,7 +109,7 @@ class CommissionRequestController extends Controller
      */
     private function abortIfModuleDisabled(): void
     {
-        $modules = SiteConfig::query()->value('modules_enabled');
+        $modules = SiteConfig::queryForDefaultStore()->value('modules_enabled');
         $enabled = is_array($modules) ? (bool) ($modules['commissions'] ?? false) : false;
 
         if (! $enabled) {
@@ -119,7 +119,7 @@ class CommissionRequestController extends Controller
 
     private function notifyAdmins(CommissionRequest $commission): void
     {
-        $config = SiteConfig::first();
+        $config = SiteConfig::forDefaultStore();
         $recipients = collect($config?->contact_entries ?? [])
             ->pluck('email')
             ->filter(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL))

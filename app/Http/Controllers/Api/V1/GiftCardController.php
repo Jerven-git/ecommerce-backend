@@ -46,7 +46,7 @@ class GiftCardController extends Controller
 
     private function abortIfModuleDisabled(): void
     {
-        $config = SiteConfig::first();
+        $config = SiteConfig::forDefaultStore();
         $modules = $config?->modules_enabled ?? [];
         $enabled = $modules['gift_cards'] ?? false;
 

@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToStore;
+use App\Models\Scopes\StoreScope;
 use App\Modules\Realtime\Traits\BroadcastsChanges;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 
 class SiteConfig extends Model
 {
-    use BroadcastsChanges;
+    use BelongsToStore, BroadcastsChanges;
 
     const CREATED_AT = null;
 
@@ -24,6 +26,7 @@ class SiteConfig extends Model
     ];
 
     protected $fillable = [
+        'store_id',
         'site_name',
         'theme',
         'hero_title',
@@ -92,6 +95,44 @@ class SiteConfig extends Model
     public function getResolvedThemeAttribute(): array
     {
         return array_merge(self::THEME_DEFAULTS, $this->theme ?? []);
+    }
+
+    /**
+     * Read the SiteConfig for the platform default store, bypassing tenant scoping.
+     *
+     * Used by public storefront paths until per-store storefront routing lands.
+     */
+    public static function forDefaultStore(): ?self
+    {
+        return static::queryForDefaultStore()->first();
+    }
+
+    /**
+     * Builder targeting the default-store SiteConfig, with the StoreScope removed
+     * so it works on public/unauthenticated requests.
+     */
+    public static function queryForDefaultStore(): \Illuminate\Database\Eloquent\Builder
+    {
+        return static::withoutGlobalScope(StoreScope::class)
+            ->whereHas('store', fn ($q) => $q->where('slug', Store::DEFAULT_SLUG));
+    }
+
+    /**
+     * Get or create the SiteConfig for the default store (used by public storefront
+     * fallbacks until storefront tenancy lands).
+     */
+    public static function firstOrCreateForDefaultStore(): self
+    {
+        $existing = static::forDefaultStore();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        $defaultStore = Store::where('slug', Store::DEFAULT_SLUG)->firstOrFail();
+
+        return static::withoutGlobalScope(StoreScope::class)
+            ->create(['store_id' => $defaultStore->id]);
     }
 
     protected function siteName(): Attribute
