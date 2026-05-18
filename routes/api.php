@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AdminGiftCardController;
+use App\Http\Controllers\Api\V1\AdminUserController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BackorderController;
 use App\Http\Controllers\Api\V1\CategoryController;
@@ -141,8 +142,12 @@ Route::prefix('v1')->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::middleware(['auth:sanctum', 'session.lifetime'])->group(function () {
+    Route::middleware(['auth:sanctum', 'session.lifetime', 'tenant'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
+        Route::get('/admin/users', [AdminUserController::class, 'index'])->middleware('super_admin');
+        Route::post('/admin/users', [AdminUserController::class, 'store'])->middleware('super_admin');
+        Route::patch('/admin/users/{user}', [AdminUserController::class, 'update'])->middleware('super_admin');
+        Route::delete('/admin/users/{user}', [AdminUserController::class, 'destroy'])->middleware('super_admin');
 
         // Dashboard
         Route::get('/dashboard/stats', [DashboardController::class, 'stats']);

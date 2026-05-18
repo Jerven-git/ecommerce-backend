@@ -10,6 +10,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\SiteConfig;
 use App\Modules\Media\MediaService;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -428,11 +429,19 @@ class SiteConfigController extends Controller
 
     private function config(): SiteConfig
     {
-        return SiteConfig::with([
+        $relations = [
             'logoMedia', 'faviconMedia', 'cartIconMedia', 'heroMedia',
             'aboutMedia', 'contactMedia', 'blogMedia', 'servicesMedia',
             'showcaseVideoMedia', 'showcaseVideoPosterMedia',
-        ])->first() ?? SiteConfig::create([]);
+        ];
+
+        if (app(CurrentStore::class)->isSet()) {
+            return SiteConfig::with($relations)->first()
+                ?? SiteConfig::create([]);
+        }
+
+        return SiteConfig::queryForDefaultStore()->with($relations)->first()
+            ?? SiteConfig::firstOrCreateForDefaultStore()->load($relations);
     }
 
     public function show()

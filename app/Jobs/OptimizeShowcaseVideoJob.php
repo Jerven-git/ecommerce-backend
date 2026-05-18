@@ -50,7 +50,7 @@ class OptimizeShowcaseVideoJob implements ShouldQueue
             return;
         }
 
-        $config = SiteConfig::first();
+        $config = SiteConfig::forDefaultStore();
         if (! $config) {
             return;
         }

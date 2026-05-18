@@ -601,7 +601,7 @@ class OrderController extends Controller
      */
     private function resolveShopCurrency(): string
     {
-        return SiteConfig::query()->value('currency_code') ?: 'USD';
+        return SiteConfig::queryForDefaultStore()->value('currency_code') ?: 'USD';
     }
 
     private function createOrderItems(Order $order, array $orderItems): void

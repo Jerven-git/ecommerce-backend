@@ -37,7 +37,7 @@ class BackorderController extends Controller
             $term = $request->query('search');
             $query->whereHas('order', function ($q) use ($term) {
                 $q->where('customer_name', 'like', "%{$term}%")
-                  ->orWhere('customer_email', 'like', "%{$term}%");
+                    ->orWhere('customer_email', 'like', "%{$term}%");
             });
         }
 
@@ -59,6 +59,7 @@ class BackorderController extends Controller
     public function show($id)
     {
         $backorder = Backorder::with(['order.items', 'product'])->findOrFail($id);
+
         return response()->json(['data' => $backorder]);
     }
 
@@ -66,7 +67,7 @@ class BackorderController extends Controller
     {
         $backorder = Backorder::with(['order', 'product'])->findOrFail($id);
 
-        if (!in_array($backorder->status, ['awaiting_stock', 'expired'])) {
+        if (! in_array($backorder->status, ['awaiting_stock', 'expired'])) {
             return response()->json([
                 'message' => "Cannot notify a backorder with status '{$backorder->status}'",
             ], 422);
@@ -79,7 +80,7 @@ class BackorderController extends Controller
     {
         $backorder = Backorder::with(['order', 'product'])->findOrFail($id);
 
-        if (!in_array($backorder->status, ['notified', 'expired'])) {
+        if (! in_array($backorder->status, ['notified', 'expired'])) {
             return response()->json([
                 'message' => "Cannot resend for a backorder with status '{$backorder->status}'",
             ], 422);
@@ -98,13 +99,13 @@ class BackorderController extends Controller
             DB::transaction(function () use ($backorder, $token, $expiryHours) {
                 $product = Product::where('id', $backorder->product_id)->lockForUpdate()->first();
 
-                if (!$product || $product->stock < $backorder->quantity) {
+                if (! $product || $product->stock < $backorder->quantity) {
                     $available = $product->stock ?? 0;
                     abort(422, "Insufficient stock to send payment link. Available: {$available}, required: {$backorder->quantity}.");
                 }
 
                 // Reserve stock only if not already reserved (safe for resend)
-                if (!$backorder->stock_reserved) {
+                if (! $backorder->stock_reserved) {
                     $product->decrement('stock', $backorder->quantity);
                 }
 
@@ -194,14 +195,15 @@ class BackorderController extends Controller
             ->where('payment_token', $token)
             ->first();
 
-        if (!$backorder) {
+        if (! $backorder) {
             return response()->json(['message' => 'Invalid payment link'], 404);
         }
 
-        if (!$backorder->isTokenValid()) {
+        if (! $backorder->isTokenValid()) {
             if ($backorder->status === 'notified') {
                 $backorder->update(['status' => 'expired']);
             }
+
             return response()->json(['message' => 'This payment link has expired'], 410);
         }
 
@@ -247,14 +249,15 @@ class BackorderController extends Controller
             ->where('payment_token', $token)
             ->first();
 
-        if (!$backorder) {
+        if (! $backorder) {
             return response()->json(['message' => 'Invalid payment link'], 404);
         }
 
-        if (!$backorder->isTokenValid()) {
+        if (! $backorder->isTokenValid()) {
             if ($backorder->status === 'notified') {
                 $backorder->update(['status' => 'expired']);
             }
+
             return response()->json(['message' => 'This payment link has expired'], 410);
         }
 
@@ -264,8 +267,9 @@ class BackorderController extends Controller
 
         // Ensure stock is still available before accepting payment
         $product = $backorder->product;
-        if (!$backorder->stock_reserved && (!$product || $product->stock < $backorder->quantity)) {
+        if (! $backorder->stock_reserved && (! $product || $product->stock < $backorder->quantity)) {
             $available = $product->stock ?? 0;
+
             return response()->json([
                 'message' => "Sorry, this item is no longer available in the required quantity. Available stock: {$available}. Please contact us for assistance.",
             ], 409);
@@ -330,14 +334,15 @@ class BackorderController extends Controller
             ->where('payment_token', $token)
             ->first();
 
-        if (!$backorder) {
+        if (! $backorder) {
             return response()->json(['message' => 'Invalid payment link'], 404);
         }
 
-        if (!$backorder->isTokenValid()) {
+        if (! $backorder->isTokenValid()) {
             if ($backorder->status === 'notified') {
                 $backorder->update(['status' => 'expired']);
             }
+
             return response()->json(['message' => 'This payment link has expired'], 410);
         }
 
@@ -358,7 +363,7 @@ class BackorderController extends Controller
         );
 
         // Notify admin
-        $adminEmail = SiteConfig::first()?->admin_email;
+        $adminEmail = SiteConfig::forDefaultStore()?->admin_email;
         if ($adminEmail) {
             Mail::to($adminEmail)->send(
                 new \App\Mail\BackorderConfirmedAdminMail($backorder)
@@ -455,7 +460,7 @@ class BackorderController extends Controller
         $order = $backorder->order;
 
         // No shipping for pickup orders or orders without address info
-        if (!$order || $order->delivery_method === 'pickup' || !$order->country) {
+        if (! $order || $order->delivery_method === 'pickup' || ! $order->country) {
             return ['total' => 0];
         }
 
@@ -496,7 +501,7 @@ class BackorderController extends Controller
     {
         $taxSetting = \App\Models\TaxSetting::first();
 
-        if (!$taxSetting || !$taxSetting->tax_enabled || $taxSetting->tax_rate == 0) {
+        if (! $taxSetting || ! $taxSetting->tax_enabled || $taxSetting->tax_rate == 0) {
             return [
                 'tax_amount' => 0,
                 'tax_rate' => 0,

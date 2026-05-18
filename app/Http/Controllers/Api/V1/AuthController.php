@@ -19,18 +19,28 @@ class AuthController extends Controller
      */
     public function login(Request $request)
     {
+        $this->ensureSession($request);
+
         $request->validate([
             'email' => 'required|email',
             'password' => 'required',
         ]);
 
-        if (!Auth::attempt($request->only('email', 'password'))) {
+        if (! Auth::attempt($request->only('email', 'password'))) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
         $user = Auth::user();
+
+        if (! $user || ! $user->isAdminLike()) {
+            Auth::logout();
+
+            throw ValidationException::withMessages([
+                'email' => ['Invalid credentials or not authorized as admin.'],
+            ]);
+        }
 
         // Generate and send 2FA code
         $this->generateAndSendCode($user);
@@ -53,6 +63,8 @@ class AuthController extends Controller
      */
     public function verifyTwoFactor(Request $request)
     {
+        $this->ensureSession($request);
+
         $request->validate([
             'code' => 'required|string|size:6',
         ]);
@@ -60,7 +72,7 @@ class AuthController extends Controller
         $userId = $request->session()->get('two_factor_user_id');
         $expiresAt = $request->session()->get('two_factor_expires_at');
 
-        if (!$userId || !$expiresAt || now()->timestamp > $expiresAt) {
+        if (! $userId || ! $expiresAt || now()->timestamp > $expiresAt) {
             return response()->json([
                 'message' => 'Your verification session has expired. Please log in again.',
             ], 422);
@@ -68,10 +80,18 @@ class AuthController extends Controller
 
         $user = User::find($userId);
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'message' => 'User not found. Please log in again.',
             ], 422);
+        }
+
+        if (! $user->isAdminLike()) {
+            $request->session()->forget(['two_factor_user_id', 'two_factor_expires_at']);
+
+            return response()->json([
+                'message' => 'This account is not authorized for admin access.',
+            ], 403);
         }
 
         // Find the latest unused, unexpired code
@@ -81,7 +101,7 @@ class AuthController extends Controller
             ->latest()
             ->first();
 
-        if (!$twoFactorCode || !Hash::check($request->code, $twoFactorCode->code)) {
+        if (! $twoFactorCode || ! Hash::check($request->code, $twoFactorCode->code)) {
             return response()->json([
                 'message' => 'Invalid verification code.',
             ], 422);
@@ -102,9 +122,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Login successful',
-            'user' => array_merge($user->toArray(), [
-                'is_admin' => $user->isAdminLike(),
-            ]),
+            'user' => $this->serializeUser($user),
         ]);
     }
 
@@ -113,9 +131,11 @@ class AuthController extends Controller
      */
     public function resendTwoFactor(Request $request)
     {
+        $this->ensureSession($request);
+
         $userId = $request->session()->get('two_factor_user_id');
 
-        if (!$userId) {
+        if (! $userId) {
             return response()->json([
                 'message' => 'No pending verification found. Please log in again.',
             ], 422);
@@ -123,10 +143,18 @@ class AuthController extends Controller
 
         $user = User::find($userId);
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'message' => 'User not found. Please log in again.',
             ], 422);
+        }
+
+        if (! $user->isAdminLike()) {
+            $request->session()->forget(['two_factor_user_id', 'two_factor_expires_at']);
+
+            return response()->json([
+                'message' => 'This account is not authorized for admin access.',
+            ], 403);
         }
 
         // Generate and send a new code
@@ -145,13 +173,15 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        $this->ensureSession($request);
+
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
         return response()->json([
-            'message' => 'Logged out successfully'
+            'message' => 'Logged out successfully',
         ]);
     }
 
@@ -163,9 +193,19 @@ class AuthController extends Controller
         $user = $request->user();
 
         return response()->json([
-            'user' => $user ? array_merge($user->toArray(), [
-                'is_admin' => $user->isAdminLike(),
-            ]) : null
+            'user' => $user ? $this->serializeUser($user) : null,
+        ]);
+    }
+
+    private function serializeUser(User $user): array
+    {
+        $user->loadMissing('roles');
+        $roles = $user->roleNames();
+
+        return array_merge($user->toArray(), [
+            'roles' => $roles,
+            'is_admin' => in_array('admin', $roles, true) || in_array('super_admin', $roles, true),
+            'is_super_admin' => in_array('super_admin', $roles, true),
         ]);
     }
 
@@ -188,5 +228,16 @@ class AuthController extends Controller
         ]);
 
         Mail::to($user->email)->send(new TwoFactorCodeMail($code, $user->name));
+    }
+
+    private function ensureSession(Request $request): void
+    {
+        if ($request->hasSession()) {
+            return;
+        }
+
+        $session = app('session')->driver();
+        $session->start();
+        $request->setLaravelSession($session);
     }
 }

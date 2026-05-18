@@ -21,10 +21,11 @@ class AuthApiTest extends TestCase
         $role = Role::create(['name' => 'admin']);
         $user->roles()->attach($role);
 
-        $this->postJson('/api/v1/login', [
-            'email' => $user->email,
-            'password' => 'secret123',
-        ])->assertOk();
+        $this->withSession([])
+            ->postJson('/api/v1/login', [
+                'email' => $user->email,
+                'password' => 'secret123',
+            ])->assertOk();
     }
 
     public function test_login_fails_with_wrong_password(): void
@@ -42,6 +43,16 @@ class AuthApiTest extends TestCase
         $this->postJson('/api/v1/login', [])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['email', 'password']);
+    }
+
+    public function test_non_admin_cannot_start_admin_login_flow(): void
+    {
+        $user = User::factory()->create(['password' => bcrypt('secret123')]);
+
+        $this->postJson('/api/v1/login', [
+            'email' => $user->email,
+            'password' => 'secret123',
+        ])->assertStatus(422);
     }
 
     // ─────────────────────────────────────────
@@ -71,6 +82,7 @@ class AuthApiTest extends TestCase
         $user->roles()->attach($role);
 
         $this->actingAs($user)
+            ->withSession(['session_created_at' => now()->timestamp])
             ->postJson('/api/v1/logout')
             ->assertOk();
     }

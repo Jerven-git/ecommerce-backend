@@ -59,7 +59,7 @@ class OptimizeWatchShopMediaJob implements ShouldQueue
     {
         /** @var Media|null $media */
         $media = Media::find($this->mediaId);
-        $config = SiteConfig::first();
+        $config = SiteConfig::forDefaultStore();
         if (! $media || ! $config) {
             return;
         }
