@@ -435,11 +435,59 @@ class SiteConfigController extends Controller
             'showcaseVideoMedia', 'showcaseVideoPosterMedia',
         ];
 
+        // Admin-context calls (PATCH /site-config, uploads, etc.) run under
+        // the `tenant` middleware, so CurrentStore is already set and the
+        // global scope handles isolation.
         if (app(CurrentStore::class)->isSet()) {
             return SiteConfig::with($relations)->first()
                 ?? SiteConfig::create([]);
         }
 
+        // Public GET /site-config has no tenant middleware. When an admin's
+        // SPA hits it (to render the theme they just saved), resolve their
+        // store directly from the session user — otherwise the storefront
+        // would see the default store regardless of who's logged in.
+        $user = request()->user();
+        if ($user && $user->store_id) {
+            $config = SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)
+                ->with($relations)
+                ->where('store_id', $user->store_id)
+                ->first();
+
+            if ($config) {
+                return $config;
+            }
+
+            return SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)
+                ->create(['store_id' => $user->store_id])
+                ->load($relations);
+        }
+
+        // Unauthenticated visitors can hint which store they want via ?store=slug.
+        // The frontend stashes the last-used store in localStorage so the admin
+        // login page keeps the right theme after logout — until per-store
+        // storefront routing (subdomain / path) replaces this shim.
+        $storeSlug = request()->query('store');
+        if (is_string($storeSlug) && $storeSlug !== '') {
+            $store = \App\Models\Store::query()
+                ->where('slug', $storeSlug)
+                ->where('status', 'active')
+                ->first();
+
+            if ($store) {
+                $config = SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)
+                    ->with($relations)
+                    ->where('store_id', $store->id)
+                    ->first();
+
+                if ($config) {
+                    return $config;
+                }
+            }
+        }
+
+        // Truly public / unauthenticated visitors get the default-store config
+        // (storefront-per-store routing comes in a later phase).
         return SiteConfig::queryForDefaultStore()->with($relations)->first()
             ?? SiteConfig::firstOrCreateForDefaultStore()->load($relations);
     }

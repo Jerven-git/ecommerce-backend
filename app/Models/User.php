@@ -2,17 +2,23 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Lab404\Impersonate\Models\Impersonate;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, Impersonate, LogsActivity, Notifiable;
+
+    public const STATUS_ACTIVE = 'active';
+
+    public const STATUS_DISABLED = 'disabled';
 
     /**
      * The attributes that are mass assignable.
@@ -25,6 +31,8 @@ class User extends Authenticatable
         'password',
         'is_admin',
         'store_id',
+        'status',
+        'disabled_at',
     ];
 
     protected function name(): Attribute
@@ -62,7 +70,17 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_admin' => 'boolean',
+            'disabled_at' => 'datetime',
         ];
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['name', 'email', 'is_admin', 'store_id', 'status'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->useLogName('user');
     }
 
     public function roles()
@@ -105,5 +123,28 @@ class User extends Authenticatable
     public function isSuperAdmin(): bool
     {
         return $this->hasRole('super_admin');
+    }
+
+    public function isDisabled(): bool
+    {
+        return $this->status === self::STATUS_DISABLED;
+    }
+
+    /**
+     * Only super admins are allowed to start an impersonation session.
+     */
+    public function canImpersonate(): bool
+    {
+        return $this->isSuperAdmin() && ! $this->isDisabled();
+    }
+
+    /**
+     * Super admins can never be impersonated, nor can disabled users.
+     */
+    public function canBeImpersonated(): bool
+    {
+        return $this->isAdminLike()
+            && ! $this->isSuperAdmin()
+            && ! $this->isDisabled();
     }
 }

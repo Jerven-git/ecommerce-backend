@@ -17,15 +17,22 @@ class AdminMiddleware
     {
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
-                'message' => 'Unauthenticated'
+                'message' => 'Unauthenticated',
             ], 401);
         }
 
-        if (!$user->isAdminLike()) {
+        if (! $user->isAdminLike()) {
             return response()->json([
-                'message' => 'Forbidden. Admin access required.'
+                'message' => 'Forbidden. Admin access required.',
+            ], 403);
+        }
+
+        if ($user->isDisabled()) {
+            return response()->json([
+                'message' => 'Your account has been disabled. Contact a super admin.',
+                'code' => 'account_disabled',
             ], 403);
         }
 
