@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Middleware\ResolveAdminStore;
+use App\Http\Middleware\ResolveStorefrontStore;
 use App\Http\Middleware\SanitizeInput;
 use App\Http\Middleware\SessionLifetimeMiddleware;
 use App\Http\Middleware\SuperAdminMiddleware;
@@ -37,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => AdminMiddleware::class,
             'super_admin' => SuperAdminMiddleware::class,
             'tenant' => ResolveAdminStore::class,
+            'storefront' => ResolveStorefrontStore::class,
             'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
             'session.lifetime' => SessionLifetimeMiddleware::class,
         ]);

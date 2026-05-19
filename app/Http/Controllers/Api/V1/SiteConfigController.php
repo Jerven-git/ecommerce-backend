@@ -435,18 +435,12 @@ class SiteConfigController extends Controller
             'showcaseVideoMedia', 'showcaseVideoPosterMedia',
         ];
 
-        // Admin-context calls (PATCH /site-config, uploads, etc.) run under
-        // the `tenant` middleware, so CurrentStore is already set and the
-        // global scope handles isolation.
-        if (app(CurrentStore::class)->isSet()) {
-            return SiteConfig::with($relations)->first()
-                ?? SiteConfig::create([]);
-        }
-
-        // Public GET /site-config has no tenant middleware. When an admin's
-        // SPA hits it (to render the theme they just saved), resolve their
-        // store directly from the session user — otherwise the storefront
-        // would see the default store regardless of who's logged in.
+        // When an admin's SPA hits this public endpoint to render the theme
+        // they just saved, resolve their store directly from the session user
+        // so they always see their own store — regardless of which host they
+        // happened to load the SPA from. The host-based ResolveStorefrontStore
+        // middleware will have already set CurrentStore to the storefront the
+        // visitor reached; admins override that here.
         $user = request()->user();
         if ($user && $user->store_id) {
             $config = SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)

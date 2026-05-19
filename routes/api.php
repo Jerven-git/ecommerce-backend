@@ -49,95 +49,109 @@ Route::prefix('v1')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Public Storefront Routes
+    | Auth (host-agnostic — admin login works from any subdomain or apex)
     |--------------------------------------------------------------------------
     */
 
-    // Auth
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
     Route::post('/two-factor/verify', [AuthController::class, 'verifyTwoFactor'])->middleware('throttle:two-factor');
     Route::post('/two-factor/resend', [AuthController::class, 'resendTwoFactor'])->middleware('throttle:two-factor-resend');
     Route::get('/user', [AuthController::class, 'user']);
 
-    // Products
-    Route::get('/products', [ProductController::class, 'index']);
-    Route::get('/products/{slug}', [ProductController::class, 'show']);
-
-    // Categories
-    Route::get('/categories', [CategoryController::class, 'index']);
-
-    // Currencies (public storefront list)
-    Route::get('/currencies', [CurrencyController::class, 'index']);
-
-    // Blog (public)
-    Route::get('/posts', [PostController::class, 'index']);
-    Route::get('/posts/{slug}', [PostController::class, 'show']);
-    Route::get('/post-categories', [PostCategoryController::class, 'index']);
-    Route::get('/services', [ServiceController::class, 'index']);
-    Route::get('/services/{slug}', [ServiceController::class, 'show']);
-    Route::get('/service-categories', [ServiceCategoryController::class, 'index']);
-
-    // Site config
-    Route::get('/site-config', [SiteConfigController::class, 'show']);
-
-    // Contact form
-    Route::post('/contact', [ContactController::class, 'store'])->middleware('throttle:contact');
-
-    // Gift cards (public)
-    Route::get('/gift-card-denominations', [GiftCardController::class, 'denominations']);
-    Route::post('/gift-cards/validate', [GiftCardController::class, 'validate'])->middleware('throttle:discount-validate');
-
-    // Commission requests (public submit)
-    Route::post('/commission-requests', [CommissionRequestController::class, 'store'])->middleware('throttle:contact');
-
-    // Subscribe (welcome popup)
-    Route::post('/subscribe', [SubscribeController::class, 'store'])->middleware('throttle:contact');
-
-    // Shipment tracking (public, rate-limited)
-    Route::get('/tracking/{trackingNumber}', [ShipmentController::class, 'track'])->middleware('throttle:tracking');
-    Route::get('/tracking/{trackingNumber}/barcode', [ShipmentController::class, 'barcode'])->middleware('throttle:tracking');
-
-    // Discounts (validate only — listing is admin-only)
-    Route::post('/discounts/validate', [DiscountController::class, 'validate'])->middleware('throttle:discount-validate');
-
-    // Shipping
-    Route::get('/shipping/options', [ShippingSettingsController::class, 'options']);
-    Route::get('/shipping/zones', [ShippingSettingsController::class, 'zones']);
-    Route::post('/shipping/calculate', [ShippingSettingsController::class, 'calculate']);
-
-    // Tax
-    Route::post('/tax/calculate', [TaxSettingsController::class, 'calculate']);
-    Route::post('/tax/calculate-cart', [TaxSettingsController::class, 'calculateCart']);
-    Route::get('/tax/resolve', [TaxSettingsController::class, 'resolve']);
-
     /*
     |--------------------------------------------------------------------------
-    | Checkout & Payment Routes
+    | Public Storefront Routes (resolve store from Host header)
     |--------------------------------------------------------------------------
     */
 
-    // Orders
-    Route::post('/orders', [OrderController::class, 'store'])->middleware('throttle:order-store');
+    Route::middleware('storefront')->group(function () {
 
-    // Payments
-    Route::post('/orders/{order}/pay', [PaymentController::class, 'pay'])->middleware('throttle:order-pay');
-    Route::post('/orders/{order}/stripe/intent', [PaymentController::class, 'stripeIntent'])->middleware('throttle:stripe-intent');
-    Route::get('/payments/{payment}', [PaymentController::class, 'show'])->middleware('throttle:payment-show');
-    Route::get('/payment-settings/methods', [PaymentSettingsController::class, 'methods']);
+        // Products
+        Route::get('/products', [ProductController::class, 'index']);
+        Route::get('/products/{slug}', [ProductController::class, 'show']);
 
-    // PayPal redirects
-    Route::get('/paypal/return', [PayPalReturnController::class, 'return']);
-    Route::get('/paypal/cancel', [PayPalReturnController::class, 'cancel']);
-    Route::post('/paypal/capture', [PayPalReturnController::class, 'capture'])->middleware('throttle:paypal-capture');
+        // Categories
+        Route::get('/categories', [CategoryController::class, 'index']);
 
-    // Webhooks
+        // Currencies (public storefront list)
+        Route::get('/currencies', [CurrencyController::class, 'index']);
+
+        // Blog (public)
+        Route::get('/posts', [PostController::class, 'index']);
+        Route::get('/posts/{slug}', [PostController::class, 'show']);
+        Route::get('/post-categories', [PostCategoryController::class, 'index']);
+        Route::get('/services', [ServiceController::class, 'index']);
+        Route::get('/services/{slug}', [ServiceController::class, 'show']);
+        Route::get('/service-categories', [ServiceCategoryController::class, 'index']);
+
+        // Site config
+        Route::get('/site-config', [SiteConfigController::class, 'show']);
+
+        // Contact form
+        Route::post('/contact', [ContactController::class, 'store'])->middleware('throttle:contact');
+
+        // Gift cards (public)
+        Route::get('/gift-card-denominations', [GiftCardController::class, 'denominations']);
+        Route::post('/gift-cards/validate', [GiftCardController::class, 'validate'])->middleware('throttle:discount-validate');
+
+        // Commission requests (public submit)
+        Route::post('/commission-requests', [CommissionRequestController::class, 'store'])->middleware('throttle:contact');
+
+        // Subscribe (welcome popup)
+        Route::post('/subscribe', [SubscribeController::class, 'store'])->middleware('throttle:contact');
+
+        // Shipment tracking (public, rate-limited)
+        Route::get('/tracking/{trackingNumber}', [ShipmentController::class, 'track'])->middleware('throttle:tracking');
+        Route::get('/tracking/{trackingNumber}/barcode', [ShipmentController::class, 'barcode'])->middleware('throttle:tracking');
+
+        // Discounts (validate only — listing is admin-only)
+        Route::post('/discounts/validate', [DiscountController::class, 'validate'])->middleware('throttle:discount-validate');
+
+        // Shipping
+        Route::get('/shipping/options', [ShippingSettingsController::class, 'options']);
+        Route::get('/shipping/zones', [ShippingSettingsController::class, 'zones']);
+        Route::post('/shipping/calculate', [ShippingSettingsController::class, 'calculate']);
+
+        // Tax
+        Route::post('/tax/calculate', [TaxSettingsController::class, 'calculate']);
+        Route::post('/tax/calculate-cart', [TaxSettingsController::class, 'calculateCart']);
+        Route::get('/tax/resolve', [TaxSettingsController::class, 'resolve']);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Checkout & Payment Routes
+        |--------------------------------------------------------------------------
+        */
+
+        // Orders
+        Route::post('/orders', [OrderController::class, 'store'])->middleware('throttle:order-store');
+
+        // Payments
+        Route::post('/orders/{order}/pay', [PaymentController::class, 'pay'])->middleware('throttle:order-pay');
+        Route::post('/orders/{order}/stripe/intent', [PaymentController::class, 'stripeIntent'])->middleware('throttle:stripe-intent');
+        Route::get('/payments/{payment}', [PaymentController::class, 'show'])->middleware('throttle:payment-show');
+        Route::get('/payment-settings/methods', [PaymentSettingsController::class, 'methods']);
+
+        // PayPal redirects
+        Route::get('/paypal/return', [PayPalReturnController::class, 'return']);
+        Route::get('/paypal/cancel', [PayPalReturnController::class, 'cancel']);
+        Route::post('/paypal/capture', [PayPalReturnController::class, 'capture'])->middleware('throttle:paypal-capture');
+
+        // Backorder payment (public - token-based, rate-limited)
+        Route::get('/backorders/pay/{token}', [BackorderController::class, 'verifyToken'])->middleware('throttle:backorder-token');
+        Route::post('/backorders/pay/{token}', [BackorderController::class, 'payByToken'])->middleware('throttle:order-pay');
+        Route::post('/backorders/pay/{token}/confirm', [BackorderController::class, 'confirmWithoutPayment'])->middleware('throttle:order-pay');
+
+    }); // end storefront-resolved group
+
+    /*
+    |--------------------------------------------------------------------------
+    | Webhooks (host-agnostic — providers POST to a fixed URL)
+    |--------------------------------------------------------------------------
+    */
+
     Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])
         ->whereIn('provider', ['stripe', 'paypal', 'square']);
-
-    // Backorder payment (public - token-based, rate-limited)
-    Route::get('/backorders/pay/{token}', [BackorderController::class, 'verifyToken'])->middleware('throttle:backorder-token');
-    Route::post('/backorders/pay/{token}', [BackorderController::class, 'payByToken'])->middleware('throttle:order-pay');
-    Route::post('/backorders/pay/{token}/confirm', [BackorderController::class, 'confirmWithoutPayment'])->middleware('throttle:order-pay');
 
     /*
     |--------------------------------------------------------------------------
