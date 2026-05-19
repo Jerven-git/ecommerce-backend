@@ -52,6 +52,11 @@ class AdminUserManagementApiTest extends TestCase
 
     public function test_super_admin_can_create_admin_user(): void
     {
+        \App\Models\Store::firstOrCreate(
+            ['slug' => \App\Models\Store::DEFAULT_SLUG],
+            ['name' => 'Default Store', 'status' => 'active']
+        );
+
         $this->actingAs($this->superAdmin)
             ->postJson('/api/v1/admin/users', [
                 'name' => 'New Admin',
@@ -59,22 +64,23 @@ class AdminUserManagementApiTest extends TestCase
                 'password' => 'secret123',
                 'password_confirmation' => 'secret123',
                 'role' => 'admin',
+                'store_name' => 'Acme Watches',
             ])
             ->assertStatus(201)
             ->assertJsonPath('data.email', 'new-admin@example.com')
-            ->assertJsonPath('data.role', 'admin');
+            ->assertJsonPath('data.role', 'admin')
+            ->assertJsonPath('data.store.name', 'Acme Watches');
+
+        $this->assertDatabaseHas('stores', ['name' => 'Acme Watches']);
     }
 
-    public function test_super_admin_can_promote_admin_to_super_admin(): void
+    public function test_role_changes_via_update_are_rejected(): void
     {
         $this->actingAs($this->superAdmin)
             ->patchJson("/api/v1/admin/users/{$this->admin->id}", [
                 'role' => 'super_admin',
             ])
-            ->assertOk()
-            ->assertJsonPath('data.role', 'super_admin');
-
-        $this->assertTrue($this->admin->fresh()?->isSuperAdmin() ?? false);
+            ->assertStatus(422);
     }
 
     public function test_cannot_delete_last_super_admin(): void

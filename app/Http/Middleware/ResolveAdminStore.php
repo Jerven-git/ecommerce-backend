@@ -6,7 +6,6 @@ use App\Models\Store;
 use App\Support\Tenancy\CurrentStore;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class ResolveAdminStore
@@ -41,17 +40,11 @@ class ResolveAdminStore
             return $next($request);
         }
 
-        $store = Store::where('slug', Store::DEFAULT_SLUG)->first();
-
-        if ($store) {
-            $this->currentStore->set($store);
-            Log::info('Authenticated user with no store_id defaulted to default store', [
-                'user_id' => $user->id,
-                'store_id' => $store->id,
-                'is_super_admin' => $user->isSuperAdmin(),
-            ]);
-        }
-
+        // Super admins (and any other authenticated user with no store_id) do
+        // not get an automatic tenant. They use /super-admin/* endpoints that
+        // operate outside tenant scope by design. The legacy default-store
+        // fallback was removed because it leaked the default store's settings
+        // into the super-admin context.
         return $next($request);
     }
 }

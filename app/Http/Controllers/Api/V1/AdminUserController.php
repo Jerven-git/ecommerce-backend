@@ -4,9 +4,14 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Role;
+use App\Models\Scopes\StoreScope;
+use App\Models\SiteConfig;
+use App\Models\Store;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class AdminUserController extends Controller
@@ -15,7 +20,7 @@ class AdminUserController extends Controller
     {
         $users = User::query()
             ->whereHas('roles', fn ($query) => $query->whereIn('name', ['admin', 'super_admin']))
-            ->with('roles')
+            ->with(['roles', 'store'])
             ->orderBy('name')
             ->orderBy('email')
             ->get();
@@ -32,19 +37,48 @@ class AdminUserController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'role' => ['required', Rule::in(['admin', 'super_admin'])],
+            'store_name' => ['required_if:role,admin', 'nullable', 'string', 'max:255'],
+            'store_slug' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9-]+$/', 'unique:stores,slug'],
+            'status' => ['sometimes', Rule::in([User::STATUS_ACTIVE, User::STATUS_DISABLED])],
         ]);
 
-        $role = Role::query()->firstOrCreate(['name' => $validated['role']]);
+        $user = DB::transaction(function () use ($validated) {
+            $storeId = null;
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => $validated['password'],
-            'is_admin' => true,
-        ]);
+            if ($validated['role'] === 'admin') {
+                $slug = $validated['store_slug'] ?? $this->generateUniqueStoreSlug($validated['store_name']);
 
-        $user->roles()->sync([$role->id]);
-        $user->load('roles');
+                $store = Store::create([
+                    'name' => $validated['store_name'],
+                    'slug' => $slug,
+                    'status' => 'active',
+                ]);
+
+                SiteConfig::withoutGlobalScope(StoreScope::class)->create([
+                    'store_id' => $store->id,
+                ]);
+
+                $storeId = $store->id;
+            }
+
+            $role = Role::query()->firstOrCreate(['name' => $validated['role']]);
+
+            $user = User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => $validated['password'],
+                'is_admin' => true,
+                'store_id' => $storeId,
+                'status' => $validated['status'] ?? User::STATUS_ACTIVE,
+                'disabled_at' => ($validated['status'] ?? null) === User::STATUS_DISABLED ? now() : null,
+            ]);
+
+            $user->roles()->sync([$role->id]);
+
+            return $user;
+        });
+
+        $user->load(['roles', 'store']);
 
         return response()->json([
             'data' => $this->serializeUser($user),
@@ -59,35 +93,55 @@ class AdminUserController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => ['sometimes', 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
-            'role' => ['sometimes', 'required', Rule::in(['admin', 'super_admin'])],
+            'status' => ['sometimes', Rule::in([User::STATUS_ACTIVE, User::STATUS_DISABLED])],
         ]);
 
-        if (
-            array_key_exists('role', $validated)
-            && $user->isSuperAdmin()
-            && $validated['role'] !== 'super_admin'
-            && $this->superAdminCount() <= 1
-        ) {
+        if ($request->has('role')) {
             return response()->json([
-                'message' => 'You must keep at least one super admin account.',
+                'message' => 'Role changes are not allowed. Delete the account and create a new one with the desired role.',
             ], 422);
         }
 
-        $user->fill(collect($validated)->except(['role', 'password'])->all());
+        if ($request->has('store_id')) {
+            return response()->json([
+                'message' => 'Each admin is permanently linked to their store. Store assignment cannot be changed.',
+            ], 422);
+        }
+
+        if (
+            array_key_exists('status', $validated)
+            && $validated['status'] === User::STATUS_DISABLED
+            && $user->isSuperAdmin()
+            && $this->activeSuperAdminCount() <= 1
+        ) {
+            return response()->json([
+                'message' => 'You must keep at least one active super admin account.',
+            ], 422);
+        }
+
+        if (
+            array_key_exists('status', $validated)
+            && $validated['status'] === User::STATUS_DISABLED
+            && (int) $request->user()->id === (int) $user->id
+        ) {
+            return response()->json([
+                'message' => 'You cannot disable your own account.',
+            ], 422);
+        }
+
+        $user->fill(collect($validated)->except(['password', 'status'])->all());
 
         if (! empty($validated['password'])) {
             $user->password = $validated['password'];
         }
 
-        $user->is_admin = true;
-        $user->save();
-
-        if (array_key_exists('role', $validated)) {
-            $role = Role::query()->firstOrCreate(['name' => $validated['role']]);
-            $user->roles()->sync([$role->id]);
+        if (array_key_exists('status', $validated)) {
+            $user->status = $validated['status'];
+            $user->disabled_at = $validated['status'] === User::STATUS_DISABLED ? now() : null;
         }
 
-        $user->load('roles');
+        $user->save();
+        $user->load(['roles', 'store']);
 
         return response()->json([
             'data' => $this->serializeUser($user),
@@ -110,17 +164,49 @@ class AdminUserController extends Controller
             ], 422);
         }
 
-        $user->delete();
+        DB::transaction(function () use ($user) {
+            $store = $user->store;
+
+            $user->delete();
+
+            // Strict 1:1 — an admin's store has no owner once they're deleted.
+            // Soft-delete it so it can be restored if needed.
+            if ($store && $store->slug !== Store::DEFAULT_SLUG) {
+                $store->delete();
+            }
+        });
 
         return response()->json([
             'message' => 'Admin account deleted.',
         ]);
     }
 
+    private function generateUniqueStoreSlug(string $name): string
+    {
+        $base = Str::slug($name) ?: 'store';
+        $slug = $base;
+        $i = 1;
+
+        while (Store::withTrashed()->where('slug', $slug)->exists()) {
+            $i++;
+            $slug = "{$base}-{$i}";
+        }
+
+        return $slug;
+    }
+
     private function superAdminCount(): int
     {
         return User::query()
             ->whereHas('roles', fn ($query) => $query->where('name', 'super_admin'))
+            ->count();
+    }
+
+    private function activeSuperAdminCount(): int
+    {
+        return User::query()
+            ->whereHas('roles', fn ($query) => $query->where('name', 'super_admin'))
+            ->where('status', User::STATUS_ACTIVE)
             ->count();
     }
 
@@ -133,6 +219,11 @@ class AdminUserController extends Controller
             'is_admin' => in_array('admin', $roles, true) || in_array('super_admin', $roles, true),
             'is_super_admin' => in_array('super_admin', $roles, true),
             'role' => in_array('super_admin', $roles, true) ? 'super_admin' : 'admin',
+            'store' => $user->store ? [
+                'id' => $user->store->id,
+                'name' => $user->store->name,
+                'slug' => $user->store->slug,
+            ] : null,
         ]);
     }
 }

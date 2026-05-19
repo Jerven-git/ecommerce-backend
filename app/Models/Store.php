@@ -9,11 +9,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class Store extends Model
 {
     /** @use HasFactory<\Database\Factories\StoreFactory> */
-    use HasFactory, SoftDeletes;
+    use HasFactory, LogsActivity, SoftDeletes;
 
     public const DEFAULT_SLUG = 'default';
 
@@ -56,5 +58,14 @@ class Store extends Model
     public function isActive(): bool
     {
         return $this->status === 'active';
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['name', 'slug', 'status', 'default_currency_id'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->useLogName('store');
     }
 }

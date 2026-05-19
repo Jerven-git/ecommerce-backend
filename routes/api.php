@@ -26,6 +26,9 @@ use App\Http\Controllers\Api\V1\ShipmentController;
 use App\Http\Controllers\Api\V1\ShippingSettingsController;
 use App\Http\Controllers\Api\V1\SiteConfigController;
 use App\Http\Controllers\Api\V1\SubscribeController;
+use App\Http\Controllers\Api\V1\SuperAdmin\ActivityLogController as SuperAdminActivityLogController;
+use App\Http\Controllers\Api\V1\SuperAdmin\ImpersonationController as SuperAdminImpersonationController;
+use App\Http\Controllers\Api\V1\SuperAdmin\StoreController as SuperAdminStoreController;
 use App\Http\Controllers\Api\V1\TaxReportController;
 use App\Http\Controllers\Api\V1\TaxRuleController;
 use App\Http\Controllers\Api\V1\TaxSettingsController;
@@ -144,6 +147,40 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware(['auth:sanctum', 'session.lifetime', 'tenant'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
+
+        /*
+        |----------------------------------------------------------------------
+        | Super Admin Routes
+        |----------------------------------------------------------------------
+        */
+        Route::middleware('super_admin')->prefix('super-admin')->group(function () {
+            // Admin user management
+            Route::get('/users', [AdminUserController::class, 'index']);
+            Route::post('/users', [AdminUserController::class, 'store']);
+            Route::patch('/users/{user}', [AdminUserController::class, 'update']);
+            Route::delete('/users/{user}', [AdminUserController::class, 'destroy']);
+
+            // Stores
+            Route::get('/stores', [SuperAdminStoreController::class, 'index']);
+            Route::post('/stores', [SuperAdminStoreController::class, 'store']);
+            Route::get('/stores/{store}', [SuperAdminStoreController::class, 'show']);
+            Route::patch('/stores/{store}', [SuperAdminStoreController::class, 'update']);
+            Route::delete('/stores/{store}', [SuperAdminStoreController::class, 'destroy']);
+            Route::post('/stores/{store}/activate', [SuperAdminStoreController::class, 'activate']);
+            Route::post('/stores/{store}/deactivate', [SuperAdminStoreController::class, 'deactivate']);
+
+            // Start impersonation (super_admin only)
+            Route::post('/users/{user}/impersonate', [SuperAdminImpersonationController::class, 'start']);
+        });
+
+        // Leave impersonation — hit by the impersonated user, so cannot be inside
+        // the super_admin group.
+        Route::post('/super-admin/impersonate/leave', [SuperAdminImpersonationController::class, 'leave']);
+
+        // Activity log — visible to all admins; controller scopes by role.
+        Route::get('/activity-log', [SuperAdminActivityLogController::class, 'index']);
+
+        // Legacy admin-user routes (kept for one release; new clients should use /super-admin/users).
         Route::get('/admin/users', [AdminUserController::class, 'index'])->middleware('super_admin');
         Route::post('/admin/users', [AdminUserController::class, 'store'])->middleware('super_admin');
         Route::patch('/admin/users/{user}', [AdminUserController::class, 'update'])->middleware('super_admin');

@@ -7,10 +7,12 @@ use App\Models\Scopes\StoreScope;
 use App\Modules\Realtime\Traits\BroadcastsChanges;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class SiteConfig extends Model
 {
-    use BelongsToStore, BroadcastsChanges;
+    use BelongsToStore, BroadcastsChanges, LogsActivity;
 
     const CREATED_AT = null;
 
@@ -194,6 +196,16 @@ class SiteConfig extends Model
     public function welcomePopupDiscount()
     {
         return $this->belongsTo(Discount::class, 'welcome_popup_discount_id');
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logFillable()
+            ->logExcept(['store_id'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->useLogName('site_config');
     }
 
     protected $casts = [

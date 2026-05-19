@@ -42,6 +42,14 @@ class AuthController extends Controller
             ]);
         }
 
+        if ($user->isDisabled()) {
+            Auth::logout();
+
+            throw ValidationException::withMessages([
+                'email' => ['The provided credentials are incorrect.'],
+            ]);
+        }
+
         // Generate and send 2FA code
         $this->generateAndSendCode($user);
 
@@ -91,6 +99,15 @@ class AuthController extends Controller
 
             return response()->json([
                 'message' => 'This account is not authorized for admin access.',
+            ], 403);
+        }
+
+        if ($user->isDisabled()) {
+            $request->session()->forget(['two_factor_user_id', 'two_factor_expires_at']);
+
+            return response()->json([
+                'message' => 'Your account has been disabled. Contact a super admin.',
+                'code' => 'account_disabled',
             ], 403);
         }
 
@@ -157,6 +174,15 @@ class AuthController extends Controller
             ], 403);
         }
 
+        if ($user->isDisabled()) {
+            $request->session()->forget(['two_factor_user_id', 'two_factor_expires_at']);
+
+            return response()->json([
+                'message' => 'Your account has been disabled. Contact a super admin.',
+                'code' => 'account_disabled',
+            ], 403);
+        }
+
         // Generate and send a new code
         $this->generateAndSendCode($user);
 
@@ -192,20 +218,44 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
+        if (! $user) {
+            return response()->json(['user' => null]);
+        }
+
+        $manager = app(\Lab404\Impersonate\Services\ImpersonateManager::class);
+        $isImpersonating = $manager->isImpersonating();
+        $impersonator = null;
+
+        if ($isImpersonating) {
+            $impersonatorId = session(config('laravel-impersonate.session_key'));
+            $impersonatorUser = User::find($impersonatorId);
+            if ($impersonatorUser) {
+                $impersonator = $this->serializeUser($impersonatorUser);
+            }
+        }
+
         return response()->json([
-            'user' => $user ? $this->serializeUser($user) : null,
+            'user' => array_merge($this->serializeUser($user), [
+                'is_impersonating' => $isImpersonating,
+                'impersonator' => $impersonator,
+            ]),
         ]);
     }
 
     private function serializeUser(User $user): array
     {
-        $user->loadMissing('roles');
+        $user->loadMissing(['roles', 'store']);
         $roles = $user->roleNames();
 
         return array_merge($user->toArray(), [
             'roles' => $roles,
             'is_admin' => in_array('admin', $roles, true) || in_array('super_admin', $roles, true),
             'is_super_admin' => in_array('super_admin', $roles, true),
+            'store' => $user->store ? [
+                'id' => $user->store->id,
+                'name' => $user->store->name,
+                'slug' => $user->store->slug,
+            ] : null,
         ]);
     }
 
