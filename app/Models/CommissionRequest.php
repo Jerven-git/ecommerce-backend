@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToStore;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 class CommissionRequest extends Model
 {
     /** @use HasFactory<\Database\Factories\CommissionRequestFactory> */
-    use HasFactory;
+    use BelongsToStore, HasFactory;
 
     public const STATUSES = [
         'pending',

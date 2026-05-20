@@ -2,16 +2,23 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToStore;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
 class GiftCard extends Model
 {
+    use BelongsToStore;
+
     public const STATUS_PENDING = 'pending_payment';
+
     public const STATUS_ACTIVE = 'active';
+
     public const STATUS_PARTIALLY_USED = 'partially_used';
+
     public const STATUS_FULLY_USED = 'fully_used';
+
     public const STATUS_VOID = 'void';
 
     protected $fillable = [
@@ -48,7 +55,7 @@ class GiftCard extends Model
     public static function generateCode(): string
     {
         do {
-            $code = 'GIFT-' . strtoupper(Str::random(4)) . '-' . strtoupper(Str::random(4)) . '-' . strtoupper(Str::random(4));
+            $code = 'GIFT-'.strtoupper(Str::random(4)).'-'.strtoupper(Str::random(4)).'-'.strtoupper(Str::random(4));
         } while (self::where('code', $code)->exists());
 
         return $code;

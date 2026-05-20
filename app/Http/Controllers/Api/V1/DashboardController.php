@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Product;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -12,7 +13,9 @@ class DashboardController extends Controller
 {
     public function stats()
     {
-        $stats = Cache::remember('dashboard_stats', 60, function () {
+        $storeId = app(CurrentStore::class)->id();
+
+        $stats = Cache::remember("dashboard_stats:store:{$storeId}", 60, function () use ($storeId) {
             $orderStats = Order::toBase()
                 ->selectRaw('count(*) as total_orders')
                 ->selectRaw("count(case when status = 'pending' then 1 end) as pending_orders")
@@ -20,6 +23,7 @@ class DashboardController extends Controller
 
             $revenueStats = DB::table('orders')
                 ->join('payments', 'orders.id', '=', 'payments.order_id')
+                ->where('orders.store_id', $storeId)
                 ->selectRaw("coalesce(sum(case when payments.status = 'paid' then orders.total_amount else 0 end), 0) as total_revenue")
                 ->selectRaw("coalesce(sum(case when payments.status = 'pending' then orders.total_amount else 0 end), 0) as pending_revenue")
                 ->first();

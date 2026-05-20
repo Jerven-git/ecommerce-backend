@@ -2,14 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToStore;
 use App\Modules\Realtime\Traits\BroadcastsChanges;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class Discount extends Model
 {
-    use HasFactory, BroadcastsChanges;
+    use BelongsToStore, BroadcastsChanges, HasFactory;
+
     protected $fillable = [
         'code',
         'description',
@@ -52,7 +54,7 @@ class Discount extends Model
         return $query->where('is_active', true)
             ->where(function ($q) {
                 $q->whereNull('valid_until')
-                ->orWhere('valid_until', '>=', now());
+                    ->orWhere('valid_until', '>=', now());
             });
     }
 
@@ -61,13 +63,13 @@ class Discount extends Model
         return $query->active()
             ->where(function ($q) {
                 $q->whereNull('max_uses')
-                ->orWhereRaw('used_count < max_uses');
+                    ->orWhereRaw('used_count < max_uses');
             });
     }
 
     public function isValid($orderAmount = 0)
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
 
@@ -88,7 +90,7 @@ class Discount extends Model
 
     public function calculateDiscount($orderAmount)
     {
-        if (!$this->isValid($orderAmount)) {
+        if (! $this->isValid($orderAmount)) {
             return 0;
         }
 
