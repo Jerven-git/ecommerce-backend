@@ -2,15 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToStore;
 use App\Modules\Realtime\Traits\BroadcastsChanges;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Category extends Model
 {
-    use BroadcastsChanges;
+    use BelongsToStore, BroadcastsChanges;
+
     protected $fillable = [
         'name',
         'parent_id',
@@ -57,6 +59,7 @@ class Category extends Model
             $ids[] = $child->id;
             $ids = array_merge($ids, $child->allDescendantIds());
         }
+
         return $ids;
     }
 

@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToStore;
 use Illuminate\Database\Eloquent\Model;
 
 class GiftCardDenomination extends Model
 {
+    use BelongsToStore;
+
     protected $fillable = [
         'amount',
         'label',

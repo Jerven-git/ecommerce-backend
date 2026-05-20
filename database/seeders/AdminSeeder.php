@@ -81,8 +81,6 @@ class AdminSeeder extends Seeder
             ]
         );
 
-        app(CurrentStore::class)->clear();
-
         $this->command->info('Site config contact settings seeded!');
     }
 }

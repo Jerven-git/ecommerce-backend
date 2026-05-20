@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Discount;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class DiscountController extends Controller
 {
@@ -22,7 +24,7 @@ class DiscountController extends Controller
             $search = $request->query('search');
             $query->where(function ($q) use ($search) {
                 $q->where('code', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('description', 'like', "%{$search}%");
             });
         }
 
@@ -39,13 +41,17 @@ class DiscountController extends Controller
     public function show($id)
     {
         $discount = Discount::findOrFail($id);
+
         return response()->json(['data' => $discount]);
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'code' => 'required|string|max:255|unique:discounts,code',
+            'code' => [
+                'required', 'string', 'max:255',
+                Rule::unique('discounts', 'code')->where('store_id', app(CurrentStore::class)->id()),
+            ],
             'description' => 'nullable|string',
             'type' => 'required|in:percentage,fixed',
             'value' => 'required|numeric|min:0',
@@ -58,7 +64,7 @@ class DiscountController extends Controller
         // Additional validation for percentage
         if ($validated['type'] === 'percentage' && $validated['value'] > 100) {
             return response()->json([
-                'message' => 'Percentage discount cannot exceed 100%'
+                'message' => 'Percentage discount cannot exceed 100%',
             ], 422);
         }
 
@@ -66,7 +72,7 @@ class DiscountController extends Controller
 
         return response()->json([
             'message' => 'Discount created successfully',
-            'data' => $discount
+            'data' => $discount,
         ], 201);
     }
 
@@ -75,7 +81,12 @@ class DiscountController extends Controller
         $discount = Discount::findOrFail($id);
 
         $validated = $request->validate([
-            'code' => 'sometimes|string|max:255|unique:discounts,code,' . $id,
+            'code' => [
+                'sometimes', 'string', 'max:255',
+                Rule::unique('discounts', 'code')
+                    ->where('store_id', app(CurrentStore::class)->id())
+                    ->ignore($id),
+            ],
             'description' => 'nullable|string',
             'type' => 'sometimes|in:percentage,fixed',
             'value' => 'sometimes|numeric|min:0',
@@ -88,7 +99,7 @@ class DiscountController extends Controller
         // Additional validation for percentage
         if (isset($validated['type']) && $validated['type'] === 'percentage' && isset($validated['value']) && $validated['value'] > 100) {
             return response()->json([
-                'message' => 'Percentage discount cannot exceed 100%'
+                'message' => 'Percentage discount cannot exceed 100%',
             ], 422);
         }
 
@@ -96,7 +107,7 @@ class DiscountController extends Controller
 
         return response()->json([
             'message' => 'Discount updated successfully',
-            'data' => $discount
+            'data' => $discount,
         ]);
     }
 
@@ -106,7 +117,7 @@ class DiscountController extends Controller
         $discount->delete();
 
         return response()->json([
-            'message' => 'Discount deleted successfully'
+            'message' => 'Discount deleted successfully',
         ]);
     }
 
@@ -119,17 +130,17 @@ class DiscountController extends Controller
 
         $discount = Discount::where('code', $request->code)->first();
 
-        if (!$discount) {
+        if (! $discount) {
             return response()->json([
                 'valid' => false,
-                'message' => 'Invalid discount code'
+                'message' => 'Invalid discount code',
             ], 404);
         }
 
-        if (!$discount->isValid($request->order_amount)) {
+        if (! $discount->isValid($request->order_amount)) {
             return response()->json([
                 'valid' => false,
-                'message' => 'This discount code is not valid for your order'
+                'message' => 'This discount code is not valid for your order',
             ], 422);
         }
 
@@ -139,7 +150,7 @@ class DiscountController extends Controller
             'valid' => true,
             'discount' => $discount,
             'discount_amount' => $discountAmount,
-            'final_amount' => $request->order_amount - $discountAmount
+            'final_amount' => $request->order_amount - $discountAmount,
         ]);
     }
 }
