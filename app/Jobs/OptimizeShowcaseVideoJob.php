@@ -4,6 +4,8 @@ namespace App\Jobs;
 
 use App\Models\Media;
 use App\Models\SiteConfig;
+use App\Models\Store;
+use App\Support\Tenancy\CurrentStore;
 use FFMpeg\Format\Video\X264;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -40,17 +42,25 @@ class OptimizeShowcaseVideoJob implements ShouldQueue
 
     public int $timeout = 600;
 
-    public function __construct(public int $mediaId) {}
+    public function __construct(public int $mediaId, public int $storeId) {}
 
     public function handle(): void
     {
+        // Queue workers have no request context, so set the tenant explicitly
+        // from the store_id captured at dispatch time.
+        $store = Store::find($this->storeId);
+        if (! $store) {
+            return;
+        }
+        app(CurrentStore::class)->set($store);
+
         /** @var Media|null $media */
         $media = Media::find($this->mediaId);
         if (! $media || $media->collection !== 'showcase_video') {
             return;
         }
 
-        $config = SiteConfig::forDefaultStore();
+        $config = SiteConfig::first();
         if (! $config) {
             return;
         }

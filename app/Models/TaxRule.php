@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToStore;
 use Illuminate\Database\Eloquent\Model;
 
 class TaxRule extends Model
 {
+    use BelongsToStore;
+
     protected $fillable = [
         'region_type',
         'country',
@@ -34,7 +37,7 @@ class TaxRule extends Model
      */
     public static function forRegion(?string $country, ?string $state): ?self
     {
-        if (!$country && !$state) {
+        if (! $country && ! $state) {
             return static::enabled()
                 ->where('region_type', 'all')
                 ->orderByDesc('priority')
@@ -51,14 +54,14 @@ class TaxRule extends Model
                             ->where('state', $state);
                     }
                 })
-                ->orWhere(function ($q) use ($country) {
-                    // Country-level match
-                    if ($country) {
-                        $q->where('region_type', 'country')
-                            ->where('country', $country);
-                    }
-                })
-                ->orWhere('region_type', 'all');
+                    ->orWhere(function ($q) use ($country) {
+                        // Country-level match
+                        if ($country) {
+                            $q->where('region_type', 'country')
+                                ->where('country', $country);
+                        }
+                    })
+                    ->orWhere('region_type', 'all');
             })
             ->orderByDesc('priority')
             ->first();

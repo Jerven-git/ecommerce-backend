@@ -195,4 +195,32 @@ class CatalogScopingTest extends TestCase
             ->find($storeBProduct->id);
         $this->assertSame('Belongs to B', $stillB?->name);
     }
+
+    public function test_non_default_store_admin_sees_own_products_via_public_list(): void
+    {
+        // Regression: the admin UI lists products through the public GET /products
+        // endpoint. A non-default-store admin must see THEIR products there, even
+        // though the request host (localhost) resolves to the default store — the
+        // tenant middleware overrides the host store with the admin's store.
+
+        $adminRole = Role::firstOrCreate(['name' => 'admin']);
+        $adminB = User::factory()->create(['is_admin' => true, 'store_id' => $this->storeB->id]);
+        $adminB->roles()->attach($adminRole);
+
+        // A product in the default store (store A) and one in the admin's store (B).
+        app(CurrentStore::class)->set($this->storeA);
+        Product::factory()->create(['name' => 'Default Store Product']);
+
+        app(CurrentStore::class)->set($this->storeB);
+        Product::factory()->create(['name' => 'Watch World Product']);
+
+        app(CurrentStore::class)->clear();
+
+        $response = $this->actingAs($adminB)->getJson('/api/v1/products');
+        $response->assertOk();
+
+        $names = collect($response->json('data'))->pluck('name')->all();
+        $this->assertContains('Watch World Product', $names);
+        $this->assertNotContains('Default Store Product', $names);
+    }
 }

@@ -155,8 +155,8 @@ class Product extends Model
 
     public function canBackorder(): bool
     {
-        $globalEnabled = SiteConfig::forDefaultStore()?->backorder_enabled ?? false;
+        $storeEnabled = SiteConfig::first()?->backorder_enabled ?? false;
 
-        return $globalEnabled && $this->allow_backorder;
+        return $storeEnabled && $this->allow_backorder;
     }
 }

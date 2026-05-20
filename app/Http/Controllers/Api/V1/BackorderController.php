@@ -363,7 +363,7 @@ class BackorderController extends Controller
         );
 
         // Notify admin
-        $adminEmail = SiteConfig::forDefaultStore()?->admin_email;
+        $adminEmail = SiteConfig::first()?->admin_email;
         if ($adminEmail) {
             Mail::to($adminEmail)->send(
                 new \App\Mail\BackorderConfirmedAdminMail($backorder)
