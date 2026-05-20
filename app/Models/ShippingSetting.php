@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\BelongsToStore;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
 
 class ShippingSetting extends Model
 {
+    use BelongsToStore;
+
     protected $fillable = [
         'express_post_fee',
         'registered_post_fee',

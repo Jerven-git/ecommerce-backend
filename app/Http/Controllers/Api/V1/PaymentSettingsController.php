@@ -10,7 +10,10 @@ class PaymentSettingsController extends Controller
 {
     private function settings(): PaymentSetting
     {
-        return PaymentSetting::firstOrCreate(['id' => 1], [
+        // Scoped to the current store via the BelongsToStore global scope;
+        // store_id is auto-filled on create. (Previously pinned to id=1, which
+        // would have collided across stores.)
+        return PaymentSetting::firstOrCreate([], [
             'cash_enabled' => true,
             'stripe_enabled' => false,
             'paypal_enabled' => false,

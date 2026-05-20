@@ -10,7 +10,6 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\SiteConfig;
 use App\Modules\Media\MediaService;
-use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -480,9 +479,10 @@ class SiteConfigController extends Controller
             }
         }
 
-        // Truly public / unauthenticated visitors get the default-store config
-        // (storefront-per-store routing comes in a later phase).
-        return SiteConfig::queryForDefaultStore()->with($relations)->first()
+        // Public visitors get the store resolved from the Host header by the
+        // ResolveStorefrontStore middleware (CurrentStore). Fall back to the
+        // default store only if that store has no config row yet.
+        return SiteConfig::with($relations)->first()
             ?? SiteConfig::firstOrCreateForDefaultStore()->load($relations);
     }
 
@@ -859,7 +859,7 @@ class SiteConfigController extends Controller
         $media->update(['processing_status' => $isVideoLike ? 'processing' : 'ready']);
 
         if ($isVideoLike) {
-            OptimizeWatchShopMediaJob::dispatch($media->id, $cardId);
+            OptimizeWatchShopMediaJob::dispatch($media->id, $cardId, $config->store_id);
         }
 
         return response()->json([
@@ -963,7 +963,7 @@ class SiteConfigController extends Controller
             $showcase['video_status'] = 'processing';
             $config->update(['homepage_showcase' => $showcase]);
 
-            OptimizeShowcaseVideoJob::dispatch($media->id);
+            OptimizeShowcaseVideoJob::dispatch($media->id, $config->store_id);
         }
 
         return response()->json([

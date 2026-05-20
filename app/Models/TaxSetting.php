@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\BelongsToStore;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
 
 class TaxSetting extends Model
 {
+    use BelongsToStore;
+
     protected $fillable = [
         'tax_enabled',
         'tax_rate',
@@ -34,7 +37,7 @@ class TaxSetting extends Model
      */
     public function resolveForRegion(?string $country, ?string $state): array
     {
-        if (!$this->tax_enabled) {
+        if (! $this->tax_enabled) {
             return [
                 'rate' => 0,
                 'name' => $this->tax_name ?? 'Tax',
@@ -48,7 +51,7 @@ class TaxSetting extends Model
 
         if ($rule) {
             $regionLabel = match ($rule->region_type) {
-                'state' => ($rule->state ? $rule->state . ', ' : '') . ($rule->country ?? ''),
+                'state' => ($rule->state ? $rule->state.', ' : '').($rule->country ?? ''),
                 'country' => $rule->country ?? 'All regions',
                 default => 'All regions',
             };
@@ -74,12 +77,12 @@ class TaxSetting extends Model
 
     public function calculateTax($basePrice)
     {
-        if (!$this->tax_enabled || $this->tax_rate == 0) {
+        if (! $this->tax_enabled || $this->tax_rate == 0) {
             return [
                 'base_price' => $basePrice,
                 'tax_amount' => 0,
                 'total_price' => $basePrice,
-                'display_price' => $basePrice
+                'display_price' => $basePrice,
             ];
         }
 
@@ -108,7 +111,7 @@ class TaxSetting extends Model
             'display_price' => round($displayPrice, 2),
             'tax_rate' => $this->tax_rate,
             'tax_name' => $this->tax_name,
-            'tax_display_mode' => $this->tax_display_mode
+            'tax_display_mode' => $this->tax_display_mode,
         ];
     }
 
@@ -134,7 +137,7 @@ class TaxSetting extends Model
             $rawSubtotal += $item['price'] * $item['quantity'];
         }
 
-        if (!$this->tax_enabled || $rate == 0) {
+        if (! $this->tax_enabled || $rate == 0) {
             $exTaxSubtotal = $rawSubtotal;
             $discountedSubtotal = max(0, $exTaxSubtotal - $discountAmount);
             $taxableAmount = $discountedSubtotal + $shippingAmount;
@@ -183,11 +186,12 @@ class TaxSetting extends Model
 
     public function calculateCartTax($items)
     {
-        if (!$this->tax_enabled || $this->tax_rate == 0) {
+        if (! $this->tax_enabled || $this->tax_rate == 0) {
             $subtotal = 0;
             foreach ($items as $item) {
                 $subtotal += $item['price'] * $item['quantity'];
             }
+
             return [
                 'subtotal' => round($subtotal, 2),
                 'tax_amount' => 0,
@@ -202,7 +206,7 @@ class TaxSetting extends Model
         foreach ($items as $item) {
             $price = $item['price'];
             $quantity = $item['quantity'];
-            
+
             if ($this->tax_display_mode === 'inclusive') {
                 // Price already includes tax
                 $subtotal += $price * $quantity;
@@ -228,7 +232,7 @@ class TaxSetting extends Model
             'total' => round($total, 2),
             'tax_rate' => $this->tax_rate,
             'tax_name' => $this->tax_name,
-            'tax_display_mode' => $this->tax_display_mode
+            'tax_display_mode' => $this->tax_display_mode,
         ];
     }
 }

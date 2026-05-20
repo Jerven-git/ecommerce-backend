@@ -34,7 +34,7 @@ class SubscribeController extends Controller
 
         // Only generate discount codes for welcome popup subscribers
         if ($source === 'welcome_popup') {
-            $config = SiteConfig::forDefaultStore();
+            $config = SiteConfig::first();
 
             if ($config?->welcome_popup_discount_id) {
                 $template = Discount::find($config->welcome_popup_discount_id);

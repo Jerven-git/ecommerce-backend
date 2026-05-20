@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToStore;
 use Illuminate\Database\Eloquent\Model;
 
 class ShippingZone extends Model
 {
+    use BelongsToStore;
+
     protected $fillable = [
         'zone_type',
         'enabled',
@@ -23,7 +26,7 @@ class ShippingZone extends Model
 
     public function calculateShipping($weight = 0, $volumeCbm = 0)
     {
-        if (!$this->enabled) {
+        if (! $this->enabled) {
             return null;
         }
 

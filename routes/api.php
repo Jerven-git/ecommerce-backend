@@ -62,9 +62,16 @@ Route::prefix('v1')->group(function () {
     |--------------------------------------------------------------------------
     | Public Storefront Routes (resolve store from Host header)
     |--------------------------------------------------------------------------
+    |
+    | `storefront` resolves the store from the Host header for public visitors.
+    | `tenant` runs after it: for an authenticated admin it overrides CurrentStore
+    | to *their* store, so admin tools that reuse these public read endpoints
+    | (e.g. the products/categories lists) see their own store's data regardless
+    | of which host the SPA is loaded from. It is a no-op for guests.
+    |
     */
 
-    Route::middleware('storefront')->group(function () {
+    Route::middleware(['storefront', 'tenant'])->group(function () {
 
         // Products
         Route::get('/products', [ProductController::class, 'index']);

@@ -27,7 +27,7 @@ class ContactController extends Controller
         $this->verifyRecaptcha($validated['recaptcha_token']);
 
         // Determine recipients from site config contact_entries, falling back to contact_email
-        $config = SiteConfig::forDefaultStore();
+        $config = SiteConfig::first();
         $recipients = collect($config?->contact_entries ?? [])
             ->pluck('email')
             ->filter(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL))

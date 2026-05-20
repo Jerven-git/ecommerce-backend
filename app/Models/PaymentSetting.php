@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToStore;
 use Illuminate\Database\Eloquent\Model;
 
 class PaymentSetting extends Model
 {
+    use BelongsToStore;
+
     protected $fillable = [
         'cash_enabled',
         'stripe_enabled',
