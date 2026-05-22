@@ -3,18 +3,52 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Models\Payment;
+use App\Models\Scopes\StoreScope;
+use App\Models\Store;
+use App\Payments\PaymentCredentials;
+use App\Payments\PaymentService;
 use App\Payments\PayPalToken;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use App\Payments\PaymentService;
 
 class PayPalReturnController extends Controller
 {
+    public function __construct(private PaymentCredentials $credentials) {}
+
+    private function paypalBaseUrl(): string
+    {
+        return $this->credentials->get('paypal', 'mode') === 'live'
+            ? 'https://api-m.paypal.com'
+            : 'https://api-m.sandbox.paypal.com';
+    }
+
+    /**
+     * Payment confirmations land back here from PayPal with an unreliable tenant
+     * (the return URL host may not be the order's store). Pin CurrentStore to
+     * the order's own store so credential resolution and the PaymentConfirmed
+     * listeners operate under the right merchant.
+     */
+    private function pinStoreFromPayment(Payment $payment): void
+    {
+        if (! $payment->order_id) {
+            return;
+        }
+
+        $order = Order::withoutGlobalScope(StoreScope::class)->find($payment->order_id);
+        if ($order && $order->store_id) {
+            $store = Store::find($order->store_id);
+            if ($store) {
+                app(CurrentStore::class)->set($store);
+            }
+        }
+    }
+
     public function capture(Request $request, PayPalToken $token, PaymentService $payments)
     {
         $request->validate(['token' => ['required', 'string']]);
@@ -34,9 +68,9 @@ class PayPalReturnController extends Controller
             ]);
         }
 
-        $base = config('payment.paypal.mode') === 'live'
-            ? 'https://api-m.paypal.com'
-            : 'https://api-m.sandbox.paypal.com';
+        $this->pinStoreFromPayment($payment);
+
+        $base = $this->paypalBaseUrl();
 
         $accessToken = $token->get();
 
@@ -46,9 +80,9 @@ class PayPalReturnController extends Controller
             ->asJson()
             ->timeout(20)
             // PayPal expects {} (object) or no body — NOT []
-            ->post($base . "/v2/checkout/orders/{$paypalOrderId}/capture", (object) []);
+            ->post($base."/v2/checkout/orders/{$paypalOrderId}/capture", (object) []);
 
-        if (!$res->successful()) {
+        if (! $res->successful()) {
             $payment->update([
                 'status' => 'pending',
                 'meta' => array_merge($payment->meta ?? [], [
@@ -65,9 +99,9 @@ class PayPalReturnController extends Controller
 
         $data = $res->json();
 
-        $orderStatus   = data_get($data, 'status');
+        $orderStatus = data_get($data, 'status');
         $captureStatus = data_get($data, 'purchase_units.0.payments.captures.0.status');
-        $captureId     = data_get($data, 'purchase_units.0.payments.captures.0.id');
+        $captureId = data_get($data, 'purchase_units.0.payments.captures.0.id');
 
         // Save capture payload for auditing/debugging
         $payment->update([
@@ -111,23 +145,23 @@ class PayPalReturnController extends Controller
             ->latest()
             ->first();
 
-        if (!$payment) {
+        if (! $payment) {
             return redirect($this->frontendUrl('/checkout/failed?reason=payment_not_found'));
         }
 
         if ($payment->status === 'paid') {
-            return redirect($this->frontendUrl('/payment/complete?payment_id=' . $payment->id));
+            return redirect($this->frontendUrl('/payment/complete?payment_id='.$payment->id));
         }
 
-        $base = config('payment.paypal.mode') === 'live'
-            ? 'https://api-m.paypal.com'
-            : 'https://api-m.sandbox.paypal.com';
+        $this->pinStoreFromPayment($payment);
+
+        $base = $this->paypalBaseUrl();
 
         try {
             $accessToken = $token->get();
 
-            if (!is_string($accessToken) || trim($accessToken) === '') {
-                return redirect($this->frontendUrl('/checkout/failed?payment_id=' . $payment->id));
+            if (! is_string($accessToken) || trim($accessToken) === '') {
+                return redirect($this->frontendUrl('/checkout/failed?payment_id='.$payment->id));
             }
 
             /** @var Response $res */
@@ -143,14 +177,15 @@ class PayPalReturnController extends Controller
 
                     if ($response instanceof Response) {
                         $status = $response->status();
+
                         return $status === 429 || ($status >= 500 && $status <= 599);
                     }
 
                     return false;
                 })
-                ->post($base . "/v2/checkout/orders/{$paypalOrderId}/capture", (object) []);
+                ->post($base."/v2/checkout/orders/{$paypalOrderId}/capture", (object) []);
 
-            if (!$res->successful()) {
+            if (! $res->successful()) {
                 // log useful info for debugging
                 Log::warning('PayPal capture failed', [
                     'paypal_order_id' => $paypalOrderId,
@@ -160,7 +195,7 @@ class PayPalReturnController extends Controller
                 ]);
 
                 // keep behavior: just redirect failed
-                return redirect($this->frontendUrl('/checkout/failed?payment_id=' . $payment->id));
+                return redirect($this->frontendUrl('/checkout/failed?payment_id='.$payment->id));
             }
 
             $data = $res->json();
@@ -175,7 +210,7 @@ class PayPalReturnController extends Controller
 
             $payments->markPaid($payment);
 
-            return redirect($this->frontendUrl('/payment/complete?payment_id=' . $payment->id));
+            return redirect($this->frontendUrl('/payment/complete?payment_id='.$payment->id));
 
         } catch (\Throwable $e) {
             // keep redirect behavior; just log for visibility
@@ -185,7 +220,7 @@ class PayPalReturnController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
-            return redirect($this->frontendUrl('/checkout/failed?payment_id=' . $payment->id));
+            return redirect($this->frontendUrl('/checkout/failed?payment_id='.$payment->id));
         }
     }
 
@@ -203,6 +238,6 @@ class PayPalReturnController extends Controller
             '/'
         );
 
-        return $base . $path;
+        return $base.$path;
     }
 }
