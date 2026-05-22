@@ -5,13 +5,16 @@ namespace App\Payments\Gateways;
 use App\Models\Order;
 use App\Payments\Contracts\HandlesWebhooks;
 use App\Payments\Contracts\PaymentGateway;
+use App\Payments\PaymentCredentials;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class PayPalGateway implements PaymentGateway, HandlesWebhooks
+class PayPalGateway implements HandlesWebhooks, PaymentGateway
 {
+    public function __construct(private PaymentCredentials $credentials) {}
+
     public function key(): string
     {
         return 'paypal';
@@ -19,7 +22,7 @@ class PayPalGateway implements PaymentGateway, HandlesWebhooks
 
     private function baseUrl(): string
     {
-        return config('payment.paypal.mode') === 'live'
+        return $this->credentials->get('paypal', 'mode') === 'live'
             ? 'https://api-m.paypal.com'
             : 'https://api-m.sandbox.paypal.com';
     }
@@ -43,8 +46,11 @@ class PayPalGateway implements PaymentGateway, HandlesWebhooks
             2,
             200,
             function (\Throwable $e, ?Response $response) {
-                if ($response === null) return true; // network error
+                if ($response === null) {
+                    return true;
+                } // network error
                 $s = $response->status();
+
                 return $s === 429 || $s >= 500;
             }
         );
@@ -74,12 +80,12 @@ class PayPalGateway implements PaymentGateway, HandlesWebhooks
         $value = number_format((float) $rawAmount, 2, '.', '');
 
         // must be unique per transaction
-        $invoiceId = 'ORDER-' . $order->id . '-' . Str::uuid()->toString();
+        $invoiceId = 'ORDER-'.$order->id.'-'.Str::uuid()->toString();
 
         $payload = [
             'intent' => 'CAPTURE',
             'purchase_units' => [[
-                'custom_id'  => (string) $order->id,  // internal order id
+                'custom_id' => (string) $order->id,  // internal order id
                 'invoice_id' => $invoiceId,           // unique
                 'amount' => [
                     'currency_code' => $currency,
@@ -87,20 +93,20 @@ class PayPalGateway implements PaymentGateway, HandlesWebhooks
                 ],
             ]],
             'application_context' => [
-                'return_url' => $baseReturn . '/payment/complete',
-                'cancel_url' => $baseReturn . '/payment/cancelled',
+                'return_url' => $baseReturn.'/payment/complete',
+                'cancel_url' => $baseReturn.'/payment/cancelled',
             ],
         ];
 
         // PayPal idempotency key
         $requestId = (string) Str::uuid();
-        
+
         /** @var Response $res */
         $res = $this->withRetry(
             $this->client($token)->withHeaders([
                 'PayPal-Request-Id' => $requestId,
             ])
-        )->post($this->baseUrl() . '/v2/checkout/orders', $payload);
+        )->post($this->baseUrl().'/v2/checkout/orders', $payload);
 
         $res->throw();
 
@@ -109,17 +115,17 @@ class PayPalGateway implements PaymentGateway, HandlesWebhooks
         $paypalOrderId = data_get($data, 'id');
         $approvalUrl = collect($data['links'] ?? [])->firstWhere('rel', 'approve')['href'] ?? null;
 
-        if (!$paypalOrderId || !$approvalUrl) {
+        if (! $paypalOrderId || ! $approvalUrl) {
             throw new \RuntimeException('PayPal response missing expected fields.');
         }
 
         return [
-            'provider'      => 'paypal',
-            'type'          => 'redirect',
-            'provider_ref'  => $paypalOrderId,  // PayPal ORDER id (keep consistent)
-            'approval_url'  => $approvalUrl,
-            'redirect_url'  => $approvalUrl,
-            'invoice_id'    => $invoiceId,
+            'provider' => 'paypal',
+            'type' => 'redirect',
+            'provider_ref' => $paypalOrderId,  // PayPal ORDER id (keep consistent)
+            'approval_url' => $approvalUrl,
+            'redirect_url' => $approvalUrl,
+            'invoice_id' => $invoiceId,
             'paypal_request_id' => $requestId,
         ];
     }
@@ -140,20 +146,20 @@ class PayPalGateway implements PaymentGateway, HandlesWebhooks
 
         $status = match ($type) {
             'PAYMENT.CAPTURE.COMPLETED' => 'paid',
-            'PAYMENT.CAPTURE.DENIED'    => 'failed',
-            'PAYMENT.CAPTURE.REFUNDED'  => 'refunded',
-            default                     => 'pending',
+            'PAYMENT.CAPTURE.DENIED' => 'failed',
+            'PAYMENT.CAPTURE.REFUNDED' => 'refunded',
+            default => 'pending',
         };
 
         return [
-            'provider'     => 'paypal',
-            'event_id'     => $event['id'] ?? null,
-            'event_type'   => $type,
-            'order_id'     => $orderId,
+            'provider' => 'paypal',
+            'event_id' => $event['id'] ?? null,
+            'event_type' => $type,
+            'order_id' => $orderId,
             // MUST match what you store during createPayment():
             'provider_ref' => $paypalOrderId, // keep it PayPal ORDER id only
-            'status'       => $status,
-            'payload'      => $event,
+            'status' => $status,
+            'payload' => $event,
             'meta' => array_filter([
                 'capture_id' => $captureId,
                 // keep invoice id if present (sometimes handy)

@@ -26,7 +26,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
-use Stripe\StripeClient;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -35,10 +34,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(StripeClient::class, function () {
-            return new StripeClient(config('payment.stripe.secret_key'));
-        });
-
         $this->app->singleton(GatewayManager::class, function ($app) {
             return new GatewayManager([
                 'stripe' => $app->make(StripeGateway::class),

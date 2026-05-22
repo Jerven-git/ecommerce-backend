@@ -4,15 +4,18 @@ namespace App\Payments\Gateways;
 
 use App\Models\Order;
 use App\Models\Payment;
-use App\Payments\Contracts\PaymentGateway;
 use App\Payments\Contracts\ChecksPaymentStatus;
+use App\Payments\Contracts\PaymentGateway;
+use App\Payments\PaymentCredentials;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class SquareGateway implements PaymentGateway, ChecksPaymentStatus
+class SquareGateway implements ChecksPaymentStatus, PaymentGateway
 {
+    public function __construct(private PaymentCredentials $credentials) {}
+
     public function key(): string
     {
         return 'square';
@@ -20,7 +23,7 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
 
     private function baseUrl(): string
     {
-        return config('payment.square.mode') === 'live'
+        return $this->credentials->get('square', 'mode') === 'live'
             ? 'https://connect.squareup.com'
             : 'https://connect.squareupsandbox.com';
     }
@@ -28,7 +31,7 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
     private function client(): PendingRequest
     {
         // Centralize HTTP policy: timeouts + accept json + auth
-        return Http::withToken(config('payment.square.access_token'))
+        return Http::withToken((string) $this->credentials->get('square', 'access_token'))
             ->acceptJson()
             ->connectTimeout(3)
             ->timeout(10);
@@ -48,6 +51,7 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
                 }
 
                 $status = $response->status();
+
                 return $status === 429 || $status >= 500;
             }
         );
@@ -65,16 +69,16 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
                     'amount' => $this->toCents($meta['amount_override'] ?? $order->total_amount),
                     'currency' => strtoupper($order->currency ?: 'USD'),
                 ],
-                'location_id' => config('payment.square.location_id'),
+                'location_id' => $this->credentials->get('square', 'location_id'),
             ],
             'checkout_options' => [
-                'redirect_url' => rtrim(config('app.url'), '/') . '/payment/complete',
+                'redirect_url' => rtrim(config('app.url'), '/').'/payment/complete',
             ],
         ];
 
         /** @var Response $res */
         $res = $this->withRetry($this->client())
-            ->post($this->baseUrl() . '/v2/online-checkout/payment-links', $payload);
+            ->post($this->baseUrl().'/v2/online-checkout/payment-links', $payload);
 
         $res->throw();
 
@@ -84,7 +88,7 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
 
         $paymentLinkId = $paymentLink['id'] ?? null;
         $squareOrderId = $paymentLink['order_id'] ?? null;
-        $approvalUrl   = $paymentLink['url'] ?? null;
+        $approvalUrl = $paymentLink['url'] ?? null;
 
         return [
             'provider' => 'square',
@@ -110,9 +114,9 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
         try {
             /** @var Response $orderRes */
             $orderRes = $this->withRetry($this->client())
-                ->get($this->baseUrl() . "/v2/orders/{$squareOrderId}");
+                ->get($this->baseUrl()."/v2/orders/{$squareOrderId}");
 
-            if (!$orderRes->successful()) {
+            if (! $orderRes->successful()) {
                 return [
                     'paid' => false,
                     'meta' => [
@@ -147,9 +151,9 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
             foreach ($paymentIds as $pid) {
                 /** @var Response $payRes */
                 $payRes = $this->withRetry($this->client())
-                    ->get($this->baseUrl() . "/v2/payments/{$pid}");
+                    ->get($this->baseUrl()."/v2/payments/{$pid}");
 
-                if (!$payRes->successful()) {
+                if (! $payRes->successful()) {
                     continue;
                 }
 
@@ -199,15 +203,15 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
 
     public function parseWebhook(array $event): array
     {
-        $type    = $event['type'] ?? null;
+        $type = $event['type'] ?? null;
         $eventId = $event['event_id'] ?? null;
 
-        $object  = $event['data']['object'] ?? [];
+        $object = $event['data']['object'] ?? [];
         $payment = $object['payment'] ?? null;
 
-        $squareOrderId   = is_array($payment) ? ($payment['order_id'] ?? null) : null;
+        $squareOrderId = is_array($payment) ? ($payment['order_id'] ?? null) : null;
         $squarePaymentId = is_array($payment) ? ($payment['id'] ?? null) : null;
-        $paymentStatus   = is_array($payment) ? ($payment['status'] ?? null) : null;
+        $paymentStatus = is_array($payment) ? ($payment['status'] ?? null) : null;
 
         // Normalize to your system statuses
         $status = match ($paymentStatus) {
@@ -217,17 +221,17 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
         };
 
         return [
-            'provider'     => 'square',
-            'event_id'     => $eventId,
-            'event_type'   => $type,
-            'order_id'     => null, // unless you map it yourself
+            'provider' => 'square',
+            'event_id' => $eventId,
+            'event_type' => $type,
+            'order_id' => null, // unless you map it yourself
             'provider_ref' => $squareOrderId,
-            'status'       => $status,
-            'payload'      => $event,
+            'status' => $status,
+            'payload' => $event,
             'meta' => [
                 'square_payment_id' => $squarePaymentId,
-                'square_order_id'   => $squareOrderId,
-                'square_status'     => $paymentStatus,
+                'square_order_id' => $squareOrderId,
+                'square_status' => $paymentStatus,
             ],
         ];
     }
@@ -235,6 +239,7 @@ class SquareGateway implements PaymentGateway, ChecksPaymentStatus
     private function toCents($amount): int
     {
         $normalized = number_format((float) $amount, 2, '.', '');
+
         return (int) str_replace('.', '', $normalized);
     }
 }

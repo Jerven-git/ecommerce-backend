@@ -7,12 +7,22 @@ use App\Models\Payment;
 use App\Payments\Contracts\ChecksPaymentStatus;
 use App\Payments\Contracts\HandlesWebhooks;
 use App\Payments\Contracts\PaymentGateway;
+use App\Payments\PaymentCredentials;
 use Stripe\Exception\ApiErrorException;
 use Stripe\StripeClient;
 
-class StripeGateway implements PaymentGateway, ChecksPaymentStatus, HandlesWebhooks
+class StripeGateway implements ChecksPaymentStatus, HandlesWebhooks, PaymentGateway
 {
-    public function __construct(private StripeClient $stripe) {}
+    public function __construct(private PaymentCredentials $credentials) {}
+
+    /**
+     * Build a Stripe client with the current store's secret key. Resolved per
+     * call (not a singleton) so each store transacts under its own account.
+     */
+    private function stripe(): StripeClient
+    {
+        return new StripeClient((string) $this->credentials->get('stripe', 'secret_key'));
+    }
 
     public function key(): string
     {
@@ -31,7 +41,7 @@ class StripeGateway implements PaymentGateway, ChecksPaymentStatus, HandlesWebho
             ? "order:{$order->id}:backorder:{$backorderId}:create_intent"
             : "order:{$order->id}:create_intent";
 
-        $intent = $this->stripe->paymentIntents->create(
+        $intent = $this->stripe()->paymentIntents->create(
             [
                 'amount' => $amount,
                 'currency' => $currency,
@@ -63,7 +73,7 @@ class StripeGateway implements PaymentGateway, ChecksPaymentStatus, HandlesWebho
         }
 
         try {
-            $pi = $this->stripe->paymentIntents->retrieve($piId, []);
+            $pi = $this->stripe()->paymentIntents->retrieve($piId, []);
             $status = $pi->status ?? null;
 
             // Stripe statuses: requires_payment_method, requires_confirmation, requires_action,
@@ -100,15 +110,15 @@ class StripeGateway implements PaymentGateway, ChecksPaymentStatus, HandlesWebho
     public function parseWebhook(array $event): array
     {
         $type = $event['type'] ?? null;
-        $obj  = $event['data']['object'] ?? [];
+        $obj = $event['data']['object'] ?? [];
 
         $orderId = data_get($obj, 'metadata.order_id');
 
         $status = match ($type) {
-            'payment_intent.succeeded'       => 'paid',
-            'payment_intent.payment_failed'  => 'failed',
-            'payment_intent.canceled'        => 'failed',
-            default                          => 'pending',
+            'payment_intent.succeeded' => 'paid',
+            'payment_intent.payment_failed' => 'failed',
+            'payment_intent.canceled' => 'failed',
+            default => 'pending',
         };
 
         return [
@@ -128,6 +138,7 @@ class StripeGateway implements PaymentGateway, ChecksPaymentStatus, HandlesWebho
     private function toCents($amount): int
     {
         $normalized = number_format((float) $amount, 2, '.', '');
+
         return (int) str_replace('.', '', $normalized);
     }
 }

@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\PaymentSetting;
+use App\Payments\PaymentCredentials;
 use Illuminate\Http\Request;
 
 class PaymentSettingsController extends Controller
 {
+    public function __construct(private PaymentCredentials $credentials) {}
+
     private function settings(): PaymentSetting
     {
         // Scoped to the current store via the BelongsToStore global scope;
@@ -22,7 +25,9 @@ class PaymentSettingsController extends Controller
     }
 
     /**
-     * Admin: view settings (NO KEYS IN DB, so safe to return)
+     * Admin: view settings. Secret credentials are hidden by the model; public
+     * identifiers and `*_configured` flags are returned so the form can show
+     * what's set without exposing the secrets.
      */
     public function show()
     {
@@ -34,7 +39,10 @@ class PaymentSettingsController extends Controller
     }
 
     /**
-     * Admin: update toggles only (enable/disable + test mode)
+     * Admin: update toggles and per-store gateway credentials.
+     *
+     * Blank/omitted credential fields are left unchanged so re-saving the form
+     * never wipes a stored secret the admin can't see. Toggles always apply.
      */
     public function update(Request $request)
     {
@@ -43,10 +51,32 @@ class PaymentSettingsController extends Controller
             'stripe_enabled' => 'sometimes|boolean',
             'paypal_enabled' => 'sometimes|boolean',
             'square_enabled' => 'sometimes|boolean',
+
+            'stripe_publishable_key' => 'sometimes|nullable|string|max:1000',
+            'stripe_secret_key' => 'sometimes|nullable|string|max:1000',
+            'stripe_webhook_secret' => 'sometimes|nullable|string|max:1000',
+
+            'paypal_client_id' => 'sometimes|nullable|string|max:1000',
+            'paypal_secret' => 'sometimes|nullable|string|max:1000',
+            'paypal_mode' => 'sometimes|nullable|in:sandbox,live',
+            'paypal_webhook_id' => 'sometimes|nullable|string|max:1000',
+
+            'square_application_id' => 'sometimes|nullable|string|max:1000',
+            'square_access_token' => 'sometimes|nullable|string|max:1000',
+            'square_location_id' => 'sometimes|nullable|string|max:1000',
+            'square_webhook_secret' => 'sometimes|nullable|string|max:1000',
+            'square_mode' => 'sometimes|nullable|in:sandbox,live',
         ]);
 
+        $toggleKeys = ['cash_enabled', 'stripe_enabled', 'paypal_enabled', 'square_enabled'];
+
+        $payload = collect($validated)
+            // Credential fields: drop blanks so they're left unchanged.
+            ->reject(fn ($value, $key) => ! in_array($key, $toggleKeys, true) && blank($value))
+            ->all();
+
         $settings = $this->settings();
-        $settings->update($validated);
+        $settings->update($payload);
 
         return response()->json([
             'message' => 'Payment settings updated successfully',
@@ -75,7 +105,7 @@ class PaymentSettingsController extends Controller
         }
 
         if ($settings->stripe_enabled) {
-            $publishable = config('payment.stripe.publishable_key');
+            $publishable = $this->credentials->get('stripe', 'publishable_key');
 
             // Optional: if missing, don't advertise Stripe
             if ($publishable) {
@@ -92,7 +122,7 @@ class PaymentSettingsController extends Controller
         }
 
         if ($settings->paypal_enabled) {
-            $clientId = config('payment.paypal.client_id');
+            $clientId = $this->credentials->get('paypal', 'client_id');
 
             if ($clientId) {
                 $methods[] = [
@@ -108,8 +138,8 @@ class PaymentSettingsController extends Controller
         }
 
         if ($settings->square_enabled) {
-            $appId = config('payment.square.application_id');
-            $locationId = config('payment.square.location_id');
+            $appId = $this->credentials->get('square', 'application_id');
+            $locationId = $this->credentials->get('square', 'location_id');
 
             if ($appId && $locationId) {
                 $methods[] = [
