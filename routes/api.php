@@ -157,6 +157,11 @@ Route::prefix('v1')->group(function () {
     |--------------------------------------------------------------------------
     */
 
+    // Per-store webhook URL (each store pastes its own into the provider dashboard).
+    Route::post('/webhooks/{provider}/{store}', [WebhookController::class, 'handle'])
+        ->whereIn('provider', ['stripe', 'paypal', 'square']);
+
+    // Legacy single-URL webhook — resolves to the default store (config fallback).
     Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])
         ->whereIn('provider', ['stripe', 'paypal', 'square']);
 
