@@ -35,7 +35,28 @@ class PaymentSettingsController extends Controller
 
         return response()->json([
             'data' => $settings,
+            'webhook_urls' => $this->webhookUrls(),
         ]);
+    }
+
+    /**
+     * Per-store webhook URLs for each provider's dashboard.
+     *
+     * @return array<string, string>
+     */
+    private function webhookUrls(): array
+    {
+        $slug = app(\App\Support\Tenancy\CurrentStore::class)->get()?->slug;
+
+        if (! $slug) {
+            return [];
+        }
+
+        return [
+            'stripe' => url("/api/v1/webhooks/stripe/{$slug}"),
+            'paypal' => url("/api/v1/webhooks/paypal/{$slug}"),
+            'square' => url("/api/v1/webhooks/square/{$slug}"),
+        ];
     }
 
     /**

@@ -44,6 +44,12 @@ class AdminSeeder extends Seeder
                 'role_ids' => [$admin->id],
                 'store_id' => $defaultStore->id,
             ],
+            [
+                'email' => 'latayada1233@gmail.com',
+                'name' => 'Admin User 4',
+                'role_ids' => [$admin->id],
+                'store_id' => $defaultStore->id,
+            ],
         ];
 
         foreach ($users as $data) {
