@@ -86,8 +86,11 @@ class SiteConfig extends Model
         'pages_seo',
         'canonical_base_url',
         'logo_alt_text',
+        'logo_size',
+        'footer_logo_size',
         'header_cta',
         'footer_banner',
+        'footer',
         'currency_code',
     ];
 
@@ -221,6 +224,8 @@ class SiteConfig extends Model
         'about_overlay_opacity' => 'integer',
         'contact_overlay_opacity' => 'integer',
         'hero_full_bleed' => 'boolean',
+        'logo_size' => 'integer',
+        'footer_logo_size' => 'integer',
         'hero_focal_x' => 'integer',
         'hero_focal_y' => 'integer',
         'welcome_popup_enabled' => 'boolean',
@@ -244,6 +249,7 @@ class SiteConfig extends Model
         'pages_seo' => 'array',
         'header_cta' => 'array',
         'footer_banner' => 'array',
+        'footer' => 'array',
     ];
 
     public function media()
@@ -264,6 +270,11 @@ class SiteConfig extends Model
     public function cartIconMedia()
     {
         return $this->morphOne(Media::class, 'imageable')->where('collection', 'cart_icon');
+    }
+
+    public function footerLogoMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'footer_logo');
     }
 
     public function heroMedia()

@@ -408,6 +408,23 @@ class SiteConfigController extends Controller
     }
 
     /**
+     * @return array{tagline: string, copyright_text: string, show_tagline: bool, show_quick_links: bool, show_contact_info: bool, show_social_links: bool}
+     */
+    private function resolveFooter(SiteConfig $config): array
+    {
+        $stored = is_array($config->footer) ? $config->footer : [];
+
+        return [
+            'tagline' => (string) ($stored['tagline'] ?? 'Your trusted online shopping destination'),
+            'copyright_text' => (string) ($stored['copyright_text'] ?? '© {year} {site_name}. All rights reserved.'),
+            'show_tagline' => (bool) ($stored['show_tagline'] ?? true),
+            'show_quick_links' => (bool) ($stored['show_quick_links'] ?? true),
+            'show_contact_info' => (bool) ($stored['show_contact_info'] ?? true),
+            'show_social_links' => (bool) ($stored['show_social_links'] ?? true),
+        ];
+    }
+
+    /**
      * @return array{enabled: bool, heading: string, subtitle: string, button_label: string, button_link: string, background_color: string, background_color_to: string, text_color: string}
      */
     private function resolveFooterBanner(SiteConfig $config): array
@@ -429,7 +446,7 @@ class SiteConfigController extends Controller
     private function config(): SiteConfig
     {
         $relations = [
-            'logoMedia', 'faviconMedia', 'cartIconMedia', 'heroMedia',
+            'logoMedia', 'faviconMedia', 'cartIconMedia', 'footerLogoMedia', 'heroMedia',
             'aboutMedia', 'contactMedia', 'blogMedia', 'servicesMedia',
             'showcaseVideoMedia', 'showcaseVideoPosterMedia',
         ];
@@ -543,8 +560,11 @@ class SiteConfigController extends Controller
                 'pages_seo' => $config->pages_seo ?? [],
                 'canonical_base_url' => $config->canonical_base_url,
                 'logo_alt_text' => $config->logo_alt_text,
+                'logo_size' => $config->logo_size,
+                'footer_logo_size' => $config->footer_logo_size,
                 'header_cta' => $this->resolveHeaderCta($config),
                 'footer_banner' => $this->resolveFooterBanner($config),
+                'footer' => $this->resolveFooter($config),
                 'currency_code' => $config->currency_code ?: 'USD',
                 'updated_at' => $config->updated_at,
 
@@ -552,6 +572,7 @@ class SiteConfigController extends Controller
                 'logo_url' => optional($config->logoMedia)->url,
                 'favicon_url' => optional($config->faviconMedia)->url,
                 'cart_icon_url' => optional($config->cartIconMedia)->url,
+                'footer_logo_url' => optional($config->footerLogoMedia)->url,
                 'hero_image_url' => $config->hero_image_url ?: optional($config->heroMedia)->url,
                 'hero_media_mime' => $config->hero_media_mime ?: optional($config->heroMedia)->mime_type,
                 'about_image_url' => $config->about_image_url ?: optional($config->aboutMedia)->url,
@@ -681,6 +702,12 @@ class SiteConfigController extends Controller
             'contact_page.promises.*.icon' => 'nullable|string|max:100',
             'contact_page.promises.*.title' => 'required|string|max:100',
             'contact_page.promises.*.description' => 'required|string|max:255',
+            'contact_page.faq_label' => 'nullable|string|max:50',
+            'contact_page.faq_heading' => 'nullable|string|max:100',
+            'contact_page.faq_subtitle' => 'nullable|string|max:255',
+            'contact_page.faqs' => 'nullable|array|max:30',
+            'contact_page.faqs.*.question' => 'required|string|max:255',
+            'contact_page.faqs.*.answer' => 'required|string|max:1000',
             'blog_page' => 'nullable|array',
             'blog_page.header' => 'nullable|array',
             'blog_page.header.label' => 'nullable|string|max:100',
@@ -738,6 +765,8 @@ class SiteConfigController extends Controller
             'pages_seo.*.cover_alt_text' => 'nullable|string|max:255',
             'canonical_base_url' => 'nullable|url|max:500',
             'logo_alt_text' => 'nullable|string|max:255',
+            'logo_size' => 'nullable|integer|min:20|max:64',
+            'footer_logo_size' => 'nullable|integer|min:40|max:240',
             'header_cta' => 'nullable|array',
             'header_cta.enabled' => 'nullable|boolean',
             'header_cta.label' => 'nullable|string|max:30',
@@ -751,6 +780,13 @@ class SiteConfigController extends Controller
             'footer_banner.background_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
             'footer_banner.background_color_to' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
             'footer_banner.text_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'footer' => 'nullable|array',
+            'footer.tagline' => 'nullable|string|max:255',
+            'footer.copyright_text' => 'nullable|string|max:255',
+            'footer.show_tagline' => 'nullable|boolean',
+            'footer.show_quick_links' => 'nullable|boolean',
+            'footer.show_contact_info' => 'nullable|boolean',
+            'footer.show_social_links' => 'nullable|boolean',
             'currency_code' => [
                 'nullable',
                 'string',
@@ -917,11 +953,11 @@ class SiteConfigController extends Controller
 
     public function uploadMedia(Request $request, string $collection)
     {
-        $allowed = ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video'];
+        $allowed = ['logo', 'favicon', 'cart_icon', 'footer_logo', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video'];
         abort_unless(in_array($collection, $allowed, true), 404);
 
         $max = match (true) {
-            in_array($collection, ['logo', 'favicon', 'cart_icon'], true) => 2048,    // 2MB
+            in_array($collection, ['logo', 'favicon', 'cart_icon', 'footer_logo'], true) => 2048,    // 2MB
             $collection === 'showcase_video' => 25600,                                 // 25MB
             default => 10120,                                                          // 10MB
         };
@@ -975,7 +1011,7 @@ class SiteConfigController extends Controller
 
     public function deleteMedia(string $collection)
     {
-        $allowed = ['logo', 'favicon', 'cart_icon', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video'];
+        $allowed = ['logo', 'favicon', 'cart_icon', 'footer_logo', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video'];
         abort_unless(in_array($collection, $allowed, true), 404);
 
         $config = SiteConfig::first();
