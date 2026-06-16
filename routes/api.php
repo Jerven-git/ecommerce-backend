@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AdminAssistantController;
 use App\Http\Controllers\Api\V1\AdminGiftCardController;
 use App\Http\Controllers\Api\V1\AdminUserController;
 use App\Http\Controllers\Api\V1\AuthController;
@@ -245,6 +246,10 @@ Route::prefix('v1')->group(function () {
         */
 
         Route::middleware('admin')->group(function () {
+            // Admin help assistant (AI chatbot)
+            Route::post('/admin-assistant', [AdminAssistantController::class, 'chat'])
+                ->middleware('throttle:30,1');
+
             // Products
             Route::post('/products', [ProductController::class, 'store']);
             Route::put('/products/{id}', [ProductController::class, 'update']);
