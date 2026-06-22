@@ -269,6 +269,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/categories/reorder', [CategoryController::class, 'reorder']);
             Route::patch('/categories/{id}', [CategoryController::class, 'update']);
             Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
+            Route::delete('/categories/{id}/image', [CategoryController::class, 'deleteImage']);
 
             // Currencies (admin)
             Route::get('/admin/currencies', [CurrencyController::class, 'adminIndex']);

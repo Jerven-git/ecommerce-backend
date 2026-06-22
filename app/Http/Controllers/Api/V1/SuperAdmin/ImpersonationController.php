@@ -42,7 +42,42 @@ class ImpersonationController extends Controller
             ], 422);
         }
 
-        $this->impersonate->take($impersonator, $user);
+        \Log::channel('single')->info('IMP_DEBUG start:before-take', [
+            'session_id' => session()->getId(),
+            'session_keys' => array_keys(session()->all()),
+        ]);
+
+        $takeResult = $this->impersonate->take($impersonator, $user);
+
+        \Log::channel('single')->info('IMP_DEBUG take_result', ['ok' => $takeResult]);
+
+        // Diagnostic: surface the exception lab404 swallows in take()'s try/catch.
+        try {
+            \Illuminate\Support\Facades\Auth::guard('web')->quietLogin($user);
+            \Log::channel('single')->info('IMP_DEBUG manual_quietLogin_ok', [
+                'web_user_id' => optional(\Illuminate\Support\Facades\Auth::guard('web')->user())->id,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::channel('single')->error('IMP_DEBUG manual_quietLogin_FAILED', [
+                'class' => get_class($e),
+                'msg' => $e->getMessage(),
+                'at' => $e->getFile().':'.$e->getLine(),
+            ]);
+        }
+
+        $this->syncSessionPasswordHash($user);
+
+        \Log::channel('single')->info('IMP_DEBUG start:after-take', [
+            'session_id' => session()->getId(),
+            'session_keys' => array_keys(session()->all()),
+            'is_impersonating' => $this->impersonate->isImpersonating(),
+            'web_guard_id' => optional(\Illuminate\Support\Facades\Auth::guard('web')->user())->id,
+            'request_session_same' => session()->getId() === request()->session()->getId(),
+            'session_cookie_name' => config('session.cookie'),
+            'session_domain' => config('session.domain'),
+            'session_same_site' => config('session.same_site'),
+            'session_secure' => config('session.secure'),
+        ]);
 
         activity('impersonation')
             ->causedBy($impersonator)
@@ -67,7 +102,7 @@ class ImpersonationController extends Controller
         ]);
     }
 
-    public function leave(Request $request): JsonResponse
+    public function leave(): JsonResponse
     {
         if (! $this->impersonate->isImpersonating()) {
             return response()->json([
@@ -82,6 +117,8 @@ class ImpersonationController extends Controller
         $this->impersonate->leave();
 
         if ($impersonator) {
+            $this->syncSessionPasswordHash($impersonator);
+
             app(CauserResolver::class)->setCauser($impersonator);
 
             activity('impersonation')
@@ -103,6 +140,33 @@ class ImpersonationController extends Controller
                 'user' => $impersonator ? $this->serializeUser($impersonator->fresh()->load(['roles', 'store'])) : null,
             ],
         ]);
+    }
+
+    /**
+     * Re-stamp the session's password-hash fingerprint for the now-effective
+     * user.
+     *
+     * Impersonation swaps the authenticated user on the session but leaves the
+     * original user's fingerprint (stored by Laravel's AuthenticateSession
+     * middleware, which Sanctum enables for SPA requests) untouched. On the
+     * very next request the middleware sees the hash no longer matches the
+     * effective user, flushes the session and silently logs everyone out.
+     * Re-stamping the fingerprint keeps the protection intact while letting the
+     * swap survive into subsequent requests.
+     */
+    private function syncSessionPasswordHash(User $user): void
+    {
+        $driver = Auth::getDefaultDriver();
+        $guard = Auth::guard($driver);
+
+        if (! method_exists($guard, 'hashPasswordForCookie')) {
+            return;
+        }
+
+        session()->put(
+            'password_hash_'.$driver,
+            $guard->hashPasswordForCookie($user->getAuthPassword()),
+        );
     }
 
     private function serializeUser(User $user): array

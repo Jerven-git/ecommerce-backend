@@ -85,6 +85,34 @@ class ImpersonationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_impersonation_restamps_the_session_password_hash_for_the_effective_user(): void
+    {
+        // Sanctum enables Laravel's AuthenticateSession middleware for SPA
+        // requests; it force-logs everyone out on the next request when the
+        // session's password-hash fingerprint no longer matches the effective
+        // user. Impersonation swaps the user, so the controller must re-stamp
+        // that fingerprint or the impersonator is silently logged out.
+        $this->startSession();
+
+        $guard = \Illuminate\Support\Facades\Auth::guard('web');
+        $controller = app(\App\Http\Controllers\Api\V1\SuperAdmin\ImpersonationController::class);
+        $sync = (new \ReflectionMethod($controller, 'syncSessionPasswordHash'));
+        $sync->setAccessible(true);
+
+        $sync->invoke($controller, $this->admin);
+        $this->assertSame(
+            $guard->hashPasswordForCookie($this->admin->getAuthPassword()),
+            session('password_hash_web'),
+        );
+
+        // Leaving restores the impersonator's fingerprint.
+        $sync->invoke($controller, $this->superAdmin);
+        $this->assertSame(
+            $guard->hashPasswordForCookie($this->superAdmin->getAuthPassword()),
+            session('password_hash_web'),
+        );
+    }
+
     public function test_leave_impersonation_logs_an_event(): void
     {
         $this->actingAs($this->superAdmin)

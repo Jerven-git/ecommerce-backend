@@ -37,28 +37,41 @@ class AdminUserController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'role' => ['required', Rule::in(['admin', 'super_admin'])],
-            'store_name' => ['required_if:role,admin', 'nullable', 'string', 'max:255'],
+            'store_id' => ['nullable', 'integer', Rule::exists('stores', 'id')],
+            'store_name' => ['nullable', 'string', 'max:255'],
             'store_slug' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9-]+$/', 'unique:stores,slug'],
             'status' => ['sometimes', Rule::in([User::STATUS_ACTIVE, User::STATUS_DISABLED])],
         ]);
+
+        // An admin must land in a store: either an existing one (store_id) or a
+        // freshly provisioned one (store_name). Super admins never get a store.
+        if ($validated['role'] === 'admin' && empty($validated['store_id']) && empty($validated['store_name'])) {
+            return response()->json([
+                'message' => 'Select an existing store to assign this admin to, or provide a name for a new store.',
+            ], 422);
+        }
 
         $user = DB::transaction(function () use ($validated) {
             $storeId = null;
 
             if ($validated['role'] === 'admin') {
-                $slug = $validated['store_slug'] ?? $this->generateUniqueStoreSlug($validated['store_name']);
+                if (! empty($validated['store_id'])) {
+                    $storeId = (int) $validated['store_id'];
+                } else {
+                    $slug = $validated['store_slug'] ?? $this->generateUniqueStoreSlug($validated['store_name']);
 
-                $store = Store::create([
-                    'name' => $validated['store_name'],
-                    'slug' => $slug,
-                    'status' => 'active',
-                ]);
+                    $store = Store::create([
+                        'name' => $validated['store_name'],
+                        'slug' => $slug,
+                        'status' => 'active',
+                    ]);
 
-                SiteConfig::withoutGlobalScope(StoreScope::class)->create([
-                    'store_id' => $store->id,
-                ]);
+                    SiteConfig::withoutGlobalScope(StoreScope::class)->create([
+                        'store_id' => $store->id,
+                    ]);
 
-                $storeId = $store->id;
+                    $storeId = $store->id;
+                }
             }
 
             $role = Role::query()->firstOrCreate(['name' => $validated['role']]);
@@ -93,6 +106,7 @@ class AdminUserController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => ['sometimes', 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
+            'store_id' => ['sometimes', 'required', 'integer', Rule::exists('stores', 'id')],
             'status' => ['sometimes', Rule::in([User::STATUS_ACTIVE, User::STATUS_DISABLED])],
         ]);
 
@@ -102,9 +116,9 @@ class AdminUserController extends Controller
             ], 422);
         }
 
-        if ($request->has('store_id')) {
+        if ($request->has('store_id') && $user->isSuperAdmin()) {
             return response()->json([
-                'message' => 'Each admin is permanently linked to their store. Store assignment cannot be changed.',
+                'message' => 'Super admins operate across all stores and cannot be assigned to one.',
             ], 422);
         }
 
@@ -164,20 +178,27 @@ class AdminUserController extends Controller
             ], 422);
         }
 
-        DB::transaction(function () use ($user) {
+        $storeDeleted = DB::transaction(function () use ($user) {
             $store = $user->store;
 
             $user->delete();
 
-            // Strict 1:1 — an admin's store has no owner once they're deleted.
-            // Soft-delete it so it can be restored if needed.
-            if ($store && $store->slug !== Store::DEFAULT_SLUG) {
+            // A store can now have several admins. Only soft-delete it once the
+            // last admin is gone (never the default store) so it can be restored
+            // if needed; otherwise the remaining admins keep operating it.
+            if ($store && $store->slug !== Store::DEFAULT_SLUG && ! $store->users()->exists()) {
                 $store->delete();
+
+                return true;
             }
+
+            return false;
         });
 
         return response()->json([
-            'message' => 'Admin account deleted.',
+            'message' => $storeDeleted
+                ? 'Admin account deleted. Its store had no other admins and was removed.'
+                : 'Admin account deleted.',
         ]);
     }
 

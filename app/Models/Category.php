@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Support\Str;
 
 class Category extends Model
 {
@@ -15,6 +17,9 @@ class Category extends Model
 
     protected $fillable = [
         'name',
+        'slug',
+        'image_url',
+        'overlay_opacity',
         'parent_id',
         'sort_order',
     ];
@@ -28,7 +33,34 @@ class Category extends Model
 
     protected $casts = [
         'sort_order' => 'integer',
+        'overlay_opacity' => 'integer',
     ];
+
+    /**
+     * Build a store-unique slug from a name. The BelongsToStore global scope
+     * keeps the uniqueness check scoped to the current store.
+     */
+    public static function generateUniqueSlug(string $name, ?int $excludeId = null): string
+    {
+        $base = Str::slug($name) ?: 'category';
+        $slug = $base;
+        $count = 1;
+
+        while (static::where('slug', $slug)
+            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
+            ->exists()
+        ) {
+            $slug = "{$base}-{$count}";
+            $count++;
+        }
+
+        return $slug;
+    }
+
+    public function media(): MorphMany
+    {
+        return $this->morphMany(Media::class, 'imageable');
+    }
 
     public function parent(): BelongsTo
     {

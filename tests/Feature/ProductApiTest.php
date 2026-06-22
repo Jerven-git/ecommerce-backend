@@ -6,6 +6,8 @@ use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ProductApiTest extends TestCase
@@ -159,5 +161,52 @@ class ProductApiTest extends TestCase
             ->assertStatus(201);
 
         $this->assertEquals('Padded Name', Product::latest()->first()->name);
+    }
+
+    // ─────────────────────────────────────────
+    // Secondary image + product specs
+    // ─────────────────────────────────────────
+
+    public function test_admin_can_set_material_and_dimensions(): void
+    {
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/products', [
+                'name' => 'Oak Dining Table',
+                'price' => 500,
+                'material' => 'Solid oak',
+                'dimensions' => '180 × 90 × 75 cm',
+            ])
+            ->assertStatus(201);
+
+        $product = Product::latest()->first();
+        $this->assertSame('Solid oak', $product->material);
+        $this->assertSame('180 × 90 × 75 cm', $product->dimensions);
+    }
+
+    public function test_index_exposes_spec_fields(): void
+    {
+        Product::factory()->create(['material' => 'Cotton', 'dimensions' => 'M']);
+
+        $this->getJson('/api/v1/products')
+            ->assertOk()
+            ->assertJsonPath('data.0.material', 'Cotton')
+            ->assertJsonPath('data.0.dimensions', 'M');
+    }
+
+    public function test_admin_can_upload_hover_image(): void
+    {
+        Storage::fake('public');
+
+        $this->actingAs($this->admin)
+            ->post('/api/v1/products', [
+                'name' => 'Sneakers',
+                'price' => 120,
+                'hover_image' => UploadedFile::fake()->image('back-view.jpg', 1200, 800),
+            ])
+            ->assertStatus(201);
+
+        $product = Product::latest()->first();
+        $this->assertNotNull($product->hover_image_url);
+        $this->assertNotNull($product->media()->where('collection', 'hover')->first());
     }
 }
