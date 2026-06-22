@@ -145,6 +145,9 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'image' => 'nullable|image|max:2048',
+            'hover_image' => 'nullable|image|max:2048',
+            'material' => 'nullable|string|max:255',
+            'dimensions' => 'nullable|string|max:100',
             'stock' => 'nullable|integer|min:0',
             'weight' => 'nullable|numeric|min:0',
             'length_cm' => 'nullable|numeric|min:0',
@@ -166,7 +169,7 @@ class ProductController extends Controller
         ]);
 
         $categoryIds = $validated['category_ids'] ?? [];
-        unset($validated['image'], $validated['category_ids']);
+        unset($validated['image'], $validated['hover_image'], $validated['category_ids']);
         $validated['slug'] = Product::generateUniqueSlug($validated['name']);
         $product = Product::create($validated);
 
@@ -177,6 +180,11 @@ class ProductController extends Controller
         if ($request->hasFile('image')) {
             $media = $this->mediaService->upload($request->file('image'), $product, 'image', 'products');
             $product->update(['image_url' => Storage::disk('public')->url($media->path)]);
+        }
+
+        if ($request->hasFile('hover_image')) {
+            $media = $this->mediaService->upload($request->file('hover_image'), $product, 'hover', 'products');
+            $product->update(['hover_image_url' => Storage::disk('public')->url($media->path)]);
         }
 
         return response()->json([
@@ -197,6 +205,10 @@ class ProductController extends Controller
             // Allow clients to clear a legacy image_url (products seeded with
             // a raw URL but no Media record) by sending image_url=null.
             'image_url' => 'nullable|string',
+            'hover_image' => 'nullable|image|max:2048',
+            'hover_image_url' => 'nullable|string',
+            'material' => 'nullable|string|max:255',
+            'dimensions' => 'nullable|string|max:100',
             'stock' => 'nullable|integer|min:0',
             'weight' => 'nullable|numeric|min:0',
             'length_cm' => 'nullable|numeric|min:0',
@@ -218,7 +230,7 @@ class ProductController extends Controller
         ]);
 
         $categoryIds = $validated['category_ids'] ?? null;
-        unset($validated['image'], $validated['category_ids']);
+        unset($validated['image'], $validated['hover_image'], $validated['category_ids']);
         if (isset($validated['name']) && $validated['name'] !== $product->name) {
             $validated['slug'] = Product::generateUniqueSlug($validated['name'], $product->id);
         }
@@ -231,6 +243,11 @@ class ProductController extends Controller
         if ($request->hasFile('image')) {
             $media = $this->mediaService->upload($request->file('image'), $product, 'image', 'products');
             $product->update(['image_url' => Storage::disk('public')->url($media->path)]);
+        }
+
+        if ($request->hasFile('hover_image')) {
+            $media = $this->mediaService->upload($request->file('hover_image'), $product, 'hover', 'products');
+            $product->update(['hover_image_url' => Storage::disk('public')->url($media->path)]);
         }
 
         return response()->json([

@@ -44,6 +44,7 @@ class SiteConfig extends Model
         'about_overlay_color',
         'about_overlay_opacity',
         'about_image_url',
+        'story_page',
         'contact_overlay_color',
         'contact_overlay_opacity',
         'contact_image_url',
@@ -63,6 +64,7 @@ class SiteConfig extends Model
         'homepage_steps',
         'homepage_features',
         'homepage_stats',
+        'homepage_statement',
         'homepage_newsletter',
         'homepage_showcase',
         'homepage_watch_shop',
@@ -233,6 +235,7 @@ class SiteConfig extends Model
         'homepage_steps' => 'array',
         'homepage_features' => 'array',
         'homepage_stats' => 'array',
+        'homepage_statement' => 'array',
         'homepage_newsletter' => 'array',
         'homepage_showcase' => 'array',
         'homepage_watch_shop' => 'array',
@@ -250,6 +253,7 @@ class SiteConfig extends Model
         'header_cta' => 'array',
         'footer_banner' => 'array',
         'footer' => 'array',
+        'story_page' => 'array',
     ];
 
     public function media()
@@ -280,6 +284,21 @@ class SiteConfig extends Model
     public function heroMedia()
     {
         return $this->morphOne(Media::class, 'imageable')->where('collection', 'hero');
+    }
+
+    public function homepageStatementMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'homepage_statement');
+    }
+
+    public function storyImageAMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'story_image_a');
+    }
+
+    public function storyImageBMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'story_image_b');
     }
 
     public function aboutMedia()

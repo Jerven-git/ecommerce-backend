@@ -443,10 +443,75 @@ class SiteConfigController extends Controller
         ];
     }
 
+    /**
+     * Build the homepage editorial "statement" band. Text fields live in the
+     * JSON column; the image comes from the `homepage_statement` media
+     * collection. The storefront only renders it when enabled + a quote is set.
+     *
+     * @return array{enabled: bool, eyebrow: string, quote: string, attribution: string, role: string, cta_label: string, cta_link: string, image_url: string|null}
+     */
+    private function resolveHomepageStatement(SiteConfig $config): array
+    {
+        $stored = is_array($config->homepage_statement) ? $config->homepage_statement : [];
+
+        return [
+            'enabled' => (bool) ($stored['enabled'] ?? false),
+            'eyebrow' => (string) ($stored['eyebrow'] ?? 'Our Promise'),
+            'quote' => (string) ($stored['quote'] ?? ''),
+            'attribution' => (string) ($stored['attribution'] ?? ''),
+            'role' => (string) ($stored['role'] ?? ''),
+            'cta_label' => (string) ($stored['cta_label'] ?? ''),
+            'cta_link' => (string) ($stored['cta_link'] ?? ''),
+            'image_url' => optional($config->homepageStatementMedia)->url,
+        ];
+    }
+
+    /**
+     * Build the optional "Our Story" page block. Always returns a stable shape
+     * so the storefront can render without null checks: a hero band plus two
+     * alternating image/text sections, each with its own CTA. Images come from
+     * the `story_image_a` / `story_image_b` media collections.
+     *
+     * @return array{enabled: bool, hero: array{eyebrow: string, heading: string, subtitle: string}, section_a: array{heading: string, body: string, cta_label: string, cta_link: string, image_position: string, image_url: string|null}, section_b: array{heading: string, body: string, cta_label: string, cta_link: string, image_position: string, image_url: string|null}}
+     */
+    private function resolveStoryPage(SiteConfig $config): array
+    {
+        $stored = is_array($config->story_page) ? $config->story_page : [];
+        $hero = is_array($stored['hero'] ?? null) ? $stored['hero'] : [];
+        $sectionA = is_array($stored['section_a'] ?? null) ? $stored['section_a'] : [];
+        $sectionB = is_array($stored['section_b'] ?? null) ? $stored['section_b'] : [];
+
+        return [
+            'enabled' => (bool) ($stored['enabled'] ?? false),
+            'hero' => [
+                'eyebrow' => (string) ($hero['eyebrow'] ?? 'Our Story'),
+                'heading' => (string) ($hero['heading'] ?? 'Our Story'),
+                'subtitle' => (string) ($hero['subtitle'] ?? ''),
+            ],
+            'section_a' => [
+                'heading' => (string) ($sectionA['heading'] ?? 'Who we are'),
+                'body' => (string) ($sectionA['body'] ?? ''),
+                'cta_label' => (string) ($sectionA['cta_label'] ?? 'Shop the collection'),
+                'cta_link' => (string) ($sectionA['cta_link'] ?? '/shop'),
+                'image_position' => ($sectionA['image_position'] ?? 'right') === 'left' ? 'left' : 'right',
+                'image_url' => optional($config->storyImageAMedia)->url,
+            ],
+            'section_b' => [
+                'heading' => (string) ($sectionB['heading'] ?? 'What we believe'),
+                'body' => (string) ($sectionB['body'] ?? ''),
+                'cta_label' => (string) ($sectionB['cta_label'] ?? 'Get in touch'),
+                'cta_link' => (string) ($sectionB['cta_link'] ?? '/contact'),
+                'image_position' => ($sectionB['image_position'] ?? 'left') === 'right' ? 'right' : 'left',
+                'image_url' => optional($config->storyImageBMedia)->url,
+            ],
+        ];
+    }
+
     private function config(): SiteConfig
     {
         $relations = [
             'logoMedia', 'faviconMedia', 'cartIconMedia', 'footerLogoMedia', 'heroMedia',
+            'homepageStatementMedia', 'storyImageAMedia', 'storyImageBMedia',
             'aboutMedia', 'contactMedia', 'blogMedia', 'servicesMedia',
             'showcaseVideoMedia', 'showcaseVideoPosterMedia',
         ];
@@ -520,6 +585,7 @@ class SiteConfigController extends Controller
                 'hero_focal_x' => (int) $config->hero_focal_x,
                 'hero_focal_y' => (int) $config->hero_focal_y,
                 'about_content' => $config->about_content,
+                'story_page' => $this->resolveStoryPage($config),
                 'about_overlay_color' => $config->about_overlay_color,
                 'about_overlay_opacity' => (int) $config->about_overlay_opacity,
                 'contact_overlay_color' => $config->contact_overlay_color,
@@ -539,6 +605,7 @@ class SiteConfigController extends Controller
                 'homepage_steps' => $config->homepage_steps,
                 'homepage_features' => $config->homepage_features,
                 'homepage_stats' => $config->homepage_stats,
+                'homepage_statement' => $this->resolveHomepageStatement($config),
                 'homepage_newsletter' => $config->homepage_newsletter,
                 'homepage_showcase' => $this->resolveShowcase($config),
                 'homepage_watch_shop' => $this->resolveWatchShop($config),
@@ -608,6 +675,24 @@ class SiteConfigController extends Controller
             'contact_image_url' => 'nullable|string|max:500',
             'hero_media_mime' => 'nullable|string|max:100',
             'about_content' => 'nullable|string',
+            'story_page' => 'nullable|array',
+            'story_page.enabled' => 'nullable|boolean',
+            'story_page.hero' => 'nullable|array',
+            'story_page.hero.eyebrow' => 'nullable|string|max:100',
+            'story_page.hero.heading' => 'nullable|string|max:150',
+            'story_page.hero.subtitle' => 'nullable|string|max:255',
+            'story_page.section_a' => 'nullable|array',
+            'story_page.section_a.heading' => 'nullable|string|max:150',
+            'story_page.section_a.body' => 'nullable|string|max:2000',
+            'story_page.section_a.cta_label' => 'nullable|string|max:50',
+            'story_page.section_a.cta_link' => 'nullable|string|max:500',
+            'story_page.section_a.image_position' => 'nullable|in:left,right',
+            'story_page.section_b' => 'nullable|array',
+            'story_page.section_b.heading' => 'nullable|string|max:150',
+            'story_page.section_b.body' => 'nullable|string|max:2000',
+            'story_page.section_b.cta_label' => 'nullable|string|max:50',
+            'story_page.section_b.cta_link' => 'nullable|string|max:500',
+            'story_page.section_b.image_position' => 'nullable|in:left,right',
             'about_overlay_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
             'about_overlay_opacity' => 'nullable|integer|min:0|max:100',
             'contact_overlay_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
@@ -646,6 +731,14 @@ class SiteConfigController extends Controller
             'homepage_stats.items' => 'nullable|array|max:8',
             'homepage_stats.items.*.value' => 'required|string|max:50',
             'homepage_stats.items.*.label' => 'required|string|max:100',
+            'homepage_statement' => 'nullable|array',
+            'homepage_statement.enabled' => 'nullable|boolean',
+            'homepage_statement.eyebrow' => 'nullable|string|max:100',
+            'homepage_statement.quote' => 'nullable|string|max:1000',
+            'homepage_statement.attribution' => 'nullable|string|max:100',
+            'homepage_statement.role' => 'nullable|string|max:100',
+            'homepage_statement.cta_label' => 'nullable|string|max:50',
+            'homepage_statement.cta_link' => 'nullable|string|max:500',
             'homepage_newsletter' => 'nullable|array',
             'homepage_newsletter.label' => 'nullable|string|max:100',
             'homepage_newsletter.heading' => 'nullable|string|max:100',
@@ -953,7 +1046,7 @@ class SiteConfigController extends Controller
 
     public function uploadMedia(Request $request, string $collection)
     {
-        $allowed = ['logo', 'favicon', 'cart_icon', 'footer_logo', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video'];
+        $allowed = ['logo', 'favicon', 'cart_icon', 'footer_logo', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video', 'homepage_statement', 'story_image_a', 'story_image_b'];
         abort_unless(in_array($collection, $allowed, true), 404);
 
         $max = match (true) {
@@ -1011,7 +1104,7 @@ class SiteConfigController extends Controller
 
     public function deleteMedia(string $collection)
     {
-        $allowed = ['logo', 'favicon', 'cart_icon', 'footer_logo', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video'];
+        $allowed = ['logo', 'favicon', 'cart_icon', 'footer_logo', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video', 'homepage_statement', 'story_image_a', 'story_image_b'];
         abort_unless(in_array($collection, $allowed, true), 404);
 
         $config = SiteConfig::first();
