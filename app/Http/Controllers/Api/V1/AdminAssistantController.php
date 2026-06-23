@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -19,6 +21,12 @@ class AdminAssistantController extends Controller
 {
     /** Max prior turns (user+assistant pairs) kept from the client to bound token use. */
     private const MAX_HISTORY = 12;
+
+    /** Total attempts when calling the model; Gemini frequently returns transient 429/503. */
+    private const MODEL_ATTEMPTS = 3;
+
+    /** Gemini status codes worth retrying: rate limiting and "model overloaded". */
+    private const RETRYABLE_STATUSES = [429, 503];
 
     public function chat(Request $request): JsonResponse
     {
@@ -73,6 +81,11 @@ class AdminAssistantController extends Controller
         $contents[] = ['role' => 'user', 'parts' => [['text' => $message]]];
 
         $response = Http::timeout(30)
+            ->retry(self::MODEL_ATTEMPTS, fn (int $attempt): int => $attempt * 400, function (\Throwable $e): bool {
+                return $e instanceof ConnectionException
+                    || ($e instanceof RequestException
+                        && in_array($e->response->status(), self::RETRYABLE_STATUSES, true));
+            }, throw: false)
             ->withQueryParameters(['key' => $apiKey])
             ->post(
                 "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent",
