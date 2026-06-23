@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 class AdminAssistantApiTest extends TestCase
@@ -96,6 +97,59 @@ class AdminAssistantApiTest extends TestCase
         $this->actingAs($this->admin)
             ->postJson('/api/v1/admin-assistant', ['message' => 'Hi'])
             ->assertStatus(502);
+    }
+
+    public function test_retries_transient_errors_and_succeeds(): void
+    {
+        Sleep::fake();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push('overloaded', 503)
+                ->push('rate limited', 429)
+                ->push([
+                    'candidates' => [
+                        ['content' => ['parts' => [['text' => 'Go to Products.']]]],
+                    ],
+                ], 200),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/admin-assistant', ['message' => 'How do I add a product?'])
+            ->assertOk()
+            ->assertJsonPath('message', 'Go to Products.');
+
+        Http::assertSentCount(3);
+    }
+
+    public function test_returns_502_after_exhausting_retries_on_transient_errors(): void
+    {
+        Sleep::fake();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response('overloaded', 503),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/admin-assistant', ['message' => 'Hi'])
+            ->assertStatus(502);
+
+        Http::assertSentCount(3);
+    }
+
+    public function test_does_not_retry_non_transient_errors(): void
+    {
+        Sleep::fake();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response('bad request', 400),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/admin-assistant', ['message' => 'Hi'])
+            ->assertStatus(502);
+
+        Http::assertSentCount(1);
     }
 
     public function test_unauthenticated_cannot_chat(): void
