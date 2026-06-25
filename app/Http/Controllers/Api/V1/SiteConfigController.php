@@ -10,6 +10,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\SiteConfig;
 use App\Modules\Media\MediaService;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -575,6 +576,10 @@ class SiteConfigController extends Controller
         return response()->json([
             'data' => [
                 'id' => $config->id,
+                // False when the request Host is the bare apex (no custom domain
+                // or store subdomain). The SPA uses this to route apex visitors
+                // to the admin login instead of rendering the default store.
+                'is_storefront_host' => app(CurrentStore::class)->resolvedFromHost(),
                 'site_name' => $config->site_name,
                 'theme' => $config->resolved_theme,
                 'hero_title' => $config->hero_title,

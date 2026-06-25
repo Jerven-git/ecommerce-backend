@@ -18,6 +18,7 @@ class StoreStoreRequest extends FormRequest
             'slug' => ['required', 'string', 'max:255', 'unique:stores,slug', 'regex:/^[a-z0-9-]+$/'],
             'status' => ['sometimes', 'in:active,inactive'],
             'default_currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
+            'domain' => ['nullable', 'string', 'max:255', 'unique:stores,domain', 'regex:/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i'],
         ];
     }
 

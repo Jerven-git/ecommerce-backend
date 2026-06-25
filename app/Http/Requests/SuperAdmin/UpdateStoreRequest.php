@@ -28,6 +28,13 @@ class UpdateStoreRequest extends FormRequest
             ],
             'status' => ['sometimes', 'in:active,inactive'],
             'default_currency_id' => ['sometimes', 'nullable', 'integer', 'exists:currencies,id'],
+            'domain' => [
+                'nullable',
+                'string',
+                'max:255',
+                'regex:/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i',
+                Rule::unique('stores', 'domain')->ignore($storeId),
+            ],
         ];
     }
 

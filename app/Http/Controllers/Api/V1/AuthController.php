@@ -264,6 +264,7 @@ class AuthController extends Controller
                 'id' => $user->store->id,
                 'name' => $user->store->name,
                 'slug' => $user->store->slug,
+                'domain' => $user->store->domain,
             ] : null,
         ]);
     }
