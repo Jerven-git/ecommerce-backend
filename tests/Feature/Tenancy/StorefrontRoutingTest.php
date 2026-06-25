@@ -39,13 +39,25 @@ class StorefrontRoutingTest extends TestCase
         $this->runMiddleware('acme.localhost');
 
         $this->assertSame($store->id, app(CurrentStore::class)->id());
+        $this->assertTrue(app(CurrentStore::class)->resolvedFromHost());
     }
 
-    public function test_bare_base_domain_falls_back_to_default_store(): void
+    public function test_custom_domain_resolves_to_matching_store(): void
+    {
+        $store = Store::factory()->create(['slug' => 'nazareck', 'domain' => 'nazareck.com']);
+
+        $this->runMiddleware('nazareck.com');
+
+        $this->assertSame($store->id, app(CurrentStore::class)->id());
+        $this->assertTrue(app(CurrentStore::class)->resolvedFromHost());
+    }
+
+    public function test_bare_base_domain_falls_back_to_default_store_but_is_not_host_resolved(): void
     {
         $this->runMiddleware('localhost');
 
         $this->assertSame($this->defaultStore->id, app(CurrentStore::class)->id());
+        $this->assertFalse(app(CurrentStore::class)->resolvedFromHost());
     }
 
     public function test_unknown_subdomain_returns_404(): void

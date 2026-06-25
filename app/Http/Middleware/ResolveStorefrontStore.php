@@ -14,31 +14,60 @@ class ResolveStorefrontStore
 
     public function handle(Request $request, Closure $next): Response
     {
-        $baseDomain = strtolower((string) config('storefront.base_domain'));
-        $defaultSlug = (string) config('storefront.default_store_slug', Store::DEFAULT_SLUG);
-
         $host = strtolower($request->getHost());
 
-        $slug = $this->extractStoreSlug($host, $baseDomain) ?? $defaultSlug;
+        // 1. Exact domain match — custom domain (e.g. nazareck.com)
+        $store = Store::where('domain', $host)->first();
 
-        $store = Store::query()->where('slug', $slug)->first();
+        if ($store) {
+            return $this->resolve($store, $request, $next, resolvedFromHost: true);
+        }
+
+        // 2. Subdomain extraction (e.g. acme.yourdomain.com)
+        $baseDomain = strtolower((string) config('storefront.base_domain'));
+        $slug = $this->extractStoreSlug($host, $baseDomain);
+
+        if ($slug !== null) {
+            $store = Store::query()->where('slug', $slug)->first();
+
+            if (! $store) {
+                return response()->json([
+                    'message' => 'Store not found for host '.$host.'.',
+                ], 404);
+            }
+
+            return $this->resolve($store, $request, $next, resolvedFromHost: true);
+        }
+
+        // 3. Bare apex / host not bound to any store. Keep the default store set
+        // so shared endpoints keep working, but flag that the host did NOT
+        // resolve a storefront — the SPA routes these visitors to the admin
+        // login instead of rendering the default store.
+        $defaultSlug = (string) config('storefront.default_store_slug', Store::DEFAULT_SLUG);
+        $store = Store::query()->where('slug', $defaultSlug)->first();
 
         if (! $store) {
-            // Subdomain that doesn't match any store -> 404.
-            // Bare base-domain hits fall through to the default slug above, so
-            // a missing default store here means the install is misconfigured.
             return response()->json([
                 'message' => 'Store not found for host '.$host.'.',
             ], 404);
         }
 
+        return $this->resolve($store, $request, $next, resolvedFromHost: false);
+    }
+
+    /**
+     * Set the resolved store on the tenancy context and continue, or 404 when
+     * the store is inactive.
+     */
+    protected function resolve(Store $store, Request $request, Closure $next, bool $resolvedFromHost): Response
+    {
         if (! $store->isActive()) {
             return response()->json([
                 'message' => 'This store is currently unavailable.',
             ], 404);
         }
 
-        $this->currentStore->set($store);
+        $this->currentStore->set($store, $resolvedFromHost);
 
         return $next($request);
     }
@@ -56,8 +85,6 @@ class ResolveStorefrontStore
         $suffix = '.'.$baseDomain;
 
         if (! str_ends_with($host, $suffix)) {
-            // Host doesn't sit under the configured base domain (e.g. an IP,
-            // a custom domain, or a stray request). Fall back to default.
             return null;
         }
 

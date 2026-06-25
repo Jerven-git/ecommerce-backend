@@ -22,6 +22,7 @@ class Store extends Model
     protected $fillable = [
         'name',
         'slug',
+        'domain',
         'status',
         'default_currency_id',
     ];
@@ -63,7 +64,7 @@ class Store extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['name', 'slug', 'status', 'default_currency_id'])
+            ->logOnly(['name', 'slug', 'domain', 'status', 'default_currency_id'])
             ->logOnlyDirty()
             ->dontLogEmptyChanges()
             ->useLogName('store');

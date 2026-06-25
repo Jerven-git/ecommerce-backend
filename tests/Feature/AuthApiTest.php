@@ -28,6 +28,21 @@ class AuthApiTest extends TestCase
             ])->assertOk();
     }
 
+    public function test_user_payload_includes_store_domain(): void
+    {
+        $store = \App\Models\Store::factory()->create([
+            'slug' => 'nazareck',
+            'domain' => 'nazareck.com',
+        ]);
+        $user = User::factory()->create(['store_id' => $store->id]);
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/user')
+            ->assertOk()
+            ->assertJsonPath('user.store.domain', 'nazareck.com')
+            ->assertJsonPath('user.store.slug', 'nazareck');
+    }
+
     public function test_login_fails_with_wrong_password(): void
     {
         $user = User::factory()->create(['password' => bcrypt('secret123')]);

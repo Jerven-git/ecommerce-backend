@@ -7,6 +7,7 @@ use App\Http\Requests\SuperAdmin\StoreStoreRequest;
 use App\Http\Requests\SuperAdmin\UpdateStoreRequest;
 use App\Models\Store;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Str;
 
 class StoreController extends Controller
 {
@@ -33,7 +34,13 @@ class StoreController extends Controller
 
     public function store(StoreStoreRequest $request): JsonResponse
     {
-        $store = Store::create($request->validated());
+        $data = $request->validated();
+
+        if (isset($data['domain'])) {
+            $data['domain'] = Str::lower($data['domain']);
+        }
+
+        $store = Store::create($data);
         $store->loadCount('users');
 
         return response()->json([
@@ -43,7 +50,13 @@ class StoreController extends Controller
 
     public function update(UpdateStoreRequest $request, Store $store): JsonResponse
     {
-        $store->update($request->validated());
+        $data = $request->validated();
+
+        if (isset($data['domain'])) {
+            $data['domain'] = Str::lower($data['domain']);
+        }
+
+        $store->update($data);
         $store->loadCount('users');
 
         return response()->json([
@@ -102,6 +115,7 @@ class StoreController extends Controller
             'id' => $store->id,
             'name' => $store->name,
             'slug' => $store->slug,
+            'domain' => $store->domain,
             'status' => $store->status,
             'is_default' => $store->slug === Store::DEFAULT_SLUG,
             'default_currency_id' => $store->default_currency_id,
