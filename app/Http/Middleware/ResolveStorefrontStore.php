@@ -4,13 +4,17 @@ namespace App\Http\Middleware;
 
 use App\Models\Store;
 use App\Support\Tenancy\CurrentStore;
+use App\Support\Tenancy\HostStoreResolver;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class ResolveStorefrontStore
 {
-    public function __construct(protected CurrentStore $currentStore) {}
+    public function __construct(
+        protected CurrentStore $currentStore,
+        protected HostStoreResolver $resolver,
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -25,7 +29,7 @@ class ResolveStorefrontStore
 
         // 2. Subdomain extraction (e.g. acme.yourdomain.com)
         $baseDomain = strtolower((string) config('storefront.base_domain'));
-        $slug = $this->extractStoreSlug($host, $baseDomain);
+        $slug = $this->resolver->extractSlug($host, $baseDomain);
 
         if ($slug !== null) {
             $store = Store::query()->where('slug', $slug)->first();
@@ -70,26 +74,5 @@ class ResolveStorefrontStore
         $this->currentStore->set($store, $resolvedFromHost);
 
         return $next($request);
-    }
-
-    /**
-     * Derive a store slug from the request host, or null if the host equals
-     * the base domain itself (caller falls back to the default store).
-     */
-    protected function extractStoreSlug(string $host, string $baseDomain): ?string
-    {
-        if ($baseDomain === '' || $host === $baseDomain) {
-            return null;
-        }
-
-        $suffix = '.'.$baseDomain;
-
-        if (! str_ends_with($host, $suffix)) {
-            return null;
-        }
-
-        $slug = substr($host, 0, -strlen($suffix));
-
-        return $slug === '' ? null : $slug;
     }
 }
