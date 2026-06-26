@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\V1\SuperAdmin\StoreController as SuperAdminStoreCon
 use App\Http\Controllers\Api\V1\TaxReportController;
 use App\Http\Controllers\Api\V1\TaxRuleController;
 use App\Http\Controllers\Api\V1\TaxSettingsController;
+use App\Http\Controllers\Api\V1\TlsCheckController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use App\Http\Controllers\Auth\AdminNewPasswordController;
 use App\Http\Controllers\Auth\AdminPasswordResetLinkController;
@@ -58,6 +59,14 @@ Route::prefix('v1')->group(function () {
     Route::post('/two-factor/verify', [AuthController::class, 'verifyTwoFactor'])->middleware('throttle:two-factor');
     Route::post('/two-factor/resend', [AuthController::class, 'resendTwoFactor'])->middleware('throttle:two-factor-resend');
     Route::get('/user', [AuthController::class, 'user']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | ACME on-demand TLS gate (host-agnostic; called by Caddy, not browsers)
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get('/tls-check', TlsCheckController::class);
 
     /*
     |--------------------------------------------------------------------------

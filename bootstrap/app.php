@@ -24,6 +24,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // The app always sits behind a reverse proxy (Caddy → nginx in prod,
+        // nginx in dev). Trust it so Laravel honours X-Forwarded-Proto/Host and
+        // correctly detects HTTPS — required for secure cookies and URL
+        // generation once Caddy terminates TLS for each custom domain.
+        $middleware->trustProxies(at: '*');
+
         $middleware->api(prepend: [
             SanitizeInput::class,
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
