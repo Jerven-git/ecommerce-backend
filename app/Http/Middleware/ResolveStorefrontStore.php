@@ -19,9 +19,15 @@ class ResolveStorefrontStore
     public function handle(Request $request, Closure $next): Response
     {
         $host = strtolower($request->getHost());
+        $canonical = $this->resolver->canonicalHost($host);
 
-        // 1. Exact domain match — custom domain (e.g. nazareck.com)
-        $store = Store::where('domain', $host)->first();
+        // 1. Exact domain match — custom domain (e.g. nazareck.com), with or
+        // without a leading www.
+        $store = Store::query()
+            ->where(function ($query) use ($host, $canonical) {
+                $query->where('domain', $host)->orWhere('domain', $canonical);
+            })
+            ->first();
 
         if ($store) {
             return $this->resolve($store, $request, $next, resolvedFromHost: true);
@@ -29,7 +35,7 @@ class ResolveStorefrontStore
 
         // 2. Subdomain extraction (e.g. acme.yourdomain.com)
         $baseDomain = strtolower((string) config('storefront.base_domain'));
-        $slug = $this->resolver->extractSlug($host, $baseDomain);
+        $slug = $this->resolver->extractSlug($canonical, $baseDomain);
 
         if ($slug !== null) {
             $store = Store::query()->where('slug', $slug)->first();
