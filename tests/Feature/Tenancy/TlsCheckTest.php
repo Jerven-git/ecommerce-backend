@@ -39,6 +39,13 @@ class TlsCheckTest extends TestCase
         $this->getJson('/api/v1/tls-check?domain=www.shopapp.com')->assertOk();
     }
 
+    public function test_issues_for_www_of_active_custom_domain(): void
+    {
+        Store::factory()->create(['slug' => 'nazareck', 'domain' => 'nazareck.com', 'status' => 'active']);
+
+        $this->getJson('/api/v1/tls-check?domain=www.nazareck.com')->assertOk();
+    }
+
     public function test_rejects_unknown_custom_domain(): void
     {
         $this->getJson('/api/v1/tls-check?domain=evil.com')->assertStatus(403);

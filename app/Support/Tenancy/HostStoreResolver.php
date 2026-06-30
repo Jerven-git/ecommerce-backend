@@ -13,6 +13,23 @@ use App\Models\Store;
 class HostStoreResolver
 {
     /**
+     * Lowercase/trim a host and strip a single leading "www." so that
+     * www.example.com and example.com resolve to the same store and share one
+     * certificate decision. Keeps the cert gate and the request router in sync
+     * on the www-vs-bare question.
+     */
+    public function canonicalHost(string $host): string
+    {
+        $host = strtolower(trim($host));
+
+        if (str_starts_with($host, 'www.')) {
+            return substr($host, 4);
+        }
+
+        return $host;
+    }
+
+    /**
      * Derive a store slug from a subdomain of the configured base domain, or
      * null when the host is the base domain itself or doesn't sit under it.
      */
@@ -48,17 +65,25 @@ class HostStoreResolver
             return false;
         }
 
+        $canonical = $this->canonicalHost($host);
         $baseDomain = strtolower((string) config('storefront.base_domain'));
 
-        if ($baseDomain !== '' && ($host === $baseDomain || $host === 'www.'.$baseDomain)) {
+        if ($baseDomain !== '' && $canonical === $baseDomain) {
             return true;
         }
 
-        if (Store::query()->where('domain', $host)->where('status', 'active')->exists()) {
+        $matchesStoreDomain = Store::query()
+            ->where('status', 'active')
+            ->where(function ($query) use ($host, $canonical) {
+                $query->where('domain', $host)->orWhere('domain', $canonical);
+            })
+            ->exists();
+
+        if ($matchesStoreDomain) {
             return true;
         }
 
-        $slug = $this->extractSlug($host, $baseDomain);
+        $slug = $this->extractSlug($canonical, $baseDomain);
 
         if ($slug !== null && Store::query()->where('slug', $slug)->where('status', 'active')->exists()) {
             return true;
