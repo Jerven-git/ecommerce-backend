@@ -378,6 +378,53 @@ class SiteConfigController extends Controller
     }
 
     /**
+     * Guard against an enabled Contact page with no reachable recipient.
+     * Contact submissions resolve their recipients from `contact_entries`
+     * (falling back to `contact_email`); with neither set, messages silently
+     * fall through to the system no-reply address and are lost. Only fires when
+     * the request actually touches the contact module or contact fields, so
+     * unrelated saves (e.g. a hero edit) are never blocked. Evaluates the
+     * effective post-save state by layering the request over existing values.
+     */
+    private function validateContactRules(array $validated, ?SiteConfig $existing): void
+    {
+        $touchingModules = array_key_exists('modules_enabled', $validated);
+        $touchingContactFields = array_key_exists('contact_entries', $validated)
+            || array_key_exists('contact_email', $validated);
+
+        if (! $touchingModules && ! $touchingContactFields) {
+            return;
+        }
+
+        $modules = $this->resolveModulesEnabled(
+            $touchingModules ? $validated['modules_enabled'] : $existing?->modules_enabled
+        );
+
+        if (! $modules['contact']) {
+            return;
+        }
+
+        $entries = array_key_exists('contact_entries', $validated)
+            ? ($validated['contact_entries'] ?? [])
+            : ($existing?->contact_entries ?? []);
+
+        $contactEmail = array_key_exists('contact_email', $validated)
+            ? $validated['contact_email']
+            : $existing?->contact_email;
+
+        $hasValidEmail = collect($entries)
+            ->pluck('email')
+            ->push($contactEmail)
+            ->contains(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL) !== false);
+
+        if (! $hasValidEmail) {
+            throw ValidationException::withMessages([
+                'contact_entries' => ['Add at least one valid contact email before enabling the Contact page.'],
+            ]);
+        }
+    }
+
+    /**
      * Merge stored module flags over the default (all enabled). Keeps the API
      * response shape stable even if the stored JSON is null or missing keys.
      */
@@ -896,6 +943,7 @@ class SiteConfigController extends Controller
         $this->validateShowcaseRules($validated);
         $this->validateWatchShopRules($validated);
         $this->validateBestSellersRules($validated);
+        $this->validateContactRules($validated, SiteConfig::first());
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
 
