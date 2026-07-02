@@ -77,10 +77,10 @@ class SettingsScopingTest extends TestCase
     public function test_payment_settings_are_isolated_by_store(): void
     {
         app(CurrentStore::class)->set($this->storeA);
-        PaymentSetting::create(['cash_enabled' => true, 'stripe_enabled' => true]);
+        PaymentSetting::create(['stripe_enabled' => true]);
 
         app(CurrentStore::class)->set($this->storeB);
-        PaymentSetting::create(['cash_enabled' => false, 'stripe_enabled' => false]);
+        PaymentSetting::create(['stripe_enabled' => false]);
 
         app(CurrentStore::class)->set($this->storeA);
         $this->assertTrue((bool) PaymentSetting::first()?->stripe_enabled);

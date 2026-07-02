@@ -17,7 +17,6 @@ class PaymentSettingsController extends Controller
         // store_id is auto-filled on create. (Previously pinned to id=1, which
         // would have collided across stores.)
         return PaymentSetting::firstOrCreate([], [
-            'cash_enabled' => true,
             'stripe_enabled' => false,
             'paypal_enabled' => false,
             'square_enabled' => false,
@@ -68,7 +67,6 @@ class PaymentSettingsController extends Controller
     public function update(Request $request)
     {
         $validated = $request->validate([
-            'cash_enabled' => 'sometimes|boolean',
             'stripe_enabled' => 'sometimes|boolean',
             'paypal_enabled' => 'sometimes|boolean',
             'square_enabled' => 'sometimes|boolean',
@@ -89,7 +87,7 @@ class PaymentSettingsController extends Controller
             'square_mode' => 'sometimes|nullable|in:sandbox,live',
         ]);
 
-        $toggleKeys = ['cash_enabled', 'stripe_enabled', 'paypal_enabled', 'square_enabled'];
+        $toggleKeys = ['stripe_enabled', 'paypal_enabled', 'square_enabled'];
 
         $payload = collect($validated)
             // Credential fields: drop blanks so they're left unchanged.
@@ -115,15 +113,6 @@ class PaymentSettingsController extends Controller
 
         // Only expose what frontend needs to initialize SDKs
         $methods = [];
-
-        if ($settings->cash_enabled) {
-            $methods[] = [
-                'id' => 'cash',
-                'name' => 'Cash Payment',
-                'description' => 'Pay with cash on delivery or pickup',
-                'icon' => 'cash',
-            ];
-        }
 
         if ($settings->stripe_enabled) {
             $publishable = $this->credentials->get('stripe', 'publishable_key');

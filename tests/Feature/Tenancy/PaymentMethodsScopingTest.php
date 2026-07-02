@@ -47,6 +47,26 @@ class PaymentMethodsScopingTest extends TestCase
         $this->assertSame('pk_default', $stripe['config']['publishable_key']);
     }
 
+    public function test_public_endpoint_never_advertises_cash(): void
+    {
+        app(CurrentStore::class)->set($this->defaultStore);
+        $settings = PaymentSetting::create([
+            'stripe_enabled' => true,
+            'stripe_publishable_key' => 'pk_default',
+        ]);
+        // Simulate a legacy row that still carries the old cash_enabled column.
+        \Illuminate\Support\Facades\DB::table('payment_settings')
+            ->where('id', $settings->id)
+            ->update(['cash_enabled' => true]);
+        app(CurrentStore::class)->clear();
+
+        $ids = collect($this->getJson('/api/v1/payment-settings/methods')->assertOk()->json('data'))
+            ->pluck('id');
+
+        $this->assertFalse($ids->contains('cash'), 'Cash must never be advertised as a payment method.');
+        $this->assertTrue($ids->contains('stripe'));
+    }
+
     public function test_admin_sees_their_own_stores_publishable_key(): void
     {
         app(CurrentStore::class)->set($this->defaultStore);

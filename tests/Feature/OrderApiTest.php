@@ -16,6 +16,7 @@ class OrderApiTest extends TestCase
     use RefreshDatabase;
 
     private User $admin;
+
     private Product $product;
 
     protected function setUp(): void
@@ -52,6 +53,24 @@ class OrderApiTest extends TestCase
         $response->assertStatus(201)
             ->assertJsonPath('data.order.status', 'pending')
             ->assertJsonPath('data.order.customer_name', 'John Doe');
+    }
+
+    public function test_order_rejects_cash_payment_method(): void
+    {
+        // Cash was removed — the store is online-only now.
+        $response = $this->postJson('/api/v1/orders', [
+            'customer_name' => 'John Doe',
+            'customer_email' => 'john@example.com',
+            'delivery_method' => 'pickup',
+            'shipping_address' => '',
+            'payment_method' => 'cash',
+            'items' => [
+                ['product_id' => $this->product->id, 'quantity' => 1],
+            ],
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('payment_method');
     }
 
     public function test_order_creation_requires_items(): void
@@ -176,7 +195,7 @@ class OrderApiTest extends TestCase
         $order = Order::factory()->create(['status' => 'pending']);
         Payment::create([
             'order_id' => $order->id,
-            'provider' => 'cash',
+            'provider' => 'stripe',
             'status' => 'paid',
             'amount' => 1000,
             'currency' => 'USD',
