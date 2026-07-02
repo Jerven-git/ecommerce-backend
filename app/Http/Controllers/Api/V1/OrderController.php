@@ -176,10 +176,6 @@ class OrderController extends Controller
                 }
             }
 
-            if (($validated['payment_method'] ?? null) === 'cash') {
-                app(PaymentService::class)->createPending($order, 'cash', []);
-            }
-
             DB::commit();
 
             return response()->json([
@@ -296,7 +292,7 @@ class OrderController extends Controller
             'shipping_options' => 'nullable|array',
             'shipping_options.*' => 'string|in:insurance',
 
-            'payment_method' => 'nullable|string|in:cash,stripe,paypal,square',
+            'payment_method' => 'nullable|string|in:stripe,paypal,square',
 
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',

@@ -10,7 +10,6 @@ class PaymentSetting extends Model
     use BelongsToStore;
 
     protected $fillable = [
-        'cash_enabled',
         'stripe_enabled',
         'paypal_enabled',
         'square_enabled',
@@ -29,7 +28,6 @@ class PaymentSetting extends Model
     ];
 
     protected $casts = [
-        'cash_enabled' => 'boolean',
         'stripe_enabled' => 'boolean',
         'paypal_enabled' => 'boolean',
         'square_enabled' => 'boolean',
@@ -92,13 +90,6 @@ class PaymentSetting extends Model
     {
         $credentials = app(\App\Payments\PaymentCredentials::class);
         $methods = [];
-
-        if ($this->cash_enabled) {
-            $methods[] = [
-                'id' => 'cash',
-                'name' => 'Cash Payment',
-            ];
-        }
 
         if ($this->stripe_enabled) {
             $methods[] = [
