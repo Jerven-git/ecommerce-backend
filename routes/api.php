@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\AdminGiftCardController;
 use App\Http\Controllers\Api\V1\AdminUserController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BackorderController;
+use App\Http\Controllers\Api\V1\CanonicalHostController;
 use App\Http\Controllers\Api\V1\CategoryController;
 use App\Http\Controllers\Api\V1\CommissionRequestController;
 use App\Http\Controllers\Api\V1\ContactController;
@@ -30,6 +31,7 @@ use App\Http\Controllers\Api\V1\SubscribeController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ActivityLogController as SuperAdminActivityLogController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ImpersonationController as SuperAdminImpersonationController;
 use App\Http\Controllers\Api\V1\SuperAdmin\StoreController as SuperAdminStoreController;
+use App\Http\Controllers\Api\V1\SuperAdmin\StoreDomainController as SuperAdminStoreDomainController;
 use App\Http\Controllers\Api\V1\TaxReportController;
 use App\Http\Controllers\Api\V1\TaxRuleController;
 use App\Http\Controllers\Api\V1\TaxSettingsController;
@@ -67,6 +69,14 @@ Route::prefix('v1')->group(function () {
     */
 
     Route::get('/tls-check', TlsCheckController::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Canonical-host gate (host-agnostic; called by nginx auth_request)
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get('/canonical-host', CanonicalHostController::class);
 
     /*
     |--------------------------------------------------------------------------
@@ -199,6 +209,12 @@ Route::prefix('v1')->group(function () {
             // Stores
             Route::get('/stores', [SuperAdminStoreController::class, 'index']);
             Route::post('/stores', [SuperAdminStoreController::class, 'store']);
+
+            // Must precede /stores/{store} so the literal path isn't captured
+            // as a store binding.
+            Route::get('/stores/domain-availability', [SuperAdminStoreDomainController::class, 'check']);
+            Route::post('/stores/{store}/domain/verify', [SuperAdminStoreDomainController::class, 'verify']);
+
             Route::get('/stores/{store}', [SuperAdminStoreController::class, 'show']);
             Route::patch('/stores/{store}', [SuperAdminStoreController::class, 'update']);
             Route::delete('/stores/{store}', [SuperAdminStoreController::class, 'destroy']);

@@ -30,9 +30,8 @@ class AuthApiTest extends TestCase
 
     public function test_user_payload_includes_store_domain(): void
     {
-        $store = \App\Models\Store::factory()->create([
+        $store = \App\Models\Store::factory()->withVerifiedDomain('nazareck.com')->create([
             'slug' => 'nazareck',
-            'domain' => 'nazareck.com',
         ]);
         $user = User::factory()->create(['store_id' => $store->id]);
 
@@ -40,7 +39,23 @@ class AuthApiTest extends TestCase
             ->getJson('/api/v1/user')
             ->assertOk()
             ->assertJsonPath('user.store.domain', 'nazareck.com')
+            ->assertJsonPath('user.store.domain_verified', true)
             ->assertJsonPath('user.store.slug', 'nazareck');
+    }
+
+    public function test_user_payload_flags_an_unverified_store_domain(): void
+    {
+        // The admin UI links to the storefront using this flag: an unverified
+        // domain serves nothing, so it must link to the slug subdomain instead.
+        $store = \App\Models\Store::factory()->withUnverifiedDomain('nazareck.com')->create([
+            'slug' => 'nazareck',
+        ]);
+        $user = User::factory()->create(['store_id' => $store->id]);
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/user')
+            ->assertOk()
+            ->assertJsonPath('user.store.domain_verified', false);
     }
 
     public function test_login_fails_with_wrong_password(): void

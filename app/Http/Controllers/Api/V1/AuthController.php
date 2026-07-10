@@ -265,6 +265,9 @@ class AuthController extends Controller
                 'name' => $user->store->name,
                 'slug' => $user->store->slug,
                 'domain' => $user->store->domain,
+                // Only a verified domain actually serves the storefront, so
+                // clients must not link to an unverified one.
+                'domain_verified' => $user->store->hasVerifiedDomain(),
             ] : null,
         ]);
     }

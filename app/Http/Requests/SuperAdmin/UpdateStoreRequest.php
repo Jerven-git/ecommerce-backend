@@ -2,11 +2,14 @@
 
 namespace App\Http\Requests\SuperAdmin;
 
+use App\Rules\StoreCustomDomain;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class UpdateStoreRequest extends FormRequest
 {
+    use CanonicalisesDomainInput;
+
     public function authorize(): bool
     {
         return $this->user()?->isSuperAdmin() ?? false;
@@ -31,8 +34,8 @@ class UpdateStoreRequest extends FormRequest
             'domain' => [
                 'nullable',
                 'string',
-                'max:255',
-                'regex:/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i',
+                'max:253',
+                new StoreCustomDomain,
                 Rule::unique('stores', 'domain')->ignore($storeId),
             ],
         ];
@@ -43,6 +46,7 @@ class UpdateStoreRequest extends FormRequest
         return [
             'slug.regex' => 'Slug may only contain lowercase letters, numbers, and dashes.',
             'slug.unique' => 'A store with that slug already exists.',
+            'domain.unique' => 'That domain is already claimed by another store.',
         ];
     }
 }

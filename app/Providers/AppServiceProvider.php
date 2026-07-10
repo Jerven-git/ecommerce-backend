@@ -20,6 +20,8 @@ use App\Payments\Gateways\SquareGateway;
 use App\Payments\Gateways\StripeGateway;
 use App\Payments\PaymentService;
 use App\Services\SmsService;
+use App\Support\Dns\DnsLookup;
+use App\Support\Dns\SystemDnsLookup;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -34,6 +36,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(DnsLookup::class, SystemDnsLookup::class);
+
         $this->app->singleton(GatewayManager::class, function ($app) {
             return new GatewayManager([
                 'stripe' => $app->make(StripeGateway::class),
