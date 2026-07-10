@@ -21,48 +21,60 @@ class ResolveStorefrontStore
         $host = strtolower($request->getHost());
         $canonical = $this->resolver->canonicalHost($host);
 
-        // 1. Exact domain match — custom domain (e.g. nazareck.com), with or
-        // without a leading www.
-        $store = Store::query()
-            ->where(function ($query) use ($host, $canonical) {
-                $query->where('domain', $host)->orWhere('domain', $canonical);
-            })
-            ->first();
+        // 1. Hosts on the platform's own domain resolve by slug, and only by
+        // slug. Checking stores.domain first would let a custom-domain row
+        // claim another store's subdomain — or the apex that serves the admin
+        // login — since wildcard DNS already points those here.
+        if ($this->resolver->isPlatformHost($canonical)) {
+            $slug = $this->resolver->extractSlug($canonical, $this->resolver->baseDomain());
 
-        if ($store) {
-            return $this->resolve($store, $request, $next, resolvedFromHost: true);
-        }
+            // The bare base domain is not a storefront; fall through to the
+            // default store, flagged as not host-resolved.
+            if ($slug === null) {
+                return $this->resolveDefault($request, $next, $host);
+            }
 
-        // 2. Subdomain extraction (e.g. acme.yourdomain.com)
-        $baseDomain = strtolower((string) config('storefront.base_domain'));
-        $slug = $this->resolver->extractSlug($canonical, $baseDomain);
-
-        if ($slug !== null) {
             $store = Store::query()->where('slug', $slug)->first();
 
             if (! $store) {
-                return response()->json([
-                    'message' => 'Store not found for host '.$host.'.',
-                ], 404);
+                return $this->notFound($host);
             }
 
             return $this->resolve($store, $request, $next, resolvedFromHost: true);
         }
 
-        // 3. Bare apex / host not bound to any store. Keep the default store set
-        // so shared endpoints keep working, but flag that the host did NOT
-        // resolve a storefront — the SPA routes these visitors to the admin
-        // login instead of rendering the default store.
+        // 2. Custom domain, verified only. An unverified claim resolves to
+        // nothing, so squatting a domain cannot take it away from its owner.
+        $store = $this->resolver->storeForCustomDomain($canonical);
+
+        if ($store) {
+            return $this->resolve($store, $request, $next, resolvedFromHost: true);
+        }
+
+        // 3. Host not bound to any store. Keep the default store set so shared
+        // endpoints keep working, but flag that the host did NOT resolve a
+        // storefront — the SPA routes these visitors to the admin login
+        // instead of rendering the default store.
+        return $this->resolveDefault($request, $next, $host);
+    }
+
+    protected function resolveDefault(Request $request, Closure $next, string $host): Response
+    {
         $defaultSlug = (string) config('storefront.default_store_slug', Store::DEFAULT_SLUG);
         $store = Store::query()->where('slug', $defaultSlug)->first();
 
         if (! $store) {
-            return response()->json([
-                'message' => 'Store not found for host '.$host.'.',
-            ], 404);
+            return $this->notFound($host);
         }
 
         return $this->resolve($store, $request, $next, resolvedFromHost: false);
+    }
+
+    protected function notFound(string $host): Response
+    {
+        return response()->json([
+            'message' => 'Store not found for host '.$host.'.',
+        ], 404);
     }
 
     /**

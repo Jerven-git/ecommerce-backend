@@ -31,4 +31,27 @@ class StoreFactory extends Factory
             'status' => 'inactive',
         ]);
     }
+
+    /**
+     * A custom domain that has passed DNS verification, and so participates in
+     * host resolution and certificate issuance.
+     */
+    public function withVerifiedDomain(string $domain): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'domain' => $domain,
+            'domain_verified_at' => now(),
+        ]);
+    }
+
+    /**
+     * A claimed but unproven domain: stored, yet inert.
+     */
+    public function withUnverifiedDomain(string $domain): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'domain' => $domain,
+            'domain_verified_at' => null,
+        ]);
+    }
 }

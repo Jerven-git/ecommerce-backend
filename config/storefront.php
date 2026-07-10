@@ -32,4 +32,24 @@ return [
 
     'default_store_slug' => env('STOREFRONT_DEFAULT_STORE_SLUG', 'default'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Public Server IPs
+    |--------------------------------------------------------------------------
+    |
+    | The public A/AAAA record targets for this server, comma separated. A
+    | custom domain is only considered verified once its DNS resolves to one
+    | of these addresses, which is what proves the person claiming it actually
+    | controls the domain. Leave empty to disable domain verification entirely
+    | (the verify endpoint then refuses rather than silently passing).
+    |
+    | Example: STOREFRONT_SERVER_IPS="203.0.113.5,2001:db8::1"
+    |
+    */
+
+    'server_ips' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('STOREFRONT_SERVER_IPS', ''))
+    ))),
+
 ];

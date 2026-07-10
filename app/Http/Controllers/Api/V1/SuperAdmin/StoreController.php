@@ -7,7 +7,6 @@ use App\Http\Requests\SuperAdmin\StoreStoreRequest;
 use App\Http\Requests\SuperAdmin\UpdateStoreRequest;
 use App\Models\Store;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Str;
 
 class StoreController extends Controller
 {
@@ -36,9 +35,9 @@ class StoreController extends Controller
     {
         $data = $request->validated();
 
-        if (isset($data['domain'])) {
-            $data['domain'] = Str::lower($data['domain']);
-        }
+        // A freshly claimed domain is always unverified; it starts routing only
+        // once its DNS is shown to point here.
+        $data['domain_verified_at'] = null;
 
         $store = Store::create($data);
         $store->loadCount('users');
@@ -52,8 +51,14 @@ class StoreController extends Controller
     {
         $data = $request->validated();
 
-        if (isset($data['domain'])) {
-            $data['domain'] = Str::lower($data['domain']);
+        if (array_key_exists('domain', $data)) {
+            // Compare against the canonical form the model would persist, so
+            // re-saving the same domain doesn't needlessly drop verification.
+            $store->domain = $data['domain'];
+
+            if ($store->isDirty('domain')) {
+                $data['domain_verified_at'] = null;
+            }
         }
 
         $store->update($data);
@@ -116,6 +121,8 @@ class StoreController extends Controller
             'name' => $store->name,
             'slug' => $store->slug,
             'domain' => $store->domain,
+            'domain_verified_at' => $store->domain_verified_at,
+            'domain_verified' => $store->hasVerifiedDomain(),
             'status' => $store->status,
             'is_default' => $store->slug === Store::DEFAULT_SLUG,
             'default_currency_id' => $store->default_currency_id,

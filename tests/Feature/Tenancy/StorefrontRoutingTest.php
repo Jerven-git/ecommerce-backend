@@ -44,7 +44,7 @@ class StorefrontRoutingTest extends TestCase
 
     public function test_custom_domain_resolves_to_matching_store(): void
     {
-        $store = Store::factory()->create(['slug' => 'nazareck', 'domain' => 'nazareck.com']);
+        $store = Store::factory()->withVerifiedDomain('nazareck.com')->create(['slug' => 'nazareck']);
 
         $this->runMiddleware('nazareck.com');
 
@@ -54,12 +54,59 @@ class StorefrontRoutingTest extends TestCase
 
     public function test_www_of_custom_domain_resolves_to_matching_store(): void
     {
-        $store = Store::factory()->create(['slug' => 'nazareck', 'domain' => 'nazareck.com']);
+        $store = Store::factory()->withVerifiedDomain('nazareck.com')->create(['slug' => 'nazareck']);
 
         $this->runMiddleware('www.nazareck.com');
 
         $this->assertSame($store->id, app(CurrentStore::class)->id());
         $this->assertTrue(app(CurrentStore::class)->resolvedFromHost());
+    }
+
+    public function test_unverified_custom_domain_does_not_resolve(): void
+    {
+        Store::factory()->withUnverifiedDomain('nazareck.com')->create(['slug' => 'nazareck']);
+
+        $this->runMiddleware('nazareck.com');
+
+        // Falls through to the default store, and is flagged as not
+        // host-resolved so the SPA sends the visitor to the admin login.
+        $this->assertSame($this->defaultStore->id, app(CurrentStore::class)->id());
+        $this->assertFalse(app(CurrentStore::class)->resolvedFromHost());
+    }
+
+    public function test_custom_domain_row_cannot_hijack_another_stores_subdomain(): void
+    {
+        // Validation forbids entering this, but the router must not depend on
+        // that: a host under the base domain resolves by slug, never by domain.
+        Store::factory()->withVerifiedDomain('acme.localhost')->create(['slug' => 'impostor']);
+        $victim = Store::factory()->create(['slug' => 'acme']);
+
+        $this->runMiddleware('acme.localhost');
+
+        $this->assertSame($victim->id, app(CurrentStore::class)->id());
+    }
+
+    public function test_custom_domain_row_cannot_hijack_the_apex(): void
+    {
+        Store::factory()->withVerifiedDomain('localhost')->create(['slug' => 'impostor']);
+
+        $this->runMiddleware('localhost');
+
+        $this->assertSame($this->defaultStore->id, app(CurrentStore::class)->id());
+        $this->assertFalse(app(CurrentStore::class)->resolvedFromHost());
+    }
+
+    public function test_inactive_store_domain_row_cannot_404_another_stores_subdomain(): void
+    {
+        // A deactivated store holding a stale claim on a platform subdomain
+        // must not take the real store offline.
+        Store::factory()->inactive()->withVerifiedDomain('acme.localhost')->create(['slug' => 'impostor']);
+        $victim = Store::factory()->create(['slug' => 'acme']);
+
+        $response = $this->runMiddleware('acme.localhost');
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame($victim->id, app(CurrentStore::class)->id());
     }
 
     public function test_bare_base_domain_falls_back_to_default_store_but_is_not_host_resolved(): void
