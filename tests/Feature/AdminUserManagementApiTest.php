@@ -43,6 +43,24 @@ class AdminUserManagementApiTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
+    public function test_admin_directory_is_paginated_searchable_and_has_a_detail_endpoint(): void
+    {
+        User::factory()->count(30)->create()->each(function (User $user) {
+            $user->roles()->attach(Role::where('name', 'admin')->firstOrFail());
+        });
+
+        $this->actingAs($this->superAdmin)
+            ->getJson('/api/v1/super-admin/users?per_page=10&search=Admin')
+            ->assertOk()
+            ->assertJsonPath('per_page', 10)
+            ->assertJsonPath('total', 2);
+
+        $this->actingAs($this->superAdmin)
+            ->getJson("/api/v1/super-admin/users/{$this->admin->id}")
+            ->assertOk()
+            ->assertJsonPath('data.email', 'admin@example.com');
+    }
+
     public function test_regular_admin_cannot_list_admin_users(): void
     {
         $this->actingAs($this->admin)

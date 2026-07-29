@@ -45,6 +45,54 @@ class StoreCrudTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
+    public function test_store_directory_is_paginated_and_searchable(): void
+    {
+        Store::factory()->count(30)->create();
+        Store::factory()->create(['name' => 'Needle Tenant', 'slug' => 'needle-tenant']);
+
+        $this->actingAs($this->superAdmin)
+            ->getJson('/api/v1/super-admin/stores?per_page=10')
+            ->assertOk()
+            ->assertJsonCount(10, 'data')
+            ->assertJsonPath('per_page', 10)
+            ->assertJsonPath('total', 32);
+
+        $this->actingAs($this->superAdmin)
+            ->getJson('/api/v1/super-admin/stores?search=Needle')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.slug', 'needle-tenant');
+    }
+
+    public function test_super_admin_can_load_store_options_and_store_admins(): void
+    {
+        $defaultStore = Store::where('slug', Store::DEFAULT_SLUG)->firstOrFail();
+
+        $this->actingAs($this->superAdmin)
+            ->getJson('/api/v1/super-admin/store-options?search=Default')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $defaultStore->id);
+
+        $this->actingAs($this->superAdmin)
+            ->getJson("/api/v1/super-admin/stores/{$defaultStore->id}/admins")
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $this->storeAdmin->id);
+    }
+
+    public function test_super_admin_overview_returns_aggregate_counts(): void
+    {
+        Store::factory()->create(['status' => 'inactive']);
+
+        $this->actingAs($this->superAdmin)
+            ->getJson('/api/v1/super-admin/overview')
+            ->assertOk()
+            ->assertJsonPath('data.stores.total', 2)
+            ->assertJsonPath('data.stores.active', 1)
+            ->assertJsonPath('data.stores.inactive', 1)
+            ->assertJsonPath('data.admins.total', 2)
+            ->assertJsonCount(2, 'data.newest_stores');
+    }
+
     public function test_store_admin_cannot_list_stores(): void
     {
         $this->actingAs($this->storeAdmin)
