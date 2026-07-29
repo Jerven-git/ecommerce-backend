@@ -6,20 +6,70 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\SuperAdmin\StoreStoreRequest;
 use App\Http\Requests\SuperAdmin\UpdateStoreRequest;
 use App\Models\Store;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class StoreController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'search' => ['sometimes', 'nullable', 'string', 'max:100'],
+        ]);
+
+        $search = trim((string) ($validated['search'] ?? ''));
         $stores = Store::query()
             ->withCount('users')
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($nested) use ($search) {
+                    $nested
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('slug', 'like', "%{$search}%")
+                        ->orWhere('domain', 'like', "%{$search}%");
+                });
+            })
             ->orderBy('name')
+            ->paginate((int) ($validated['per_page'] ?? 25));
+
+        $stores->through(fn (Store $store) => $this->serialize($store));
+
+        return response()->json($stores);
+    }
+
+    public function options(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'search' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'selected_id' => ['sometimes', 'nullable', 'integer', 'exists:stores,id'],
+        ]);
+
+        $search = trim((string) ($validated['search'] ?? ''));
+        $selectedId = isset($validated['selected_id']) ? (int) $validated['selected_id'] : null;
+
+        $stores = Store::query()
+            ->select(['id', 'name', 'slug'])
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($nested) use ($search) {
+                    $nested
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('slug', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('name')
+            ->limit(20)
             ->get();
 
-        return response()->json([
-            'data' => $stores->map(fn (Store $store) => $this->serialize($store))->values(),
-        ]);
+        if ($selectedId && ! $stores->contains('id', $selectedId)) {
+            $selected = Store::query()->select(['id', 'name', 'slug'])->find($selectedId);
+            if ($selected) {
+                $stores->prepend($selected);
+            }
+        }
+
+        return response()->json(['data' => $stores->take(20)->values()]);
     }
 
     public function show(Store $store): JsonResponse
@@ -28,6 +78,20 @@ class StoreController extends Controller
 
         return response()->json([
             'data' => $this->serialize($store),
+        ]);
+    }
+
+    public function admins(Store $store): JsonResponse
+    {
+        $users = User::query()
+            ->where('store_id', $store->id)
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['admin', 'super_admin']))
+            ->with(['roles', 'store'])
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'data' => $users->map(fn (User $user) => $this->serializeAdmin($user))->values(),
         ]);
     }
 
@@ -130,6 +194,27 @@ class StoreController extends Controller
             'created_at' => $store->created_at,
             'updated_at' => $store->updated_at,
             'deleted_at' => $store->deleted_at,
+        ];
+    }
+
+    private function serializeAdmin(User $user): array
+    {
+        $roles = $user->roleNames();
+
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => in_array('super_admin', $roles, true) ? 'super_admin' : 'admin',
+            'is_super_admin' => in_array('super_admin', $roles, true),
+            'status' => $user->status,
+            'disabled_at' => $user->disabled_at,
+            'store' => $user->store ? [
+                'id' => $user->store->id,
+                'name' => $user->store->name,
+                'slug' => $user->store->slug,
+            ] : null,
+            'created_at' => $user->created_at,
         ];
     }
 }

@@ -16,17 +16,41 @@ use Illuminate\Validation\Rule;
 
 class AdminUserController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'search' => ['sometimes', 'nullable', 'string', 'max:100'],
+        ]);
+
+        $search = trim((string) ($validated['search'] ?? ''));
         $users = User::query()
             ->whereHas('roles', fn ($query) => $query->whereIn('name', ['admin', 'super_admin']))
             ->with(['roles', 'store'])
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($nested) use ($search) {
+                    $nested
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                });
+            })
             ->orderBy('name')
             ->orderBy('email')
-            ->get();
+            ->paginate((int) ($validated['per_page'] ?? 25));
+
+        $users->through(fn (User $user) => $this->serializeUser($user));
+
+        return response()->json($users);
+    }
+
+    public function show(User $user): JsonResponse
+    {
+        abort_unless($user->isAdminLike(), 404);
+        $user->load(['roles', 'store']);
 
         return response()->json([
-            'data' => $users->map(fn (User $user) => $this->serializeUser($user))->values(),
+            'data' => $this->serializeUser($user),
         ]);
     }
 

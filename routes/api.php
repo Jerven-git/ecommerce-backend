@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\V1\SiteConfigController;
 use App\Http\Controllers\Api\V1\SubscribeController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ActivityLogController as SuperAdminActivityLogController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ImpersonationController as SuperAdminImpersonationController;
+use App\Http\Controllers\Api\V1\SuperAdmin\OverviewController as SuperAdminOverviewController;
 use App\Http\Controllers\Api\V1\SuperAdmin\StoreController as SuperAdminStoreController;
 use App\Http\Controllers\Api\V1\SuperAdmin\StoreDomainController as SuperAdminStoreDomainController;
 use App\Http\Controllers\Api\V1\TaxReportController;
@@ -203,12 +204,15 @@ Route::prefix('v1')->group(function () {
             // Admin user management
             Route::get('/users', [AdminUserController::class, 'index']);
             Route::post('/users', [AdminUserController::class, 'store']);
+            Route::get('/users/{user}', [AdminUserController::class, 'show']);
             Route::patch('/users/{user}', [AdminUserController::class, 'update']);
             Route::delete('/users/{user}', [AdminUserController::class, 'destroy']);
 
             // Stores
+            Route::get('/overview', SuperAdminOverviewController::class);
             Route::get('/stores', [SuperAdminStoreController::class, 'index']);
             Route::post('/stores', [SuperAdminStoreController::class, 'store']);
+            Route::get('/store-options', [SuperAdminStoreController::class, 'options']);
 
             // Must precede /stores/{store} so the literal path isn't captured
             // as a store binding.
@@ -216,6 +220,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/stores/{store}/domain/verify', [SuperAdminStoreDomainController::class, 'verify']);
 
             Route::get('/stores/{store}', [SuperAdminStoreController::class, 'show']);
+            Route::get('/stores/{store}/admins', [SuperAdminStoreController::class, 'admins']);
             Route::patch('/stores/{store}', [SuperAdminStoreController::class, 'update']);
             Route::delete('/stores/{store}', [SuperAdminStoreController::class, 'destroy']);
             Route::post('/stores/{store}/activate', [SuperAdminStoreController::class, 'activate']);
