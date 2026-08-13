@@ -59,6 +59,54 @@ class CategoryApiTest extends TestCase
             ->assertJsonPath('data.name', 'New Name');
     }
 
+    public function test_admin_can_move_a_category_tree_under_another_category(): void
+    {
+        $source = Category::create(['name' => 'Source']);
+        $child = Category::create(['name' => 'Child', 'parent_id' => $source->id]);
+        $grandchild = Category::create(['name' => 'Grandchild', 'parent_id' => $child->id]);
+        $target = Category::create(['name' => 'Target']);
+
+        $this->actingAs($this->admin)
+            ->patchJson("/api/v1/categories/{$source->id}", [
+                'parent_id' => $target->id,
+                'sort_order' => 0,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.parent_id', $target->id);
+
+        $this->assertDatabaseHas('categories', ['id' => $source->id, 'parent_id' => $target->id]);
+        $this->assertDatabaseHas('categories', ['id' => $child->id, 'parent_id' => $source->id]);
+        $this->assertDatabaseHas('categories', ['id' => $grandchild->id, 'parent_id' => $child->id]);
+    }
+
+    public function test_admin_can_reorder_sibling_categories(): void
+    {
+        $first = Category::create(['name' => 'First', 'sort_order' => 0]);
+        $second = Category::create(['name' => 'Second', 'sort_order' => 1]);
+        $third = Category::create(['name' => 'Third', 'sort_order' => 2]);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/categories/reorder', [
+                'ids' => [$third->id, $first->id, $second->id],
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('categories', ['id' => $third->id, 'sort_order' => 0]);
+        $this->assertDatabaseHas('categories', ['id' => $first->id, 'sort_order' => 1]);
+        $this->assertDatabaseHas('categories', ['id' => $second->id, 'sort_order' => 2]);
+    }
+
+    public function test_cannot_move_category_under_its_descendant(): void
+    {
+        $parent = Category::create(['name' => 'Parent']);
+        $child = Category::create(['name' => 'Child', 'parent_id' => $parent->id]);
+
+        $this->actingAs($this->admin)
+            ->patchJson("/api/v1/categories/{$parent->id}", ['parent_id' => $child->id])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Cannot set a descendant as the parent.');
+    }
+
     public function test_cannot_set_category_as_own_parent(): void
     {
         $cat = Category::create(['name' => 'Self']);
