@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
@@ -59,6 +60,33 @@ class ProductApiTest extends TestCase
         $this->getJson('/api/v1/products?ids=')
             ->assertOk()
             ->assertExactJson(['data' => []]);
+    }
+
+    public function test_admin_category_filter_includes_products_from_descendant_categories(): void
+    {
+        $parent = Category::create(['name' => 'Art Prints']);
+        $child = Category::create(['name' => 'Limited Editions', 'parent_id' => $parent->id]);
+        $unrelated = Category::create(['name' => 'Sculpture']);
+
+        $parentProduct = Product::factory()->create(['category_id' => $parent->id]);
+        $parentProduct->categories()->sync([$parent->id]);
+        $childProduct = Product::factory()->create(['category_id' => $child->id]);
+        $childProduct->categories()->sync([$child->id]);
+        $unrelatedProduct = Product::factory()->create(['category_id' => $unrelated->id]);
+        $unrelatedProduct->categories()->sync([$unrelated->id]);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson("/api/v1/products?category_id={$parent->id}")
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.categories.0.name', fn (string $name) => in_array($name, ['Art Prints', 'Limited Editions'], true));
+
+        $returnedIds = collect($response->json('data'))->pluck('id')->sort()->values()->all();
+        $this->assertSame(
+            [$parentProduct->id, $childProduct->id],
+            $returnedIds,
+        );
+        $this->assertNotContains($unrelatedProduct->id, $returnedIds);
     }
 
     public function test_can_show_single_product(): void
