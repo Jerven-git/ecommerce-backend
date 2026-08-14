@@ -559,7 +559,7 @@ class SiteConfigController extends Controller
     private function config(): SiteConfig
     {
         $relations = [
-            'logoMedia', 'faviconMedia', 'cartIconMedia', 'footerLogoMedia', 'heroMedia',
+            'logoMedia', 'faviconMedia', 'cartIconMedia', 'footerLogoMedia', 'loaderLogoMedia', 'heroMedia',
             'homepageStatementMedia', 'storyImageAMedia', 'storyImageBMedia',
             'aboutMedia', 'contactMedia', 'blogMedia', 'servicesMedia',
             'showcaseVideoMedia', 'showcaseVideoPosterMedia',
@@ -686,6 +686,7 @@ class SiteConfigController extends Controller
                 'logo_alt_text' => $config->logo_alt_text,
                 'logo_size' => $config->logo_size,
                 'footer_logo_size' => $config->footer_logo_size,
+                'loader_animation' => $config->loader_animation ?: 'bounce',
                 'header_cta' => $this->resolveHeaderCta($config),
                 'footer_banner' => $this->resolveFooterBanner($config),
                 'footer' => $this->resolveFooter($config),
@@ -697,6 +698,7 @@ class SiteConfigController extends Controller
                 'favicon_url' => optional($config->faviconMedia)->url,
                 'cart_icon_url' => optional($config->cartIconMedia)->url,
                 'footer_logo_url' => optional($config->footerLogoMedia)->url,
+                'loader_logo_url' => optional($config->loaderLogoMedia)->url,
                 'hero_image_url' => $config->hero_image_url ?: optional($config->heroMedia)->url,
                 'hero_media_mime' => $config->hero_media_mime ?: optional($config->heroMedia)->mime_type,
                 'about_image_url' => $config->about_image_url ?: optional($config->aboutMedia)->url,
@@ -917,6 +919,7 @@ class SiteConfigController extends Controller
             'logo_alt_text' => 'nullable|string|max:255',
             'logo_size' => 'nullable|integer|min:20|max:64',
             'footer_logo_size' => 'nullable|integer|min:40|max:240',
+            'loader_animation' => 'nullable|string|in:bounce,rotate,slide',
             'header_cta' => 'nullable|array',
             'header_cta.enabled' => 'nullable|boolean',
             'header_cta.label' => 'nullable|string|max:30',
@@ -1104,11 +1107,11 @@ class SiteConfigController extends Controller
 
     public function uploadMedia(Request $request, string $collection)
     {
-        $allowed = ['logo', 'favicon', 'cart_icon', 'footer_logo', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video', 'homepage_statement', 'story_image_a', 'story_image_b'];
+        $allowed = ['logo', 'favicon', 'cart_icon', 'footer_logo', 'loader_logo', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video', 'homepage_statement', 'story_image_a', 'story_image_b'];
         abort_unless(in_array($collection, $allowed, true), 404);
 
         $max = match (true) {
-            in_array($collection, ['logo', 'favicon', 'cart_icon', 'footer_logo'], true) => 2048,    // 2MB
+            in_array($collection, ['logo', 'favicon', 'cart_icon', 'footer_logo', 'loader_logo'], true) => 2048,    // 2MB
             $collection === 'showcase_video' => 25600,                                 // 25MB
             default => 10120,                                                          // 10MB
         };
@@ -1162,7 +1165,7 @@ class SiteConfigController extends Controller
 
     public function deleteMedia(string $collection)
     {
-        $allowed = ['logo', 'favicon', 'cart_icon', 'footer_logo', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video', 'homepage_statement', 'story_image_a', 'story_image_b'];
+        $allowed = ['logo', 'favicon', 'cart_icon', 'footer_logo', 'loader_logo', 'hero', 'about', 'contact', 'blog', 'services', 'showcase_video', 'homepage_statement', 'story_image_a', 'story_image_b'];
         abort_unless(in_array($collection, $allowed, true), 404);
 
         $config = SiteConfig::first();

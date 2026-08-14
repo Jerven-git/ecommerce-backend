@@ -90,6 +90,7 @@ class SiteConfig extends Model
         'logo_alt_text',
         'logo_size',
         'footer_logo_size',
+        'loader_animation',
         'header_cta',
         'footer_banner',
         'footer',
@@ -279,6 +280,11 @@ class SiteConfig extends Model
     public function footerLogoMedia()
     {
         return $this->morphOne(Media::class, 'imageable')->where('collection', 'footer_logo');
+    }
+
+    public function loaderLogoMedia()
+    {
+        return $this->morphOne(Media::class, 'imageable')->where('collection', 'loader_logo');
     }
 
     public function heroMedia()
