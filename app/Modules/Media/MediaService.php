@@ -26,16 +26,22 @@ class MediaService
     public function upload(UploadedFile $file, Model $model, string $collection = 'default', ?string $directory = null): Media
     {
         $directory = $directory ?? strtolower(class_basename($model));
-        Storage::disk('public')->makeDirectory($directory);
+        $this->ensureDirectoryExists($directory);
 
         // Replace existing file for this collection (logo/hero/about)
         $existing = $model->media()->where('collection', $collection)->first();
+
+        // Store and persist the replacement before removing the current media.
+        // A filesystem failure must never discard a working image or leave a
+        // Media row whose path is the boolean false (rendered as /storage/0).
+        $media = $this->saveMedia($file, $model, $collection, $directory);
+
         if ($existing) {
             Storage::disk('public')->delete($existing->path);
             $existing->delete();
         }
 
-        return $this->saveMedia($file, $model, $collection, $directory);
+        return $media;
     }
 
     /**
@@ -48,9 +54,9 @@ class MediaService
     public function addToCollection(UploadedFile $file, Model $model, string $collection = 'gallery', ?string $directory = null): Media
     {
         $directory = $directory ?? strtolower(class_basename($model));
-        Storage::disk('public')->makeDirectory($directory);
+        $this->ensureDirectoryExists($directory);
 
-        $path = Storage::disk('public')->put($directory, $file);
+        $path = $this->storeOriginal($file, $directory);
         $mime = $file->getClientMimeType();
         $ext = strtolower($file->getClientOriginalExtension() ?: 'jpg');
 
@@ -104,7 +110,7 @@ class MediaService
         $ext = strtolower($file->getClientOriginalExtension() ?: 'jpg');
 
         if (! in_array($mime, self::OPTIMIZABLE_MIMES, true)) {
-            $path = Storage::disk('public')->put($directory, $file);
+            $path = $this->storeOriginal($file, $directory);
 
             return [$path, $file->getSize(), $mime, $ext, hash_file('md5', $file->getRealPath())];
         }
@@ -128,7 +134,10 @@ class MediaService
             $bytes = (string) $encoded;
             $filename = Str::random(40).'.'.$ext;
             $path = $directory.'/'.$filename;
-            Storage::disk('public')->put($path, $bytes);
+            $written = Storage::disk('public')->put($path, $bytes);
+            if ($written !== true) {
+                throw new \RuntimeException('Public media storage is not writable.');
+            }
 
             return [$path, strlen($bytes), $mime, $ext, md5($bytes)];
         } catch (\Throwable $e) {
@@ -137,9 +146,27 @@ class MediaService
                 'error' => $e->getMessage(),
             ]);
 
-            $path = Storage::disk('public')->put($directory, $file);
+            $path = $this->storeOriginal($file, $directory);
 
             return [$path, $file->getSize(), $mime, $ext, hash_file('md5', $file->getRealPath())];
         }
+    }
+
+    private function ensureDirectoryExists(string $directory): void
+    {
+        if (Storage::disk('public')->makeDirectory($directory) !== true) {
+            throw new \RuntimeException('Public media storage is not writable.');
+        }
+    }
+
+    private function storeOriginal(UploadedFile $file, string $directory): string
+    {
+        $path = Storage::disk('public')->put($directory, $file);
+
+        if (! is_string($path) || trim($path) === '') {
+            throw new \RuntimeException('Public media storage is not writable.');
+        }
+
+        return $path;
     }
 }

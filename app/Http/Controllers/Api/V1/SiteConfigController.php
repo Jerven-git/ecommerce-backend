@@ -1128,12 +1128,20 @@ class SiteConfigController extends Controller
 
         $config = SiteConfig::first() ?? SiteConfig::create([]);
 
-        $media = $this->mediaService->upload(
-            $validated['file'],
-            $config,
-            $collection,
-            'site-config'
-        );
+        try {
+            $media = $this->mediaService->upload(
+                $validated['file'],
+                $config,
+                $collection,
+                'site-config'
+            );
+        } catch (\RuntimeException $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'The image could not be saved. Check that public storage is writable, then try again.',
+            ], 500);
+        }
 
         // Clear any preset/external hero URL override so the uploaded file wins.
         if ($collection === 'hero') {
