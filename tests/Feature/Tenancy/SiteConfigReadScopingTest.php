@@ -118,18 +118,18 @@ class SiteConfigReadScopingTest extends TestCase
             ->patchJson('/api/v1/site-config', [
                 'theme' => [
                     'page_transition_enabled' => false,
-                    'page_transition_style' => 'brush',
+                    'page_transition_style' => 'fade-right',
                 ],
             ])
             ->assertOk()
             ->assertJsonPath('data.theme.page_transition_enabled', false)
-            ->assertJsonPath('data.theme.page_transition_style', 'brush');
+            ->assertJsonPath('data.theme.page_transition_style', 'fade-right');
 
         $this->actingAs($this->newAdmin)
             ->getJson('/api/v1/site-config')
             ->assertOk()
             ->assertJsonPath('data.theme.page_transition_enabled', false)
-            ->assertJsonPath('data.theme.page_transition_style', 'brush');
+            ->assertJsonPath('data.theme.page_transition_style', 'fade-right');
     }
 
     public function test_admin_page_transition_rejects_an_unknown_style(): void

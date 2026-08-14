@@ -719,7 +719,7 @@ class SiteConfigController extends Controller
             'theme.body_font' => 'nullable|string|max:100',
             'theme.texture' => 'nullable|string|max:50',
             'theme.page_transition_enabled' => 'nullable|boolean',
-            'theme.page_transition_style' => 'nullable|in:mask-wipe,curtain,lego,brush',
+            'theme.page_transition_style' => 'nullable|in:mask-wipe,curtain,lego,brush,fade-right',
             'hero_title' => 'nullable|string|max:255',
             'hero_subtitle' => 'nullable|string|max:255',
             'hero_overlay_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
