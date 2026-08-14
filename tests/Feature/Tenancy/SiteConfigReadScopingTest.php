@@ -56,7 +56,9 @@ class SiteConfigReadScopingTest extends TestCase
     {
         $this->getJson('/api/v1/site-config')
             ->assertOk()
-            ->assertJsonPath('data.hero_title', 'Default Hero');
+            ->assertJsonPath('data.hero_title', 'Default Hero')
+            ->assertJsonPath('data.theme.page_transition_enabled', true)
+            ->assertJsonPath('data.theme.page_transition_style', 'curtain');
     }
 
     public function test_authenticated_admin_sees_their_own_store_config_via_public_endpoint(): void
@@ -108,5 +110,38 @@ class SiteConfigReadScopingTest extends TestCase
             ->where('store_id', $this->defaultStore->id)
             ->firstOrFail();
         $this->assertSame('Default Hero', $defaultConfig->hero_title);
+    }
+
+    public function test_admin_page_transition_settings_round_trip_through_public_read(): void
+    {
+        $this->actingAs($this->newAdmin)
+            ->patchJson('/api/v1/site-config', [
+                'theme' => [
+                    'page_transition_enabled' => false,
+                    'page_transition_style' => 'brush',
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.theme.page_transition_enabled', false)
+            ->assertJsonPath('data.theme.page_transition_style', 'brush');
+
+        $this->actingAs($this->newAdmin)
+            ->getJson('/api/v1/site-config')
+            ->assertOk()
+            ->assertJsonPath('data.theme.page_transition_enabled', false)
+            ->assertJsonPath('data.theme.page_transition_style', 'brush');
+    }
+
+    public function test_admin_page_transition_rejects_an_unknown_style(): void
+    {
+        $this->actingAs($this->newAdmin)
+            ->patchJson('/api/v1/site-config', [
+                'theme' => [
+                    'page_transition_enabled' => true,
+                    'page_transition_style' => 'spin-everything',
+                ],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('theme.page_transition_style');
     }
 }
