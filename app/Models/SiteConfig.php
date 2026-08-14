@@ -25,6 +25,8 @@ class SiteConfig extends Model
         'heading_font' => 'Inter',
         'body_font' => 'Inter',
         'texture' => 'none',
+        'page_transition_enabled' => true,
+        'page_transition_style' => 'curtain',
     ];
 
     protected $fillable = [
