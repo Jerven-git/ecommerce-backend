@@ -13,14 +13,18 @@ return [
     | authentication cookies. Typically, these should include your local
     | and production domains which access your API via a frontend SPA.
     |
+    | The __SANCTUM_CURRENT_REQUEST_HOST__ placeholder is appended outside of
+    | the env() call so that any same-origin request host is treated as stateful.
+    | This is required in this multi-tenant app, where stores log in from
+    | dynamically created subdomains/custom domains not listed in SANCTUM_STATEFUL_DOMAINS.
+    |
     */
 
     'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
         '%s%s',
         'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
         Sanctum::currentApplicationUrlWithPort(),
-        // Sanctum::currentRequestHost(),
-    ))),
+    )).Sanctum::currentRequestHost()),
 
     /*
     |--------------------------------------------------------------------------
