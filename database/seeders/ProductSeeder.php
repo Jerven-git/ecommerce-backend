@@ -10,15 +10,15 @@ class ProductSeeder extends Seeder
 {
     public function run(): void
     {
-        $electronics = Category::create(['name' => 'Electronics', 'sort_order' => 1]);
-        $clothing = Category::create(['name' => 'Clothing', 'sort_order' => 2]);
-        $homeKitchen = Category::create(['name' => 'Home & Kitchen', 'sort_order' => 3]);
+        $electronics = Category::firstOrCreate(['name' => 'Electronics', 'parent_id' => null], ['sort_order' => 1]);
+        $clothing = Category::firstOrCreate(['name' => 'Clothing', 'parent_id' => null], ['sort_order' => 2]);
+        $homeKitchen = Category::firstOrCreate(['name' => 'Home & Kitchen', 'parent_id' => null], ['sort_order' => 3]);
 
         // Subcategories — exercise the recursive picker UI.
-        $audio = Category::create(['name' => 'Audio', 'parent_id' => $electronics->id, 'sort_order' => 1]);
-        $wearables = Category::create(['name' => 'Wearables', 'parent_id' => $electronics->id, 'sort_order' => 2]);
-        $tops = Category::create(['name' => 'Tops', 'parent_id' => $clothing->id, 'sort_order' => 1]);
-        $cookware = Category::create(['name' => 'Cookware', 'parent_id' => $homeKitchen->id, 'sort_order' => 1]);
+        $audio = Category::firstOrCreate(['name' => 'Audio', 'parent_id' => $electronics->id], ['sort_order' => 1]);
+        $wearables = Category::firstOrCreate(['name' => 'Wearables', 'parent_id' => $electronics->id], ['sort_order' => 2]);
+        $tops = Category::firstOrCreate(['name' => 'Tops', 'parent_id' => $clothing->id], ['sort_order' => 1]);
+        $cookware = Category::firstOrCreate(['name' => 'Cookware', 'parent_id' => $homeKitchen->id], ['sort_order' => 1]);
 
         $rows = [
             [
@@ -109,15 +109,43 @@ class ProductSeeder extends Seeder
             $categoryIds = $row['category_ids'];
             unset($row['category_ids']);
 
-            $product = Product::create([
-                ...$row,
-                'slug' => Product::generateUniqueSlug($row['name']),
-            ]);
+            $product = Product::firstOrCreate(
+                ['name' => $row['name']],
+                [...$row, 'slug' => Product::generateUniqueSlug($row['name'])]
+            );
 
             // Sync the belongsToMany pivot — this is what the admin product
             // list reads via `Product::with('categories')`. The legacy
             // category_id scalar above is preserved for older display paths.
             $product->categories()->sync($categoryIds);
+        }
+
+        // Bulk demo products for filter/pagination testing. Fully
+        // deterministic (names + attributes derive from the index), so
+        // re-seeding finds them by name and never duplicates.
+        $categoryPool = [
+            $electronics->id, $audio->id, $wearables->id,
+            $clothing->id, $tops->id, $homeKitchen->id, $cookware->id,
+        ];
+        $poolSize = count($categoryPool);
+
+        for ($i = 1; $i <= 94; $i++) {
+            $name = sprintf('Demo Product %03d', $i);
+            $catId = $categoryPool[$i % $poolSize];
+
+            $product = Product::firstOrCreate(['name' => $name], [
+                'description' => "Demo catalog product {$i} for filter and pagination testing.",
+                'price' => round(5 + (($i * 37) % 495) + 0.99, 2),
+                'stock' => 5 + (($i * 13) % 95),
+                'weight' => 0.50,
+                'length_cm' => 20.00, 'width_cm' => 15.00, 'height_cm' => 10.00,
+                'shipping_calc_type' => 'weight',
+                'category_id' => $catId,
+                'slug' => Product::generateUniqueSlug($name),
+                'image_url' => "https://picsum.photos/seed/demo-product-{$i}/800/800",
+            ]);
+
+            $product->categories()->sync([$catId]);
         }
     }
 }
