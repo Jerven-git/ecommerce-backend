@@ -71,18 +71,16 @@ class ServicesSeeder extends Seeder
             ],
         ]);
 
-        $customerCare = ServiceCategory::create([
+        $customerCare = ServiceCategory::firstOrCreate(['slug' => 'customer-care'], [
             'name' => 'Customer Care',
-            'slug' => 'customer-care',
             'gradient_from' => '#0EA5E9',
             'gradient_to' => '#1E3A8A',
             'image_url' => 'https://picsum.photos/seed/svc-cat-care/1200/400',
             'sort_order' => 0,
         ]);
 
-        $personalisation = ServiceCategory::create([
+        $personalisation = ServiceCategory::firstOrCreate(['slug' => 'personalisation'], [
             'name' => 'Personalisation',
-            'slug' => 'personalisation',
             'gradient_from' => '#F59E0B',
             'gradient_to' => '#B91C1C',
             'image_url' => 'https://picsum.photos/seed/svc-cat-personalisation/1200/400',
@@ -214,9 +212,8 @@ MD,
         foreach ($services as $i => $s) {
             $seed = 'service-'.($i + 1);
 
-            Service::create([
+            Service::firstOrCreate(['title' => $s['title']], [
                 'slug' => Service::generateUniqueSlug($s['title']),
-                'title' => $s['title'],
                 'eyebrow' => $s['eyebrow'],
                 'description' => $s['description'],
                 'body' => $s['body'],

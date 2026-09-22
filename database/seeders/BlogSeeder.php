@@ -10,27 +10,24 @@ class BlogSeeder extends Seeder
 {
     public function run(): void
     {
-        $newArrivals = PostCategory::create([
+        $newArrivals = PostCategory::firstOrCreate(['slug' => 'new-arrivals'], [
             'name' => 'New Arrivals',
-            'slug' => 'new-arrivals',
             'gradient_from' => '#3B82F6',
             'gradient_to' => '#8B5CF6',
             'image_url' => 'https://picsum.photos/seed/cat-new-arrivals/1200/400',
             'sort_order' => 1,
         ]);
 
-        $buyingGuides = PostCategory::create([
+        $buyingGuides = PostCategory::firstOrCreate(['slug' => 'buying-guides'], [
             'name' => 'Buying Guides',
-            'slug' => 'buying-guides',
             'gradient_from' => '#F59E0B',
             'gradient_to' => '#EA580C',
             'image_url' => 'https://picsum.photos/seed/cat-guides/1200/400',
             'sort_order' => 2,
         ]);
 
-        $customerStories = PostCategory::create([
+        $customerStories = PostCategory::firstOrCreate(['slug' => 'customer-stories'], [
             'name' => 'Customer Stories',
-            'slug' => 'customer-stories',
             'gradient_from' => '#EC4899',
             'gradient_to' => '#EF4444',
             'image_url' => 'https://picsum.photos/seed/cat-stories/1200/400',
@@ -286,9 +283,8 @@ MD,
         foreach ($posts as $i => $p) {
             $seed = 'post-'.($i + 1);
 
-            Post::create([
+            Post::firstOrCreate(['title' => $p['title']], [
                 'slug' => Post::generateUniqueSlug($p['title']),
-                'title' => $p['title'],
                 'excerpt' => $p['excerpt'],
                 'body' => $p['body'],
                 'author_name' => $p['author_name'],

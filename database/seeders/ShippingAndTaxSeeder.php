@@ -11,8 +11,8 @@ class ShippingAndTaxSeeder extends Seeder
 {
     public function run(): void
     {
-        // Shipping settings
-        ShippingSetting::create([
+        // Shipping settings — one row per store.
+        ShippingSetting::firstOrCreate([], [
             'express_post_fee' => 15.00,
             'registered_post_fee' => 8.00,
             'insurance_fee' => 5.00,
@@ -22,41 +22,37 @@ class ShippingAndTaxSeeder extends Seeder
             'store_city' => 'Makati',
         ]);
 
-        // Shipping zones
-        ShippingZone::create([
-            'zone_type' => 'own_city',
+        // Shipping zones — one row per zone type per store.
+        ShippingZone::firstOrCreate(['zone_type' => 'own_city'], [
             'enabled' => true,
             'base_rate' => 50.00,
             'per_kg_rate' => 10.00,
             'per_cbm_rate' => 100.00,
         ]);
 
-        ShippingZone::create([
-            'zone_type' => 'own_state',
+        ShippingZone::firstOrCreate(['zone_type' => 'own_state'], [
             'enabled' => true,
             'base_rate' => 80.00,
             'per_kg_rate' => 15.00,
             'per_cbm_rate' => 150.00,
         ]);
 
-        ShippingZone::create([
-            'zone_type' => 'own_country',
+        ShippingZone::firstOrCreate(['zone_type' => 'own_country'], [
             'enabled' => true,
             'base_rate' => 120.00,
             'per_kg_rate' => 25.00,
             'per_cbm_rate' => 250.00,
         ]);
 
-        ShippingZone::create([
-            'zone_type' => 'other_country',
+        ShippingZone::firstOrCreate(['zone_type' => 'other_country'], [
             'enabled' => false,
             'base_rate' => 500.00,
             'per_kg_rate' => 80.00,
             'per_cbm_rate' => 800.00,
         ]);
 
-        // Tax settings
-        TaxSetting::create([
+        // Tax settings — one row per store.
+        TaxSetting::firstOrCreate([], [
             'tax_enabled' => true,
             'tax_rate' => 12.00,
             'tax_display_mode' => 'exclusive',

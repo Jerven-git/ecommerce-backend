@@ -13,12 +13,29 @@ class ServiceCategoryController extends Controller
 {
     public function __construct(private MediaService $mediaService) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $categories = ServiceCategory::orderBy('sort_order')
+        $query = ServiceCategory::orderBy('sort_order')
             ->orderBy('name')
-            ->withCount(['services' => fn ($q) => $q->published()])
-            ->get();
+            ->withCount(['services' => fn ($q) => $q->published()]);
+
+        if ($request->filled('search')) {
+            $s = $request->search;
+            $query->where(function ($q) use ($s) {
+                $q->where('name', 'LIKE', "%{$s}%")
+                    ->orWhere('slug', 'LIKE', "%{$s}%");
+            });
+        }
+
+        // Paginated mode (admin list). Plain array otherwise so the
+        // storefront and filter dropdowns keep working unchanged.
+        if ($request->filled('page') || $request->filled('per_page')) {
+            $perPage = max(1, min(100, (int) $request->input('per_page', 10)));
+
+            return response()->json($query->paginate($perPage));
+        }
+
+        $categories = $query->get();
 
         return response()->json(['data' => $categories]);
     }
