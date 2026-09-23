@@ -6,12 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\SuperAdmin\StoreStoreRequest;
 use App\Http\Requests\SuperAdmin\UpdateStoreRequest;
 use App\Models\Store;
+use App\Models\SubscriptionPlan;
 use App\Models\User;
+use App\Support\Subscriptions\SubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class StoreController extends Controller
 {
+    public function __construct(private SubscriptionService $subscriptions) {}
+
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -22,6 +26,7 @@ class StoreController extends Controller
 
         $search = trim((string) ($validated['search'] ?? ''));
         $stores = Store::query()
+            ->with('subscriptionPlan')
             ->withCount('users')
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($nested) use ($search) {
@@ -74,7 +79,7 @@ class StoreController extends Controller
 
     public function show(Store $store): JsonResponse
     {
-        $store->loadCount('users');
+        $store->load('subscriptionPlan')->loadCount('users');
 
         return response()->json([
             'data' => $this->serialize($store),
@@ -178,6 +183,45 @@ class StoreController extends Controller
         ]);
     }
 
+    /**
+     * Grant platform access (comp) — used for grandfathered stores, trials and
+     * manual reactivation. Idempotent; logs a `mode='comp'` subscriptions row.
+     */
+    public function comp(Request $request, Store $store): JsonResponse
+    {
+        $validated = $request->validate([
+            'subscription_plan_id' => ['sometimes', 'nullable', 'integer', 'exists:subscription_plans,id'],
+        ]);
+
+        $plan = isset($validated['subscription_plan_id'])
+            ? SubscriptionPlan::find((int) $validated['subscription_plan_id'])
+            : $store->subscriptionPlan;
+
+        $this->subscriptions->comp($store, $plan);
+
+        return response()->json([
+            'data' => $this->serialize($store->fresh()->load('subscriptionPlan')->loadCount('users')),
+        ]);
+    }
+
+    /**
+     * Revoke a comp, returning the store to the (gated) unsubscribed state.
+     */
+    public function uncomp(Store $store): JsonResponse
+    {
+        if ($store->subscription_status !== Store::SUBSCRIPTION_COMPED) {
+            return response()->json([
+                'message' => 'This store is not comped.',
+            ], 422);
+        }
+
+        $this->subscriptions->uncomp($store);
+
+        return response()->json([
+            'data' => $this->serialize($store->fresh()->load('subscriptionPlan')->loadCount('users')),
+        ]);
+    }
+
     private function serialize(Store $store): array
     {
         return [
@@ -190,6 +234,14 @@ class StoreController extends Controller
             'status' => $store->status,
             'subscription_status' => $store->subscription_status,
             'subscription_plan_id' => $store->subscription_plan_id,
+            'subscription_plan' => $store->subscriptionPlan ? [
+                'id' => $store->subscriptionPlan->id,
+                'name' => $store->subscriptionPlan->name,
+                'slug' => $store->subscriptionPlan->slug,
+                'price_cents' => $store->subscriptionPlan->price_cents,
+                'setup_fee_cents' => $store->subscriptionPlan->setup_fee_cents,
+                'interval' => $store->subscriptionPlan->interval,
+            ] : null,
             'subscribed_at' => $store->subscribed_at,
             'subscription_expires_at' => $store->subscription_expires_at,
             'is_default' => $store->slug === Store::DEFAULT_SLUG,
