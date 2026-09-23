@@ -148,6 +148,11 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(3)->by('contact:'.$request->ip());
         });
 
+        // SELF-SERVICE REGISTRATION: prevent account spam / store squatting
+        RateLimiter::for('register', function (Request $request) {
+            return Limit::perMinute(3)->by('register:'.$request->ip());
+        });
+
         // PASSWORD RESET: prevent email enumeration and abuse
         RateLimiter::for('password-reset', function (Request $request) {
             $email = (string) str($request->input('email', ''))->lower();

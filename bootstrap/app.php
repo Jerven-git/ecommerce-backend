@@ -5,6 +5,7 @@ use App\Http\Middleware\ResolveAdminStore;
 use App\Http\Middleware\ResolveStorefrontStore;
 use App\Http\Middleware\SanitizeInput;
 use App\Http\Middleware\SessionLifetimeMiddleware;
+use App\Http\Middleware\SubscriptionMiddleware;
 use App\Http\Middleware\SuperAdminMiddleware;
 use App\Providers\RouteServiceProvider;
 use Illuminate\Foundation\Application;
@@ -43,6 +44,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => AdminMiddleware::class,
             'super_admin' => SuperAdminMiddleware::class,
+            'subscribed' => SubscriptionMiddleware::class,
             'tenant' => ResolveAdminStore::class,
             'storefront' => ResolveStorefrontStore::class,
             'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,

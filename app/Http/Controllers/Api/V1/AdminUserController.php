@@ -11,7 +11,6 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class AdminUserController extends Controller
@@ -82,7 +81,7 @@ class AdminUserController extends Controller
                 if (! empty($validated['store_id'])) {
                     $storeId = (int) $validated['store_id'];
                 } else {
-                    $slug = $validated['store_slug'] ?? $this->generateUniqueStoreSlug($validated['store_name']);
+                    $slug = $validated['store_slug'] ?? Store::generateUniqueSlug($validated['store_name']);
 
                     $store = Store::create([
                         'name' => $validated['store_name'],
@@ -224,20 +223,6 @@ class AdminUserController extends Controller
                 ? 'Admin account deleted. Its store had no other admins and was removed.'
                 : 'Admin account deleted.',
         ]);
-    }
-
-    private function generateUniqueStoreSlug(string $name): string
-    {
-        $base = Str::slug($name) ?: 'store';
-        $slug = $base;
-        $i = 1;
-
-        while (Store::withTrashed()->where('slug', $slug)->exists()) {
-            $i++;
-            $slug = "{$base}-{$i}";
-        }
-
-        return $slug;
     }
 
     private function superAdminCount(): int

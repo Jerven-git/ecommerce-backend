@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\PostCategoryController;
 use App\Http\Controllers\Api\V1\PostController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\ProductVariantController;
+use App\Http\Controllers\Api\V1\RegisterController;
 use App\Http\Controllers\Api\V1\ServiceCategoryController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\ShipmentController;
@@ -59,6 +60,7 @@ Route::prefix('v1')->group(function () {
     */
 
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
+    Route::post('/register', [RegisterController::class, 'register'])->middleware('throttle:register');
     Route::post('/two-factor/verify', [AuthController::class, 'verifyTwoFactor'])->middleware('throttle:two-factor');
     Route::post('/two-factor/resend', [AuthController::class, 'resendTwoFactor'])->middleware('throttle:two-factor-resend');
     Route::get('/user', [AuthController::class, 'user']);
@@ -235,7 +237,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/super-admin/impersonate/leave', [SuperAdminImpersonationController::class, 'leave']);
 
         // Activity log — visible to all admins; controller scopes by role.
-        Route::get('/activity-log', [SuperAdminActivityLogController::class, 'index']);
+        Route::get('/activity-log', [SuperAdminActivityLogController::class, 'index'])->middleware('subscribed');
 
         // Legacy admin-user routes (kept for one release; new clients should use /super-admin/users).
         Route::get('/admin/users', [AdminUserController::class, 'index'])->middleware('super_admin');
@@ -244,7 +246,7 @@ Route::prefix('v1')->group(function () {
         Route::delete('/admin/users/{user}', [AdminUserController::class, 'destroy'])->middleware('super_admin');
 
         // Dashboard
-        Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+        Route::get('/dashboard/stats', [DashboardController::class, 'stats'])->middleware('subscribed');
 
         // Order management
         Route::get('/orders', [OrderController::class, 'index']);
@@ -273,123 +275,130 @@ Route::prefix('v1')->group(function () {
         |----------------------------------------------------------------------
         | Admin Routes
         |----------------------------------------------------------------------
+        |
+        | The `admin` middleware proves the caller is a store admin / super
+        | admin; `subscribed` then gates the store's subscription. Super admins
+        | are exempt inside both (SubscriptionMiddleware short-circuits them).
+        |
         */
 
         Route::middleware('admin')->group(function () {
-            // Admin help assistant (AI chatbot)
-            Route::post('/admin-assistant', [AdminAssistantController::class, 'chat'])
-                ->middleware('throttle:30,1');
+            Route::middleware('subscribed')->group(function () {
+                // Admin help assistant (AI chatbot)
+                Route::post('/admin-assistant', [AdminAssistantController::class, 'chat'])
+                    ->middleware('throttle:30,1');
 
-            // Products
-            Route::post('/products', [ProductController::class, 'store']);
-            Route::put('/products/{id}', [ProductController::class, 'update']);
-            Route::patch('/products/{id}', [ProductController::class, 'update']);
-            Route::delete('/products/{id}', [ProductController::class, 'destroy']);
-            Route::post('/products/{id}/images', [ProductController::class, 'uploadImages']);
-            Route::delete('/products/{id}/images/{mediaId}', [ProductController::class, 'deleteImage']);
+                // Products
+                Route::post('/products', [ProductController::class, 'store']);
+                Route::put('/products/{id}', [ProductController::class, 'update']);
+                Route::patch('/products/{id}', [ProductController::class, 'update']);
+                Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+                Route::post('/products/{id}/images', [ProductController::class, 'uploadImages']);
+                Route::delete('/products/{id}/images/{mediaId}', [ProductController::class, 'deleteImage']);
 
-            // Product Variants (admin)
-            Route::get('/products/{id}/variants', [ProductVariantController::class, 'index']);
-            Route::post('/products/{id}/variants/sync', [ProductVariantController::class, 'sync']);
-            Route::post('/products/{id}/variants/{variantId}/image', [ProductVariantController::class, 'uploadVariantImage']);
-            Route::delete('/products/{id}/variants/{variantId}/image', [ProductVariantController::class, 'deleteVariantImage']);
+                // Product Variants (admin)
+                Route::get('/products/{id}/variants', [ProductVariantController::class, 'index']);
+                Route::post('/products/{id}/variants/sync', [ProductVariantController::class, 'sync']);
+                Route::post('/products/{id}/variants/{variantId}/image', [ProductVariantController::class, 'uploadVariantImage']);
+                Route::delete('/products/{id}/variants/{variantId}/image', [ProductVariantController::class, 'deleteVariantImage']);
 
-            // Categories
-            Route::post('/categories', [CategoryController::class, 'store']);
-            Route::post('/categories/reorder', [CategoryController::class, 'reorder']);
-            Route::patch('/categories/{id}', [CategoryController::class, 'update']);
-            Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
-            Route::delete('/categories/{id}/image', [CategoryController::class, 'deleteImage']);
+                // Categories
+                Route::post('/categories', [CategoryController::class, 'store']);
+                Route::post('/categories/reorder', [CategoryController::class, 'reorder']);
+                Route::patch('/categories/{id}', [CategoryController::class, 'update']);
+                Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
+                Route::delete('/categories/{id}/image', [CategoryController::class, 'deleteImage']);
 
-            // Currencies (admin)
-            Route::get('/admin/currencies', [CurrencyController::class, 'adminIndex']);
-            Route::post('/currencies', [CurrencyController::class, 'store']);
-            Route::patch('/currencies/{currency}', [CurrencyController::class, 'update']);
-            Route::delete('/currencies/{currency}', [CurrencyController::class, 'destroy']);
+                // Currencies (admin)
+                Route::get('/admin/currencies', [CurrencyController::class, 'adminIndex']);
+                Route::post('/currencies', [CurrencyController::class, 'store']);
+                Route::patch('/currencies/{currency}', [CurrencyController::class, 'update']);
+                Route::delete('/currencies/{currency}', [CurrencyController::class, 'destroy']);
 
-            // Gift cards (admin)
-            Route::get('/admin/gift-card-denominations', [AdminGiftCardController::class, 'denominationIndex']);
-            Route::post('/gift-card-denominations', [AdminGiftCardController::class, 'denominationStore']);
-            Route::patch('/gift-card-denominations/{denomination}', [AdminGiftCardController::class, 'denominationUpdate']);
-            Route::delete('/gift-card-denominations/{denomination}', [AdminGiftCardController::class, 'denominationDestroy']);
-            Route::get('/admin/gift-cards', [AdminGiftCardController::class, 'index']);
-            Route::post('/admin/gift-cards', [AdminGiftCardController::class, 'store']);
-            Route::patch('/admin/gift-cards/{giftCard}', [AdminGiftCardController::class, 'update']);
+                // Gift cards (admin)
+                Route::get('/admin/gift-card-denominations', [AdminGiftCardController::class, 'denominationIndex']);
+                Route::post('/gift-card-denominations', [AdminGiftCardController::class, 'denominationStore']);
+                Route::patch('/gift-card-denominations/{denomination}', [AdminGiftCardController::class, 'denominationUpdate']);
+                Route::delete('/gift-card-denominations/{denomination}', [AdminGiftCardController::class, 'denominationDestroy']);
+                Route::get('/admin/gift-cards', [AdminGiftCardController::class, 'index']);
+                Route::post('/admin/gift-cards', [AdminGiftCardController::class, 'store']);
+                Route::patch('/admin/gift-cards/{giftCard}', [AdminGiftCardController::class, 'update']);
 
-            // Commission requests (admin)
-            Route::get('/commission-requests', [CommissionRequestController::class, 'index']);
-            Route::get('/commission-requests/{commissionRequest}', [CommissionRequestController::class, 'show']);
-            Route::patch('/commission-requests/{commissionRequest}', [CommissionRequestController::class, 'update']);
-            Route::delete('/commission-requests/{commissionRequest}', [CommissionRequestController::class, 'destroy']);
+                // Commission requests (admin)
+                Route::get('/commission-requests', [CommissionRequestController::class, 'index']);
+                Route::get('/commission-requests/{commissionRequest}', [CommissionRequestController::class, 'show']);
+                Route::patch('/commission-requests/{commissionRequest}', [CommissionRequestController::class, 'update']);
+                Route::delete('/commission-requests/{commissionRequest}', [CommissionRequestController::class, 'destroy']);
 
-            // Blog posts (admin)
-            Route::get('/admin/posts', [PostController::class, 'adminIndex']);
-            Route::get('/admin/posts/{id}', [PostController::class, 'adminShow']);
-            Route::post('/admin/posts', [PostController::class, 'store']);
-            Route::patch('/admin/posts/{id}', [PostController::class, 'update']);
-            Route::delete('/admin/posts/{id}', [PostController::class, 'destroy']);
+                // Blog posts (admin)
+                Route::get('/admin/posts', [PostController::class, 'adminIndex']);
+                Route::get('/admin/posts/{id}', [PostController::class, 'adminShow']);
+                Route::post('/admin/posts', [PostController::class, 'store']);
+                Route::patch('/admin/posts/{id}', [PostController::class, 'update']);
+                Route::delete('/admin/posts/{id}', [PostController::class, 'destroy']);
 
-            // Blog categories (admin)
-            Route::post('/post-categories', [PostCategoryController::class, 'store']);
-            Route::post('/post-categories/reorder', [PostCategoryController::class, 'reorder']);
-            Route::patch('/post-categories/{id}', [PostCategoryController::class, 'update']);
-            Route::delete('/post-categories/{id}', [PostCategoryController::class, 'destroy']);
-            Route::delete('/post-categories/{id}/image', [PostCategoryController::class, 'deleteImage']);
+                // Blog categories (admin)
+                Route::post('/post-categories', [PostCategoryController::class, 'store']);
+                Route::post('/post-categories/reorder', [PostCategoryController::class, 'reorder']);
+                Route::patch('/post-categories/{id}', [PostCategoryController::class, 'update']);
+                Route::delete('/post-categories/{id}', [PostCategoryController::class, 'destroy']);
+                Route::delete('/post-categories/{id}/image', [PostCategoryController::class, 'deleteImage']);
 
-            // Services (admin)
-            Route::get('/admin/services', [ServiceController::class, 'adminIndex']);
-            Route::get('/admin/services/{id}', [ServiceController::class, 'adminShow']);
-            Route::post('/admin/services', [ServiceController::class, 'store']);
-            Route::post('/admin/services/reorder', [ServiceController::class, 'reorder']);
-            Route::patch('/admin/services/{id}', [ServiceController::class, 'update']);
-            Route::delete('/admin/services/{id}', [ServiceController::class, 'destroy']);
+                // Services (admin)
+                Route::get('/admin/services', [ServiceController::class, 'adminIndex']);
+                Route::get('/admin/services/{id}', [ServiceController::class, 'adminShow']);
+                Route::post('/admin/services', [ServiceController::class, 'store']);
+                Route::post('/admin/services/reorder', [ServiceController::class, 'reorder']);
+                Route::patch('/admin/services/{id}', [ServiceController::class, 'update']);
+                Route::delete('/admin/services/{id}', [ServiceController::class, 'destroy']);
 
-            // Service categories (admin)
-            Route::post('/service-categories', [ServiceCategoryController::class, 'store']);
-            Route::post('/service-categories/reorder', [ServiceCategoryController::class, 'reorder']);
-            Route::patch('/service-categories/{id}', [ServiceCategoryController::class, 'update']);
-            Route::delete('/service-categories/{id}', [ServiceCategoryController::class, 'destroy']);
-            Route::delete('/service-categories/{id}/image', [ServiceCategoryController::class, 'deleteImage']);
+                // Service categories (admin)
+                Route::post('/service-categories', [ServiceCategoryController::class, 'store']);
+                Route::post('/service-categories/reorder', [ServiceCategoryController::class, 'reorder']);
+                Route::patch('/service-categories/{id}', [ServiceCategoryController::class, 'update']);
+                Route::delete('/service-categories/{id}', [ServiceCategoryController::class, 'destroy']);
+                Route::delete('/service-categories/{id}/image', [ServiceCategoryController::class, 'deleteImage']);
 
-            // Media (alt_text edits)
-            Route::patch('/media/{id}', [MediaController::class, 'update']);
+                // Media (alt_text edits)
+                Route::patch('/media/{id}', [MediaController::class, 'update']);
 
-            // Site config
-            Route::patch('/site-config', [SiteConfigController::class, 'update']);
-            Route::post('/site-config/media/{collection}', [SiteConfigController::class, 'uploadMedia']);
-            Route::delete('/site-config/media/{collection}', [SiteConfigController::class, 'deleteMedia']);
-            Route::post('/site-config/watch-shop/cards', [SiteConfigController::class, 'uploadWatchShopCard']);
-            Route::delete('/site-config/watch-shop/cards/{cardId}', [SiteConfigController::class, 'deleteWatchShopCard']);
+                // Site config
+                Route::patch('/site-config', [SiteConfigController::class, 'update']);
+                Route::post('/site-config/media/{collection}', [SiteConfigController::class, 'uploadMedia']);
+                Route::delete('/site-config/media/{collection}', [SiteConfigController::class, 'deleteMedia']);
+                Route::post('/site-config/watch-shop/cards', [SiteConfigController::class, 'uploadWatchShopCard']);
+                Route::delete('/site-config/watch-shop/cards/{cardId}', [SiteConfigController::class, 'deleteWatchShopCard']);
 
-            // Discounts
-            Route::get('/discounts', [DiscountController::class, 'index']);
-            Route::get('/discounts/{id}', [DiscountController::class, 'show']);
-            Route::post('/discounts', [DiscountController::class, 'store']);
-            Route::patch('/discounts/{id}', [DiscountController::class, 'update']);
-            Route::delete('/discounts/{id}', [DiscountController::class, 'destroy']);
+                // Discounts
+                Route::get('/discounts', [DiscountController::class, 'index']);
+                Route::get('/discounts/{id}', [DiscountController::class, 'show']);
+                Route::post('/discounts', [DiscountController::class, 'store']);
+                Route::patch('/discounts/{id}', [DiscountController::class, 'update']);
+                Route::delete('/discounts/{id}', [DiscountController::class, 'destroy']);
 
-            // Shipping settings
-            Route::get('/shipping-settings', [ShippingSettingsController::class, 'show']);
-            Route::patch('/shipping-settings', [ShippingSettingsController::class, 'update']);
+                // Shipping settings
+                Route::get('/shipping-settings', [ShippingSettingsController::class, 'show']);
+                Route::patch('/shipping-settings', [ShippingSettingsController::class, 'update']);
 
-            // Tax settings
-            Route::get('/tax-settings', [TaxSettingsController::class, 'show']);
-            Route::patch('/tax-settings', [TaxSettingsController::class, 'update']);
+                // Tax settings
+                Route::get('/tax-settings', [TaxSettingsController::class, 'show']);
+                Route::patch('/tax-settings', [TaxSettingsController::class, 'update']);
 
-            // Tax rules (regional)
-            Route::get('/tax-rules', [TaxRuleController::class, 'index']);
-            Route::post('/tax-rules', [TaxRuleController::class, 'store']);
-            Route::patch('/tax-rules/{id}', [TaxRuleController::class, 'update']);
-            Route::delete('/tax-rules/{id}', [TaxRuleController::class, 'destroy']);
-            Route::post('/tax-rules/sync', [TaxRuleController::class, 'sync']);
+                // Tax rules (regional)
+                Route::get('/tax-rules', [TaxRuleController::class, 'index']);
+                Route::post('/tax-rules', [TaxRuleController::class, 'store']);
+                Route::patch('/tax-rules/{id}', [TaxRuleController::class, 'update']);
+                Route::delete('/tax-rules/{id}', [TaxRuleController::class, 'destroy']);
+                Route::post('/tax-rules/sync', [TaxRuleController::class, 'sync']);
 
-            // Tax report
-            Route::get('/tax-report', [TaxReportController::class, 'index']);
-            Route::get('/tax-report/export', [TaxReportController::class, 'export']);
+                // Tax report
+                Route::get('/tax-report', [TaxReportController::class, 'index']);
+                Route::get('/tax-report/export', [TaxReportController::class, 'export']);
 
-            // Payment settings
-            Route::get('/payment-settings', [PaymentSettingsController::class, 'show']);
-            Route::patch('/payment-settings', [PaymentSettingsController::class, 'update']);
+                // Payment settings
+                Route::get('/payment-settings', [PaymentSettingsController::class, 'show']);
+                Route::patch('/payment-settings', [PaymentSettingsController::class, 'update']);
+            });
         });
     });
 
