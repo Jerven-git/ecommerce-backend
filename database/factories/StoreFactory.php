@@ -21,6 +21,10 @@ class StoreFactory extends Factory
             'name' => $name,
             'slug' => Str::slug($name).'-'.Str::lower(Str::random(6)),
             'status' => 'active',
+            // Factory default = a usable tenant (comped keeps existing tests
+            // flowing). Real stores created by the app default to 'unsubscribed'
+            // via the column default; tests build gated stores with ->unsubscribed().
+            'subscription_status' => 'comped',
             'default_currency_id' => null,
         ];
     }
@@ -29,6 +33,15 @@ class StoreFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'status' => 'inactive',
+        ]);
+    }
+
+    public function unsubscribed(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'subscription_status' => \App\Models\Store::SUBSCRIPTION_UNSUBSCRIBED,
+            'subscribed_at' => null,
+            'subscription_expires_at' => null,
         ]);
     }
 

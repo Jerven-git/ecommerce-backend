@@ -79,11 +79,13 @@ class ResolveStorefrontStore
 
     /**
      * Set the resolved store on the tenancy context and continue, or 404 when
-     * the store is inactive.
+     * the store is inactive or has no active subscription. Like an inactive
+     * store, an unsubscribed store's storefront is hidden entirely — it hasn't
+     * been paid to be visible. Super-Admin-comped stores render normally.
      */
     protected function resolve(Store $store, Request $request, Closure $next, bool $resolvedFromHost): Response
     {
-        if (! $store->isActive()) {
+        if (! $store->isActive() || ! $store->hasActiveSubscription()) {
             return response()->json([
                 'message' => 'This store is currently unavailable.',
             ], 404);

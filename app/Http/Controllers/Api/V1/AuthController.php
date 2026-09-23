@@ -268,6 +268,10 @@ class AuthController extends Controller
                 // Only a verified domain actually serves the storefront, so
                 // clients must not link to an unverified one.
                 'domain_verified' => $user->store->hasVerifiedDomain(),
+                // Tenancy-level subscription state drives admin-UI gating. The
+                // backend enforces it independently via SubscriptionMiddleware.
+                'subscription_status' => $user->store->subscription_status,
+                'subscription_expires_at' => $user->store->subscription_expires_at,
             ] : null,
         ]);
     }
