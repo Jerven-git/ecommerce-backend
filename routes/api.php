@@ -29,6 +29,8 @@ use App\Http\Controllers\Api\V1\ShipmentController;
 use App\Http\Controllers\Api\V1\ShippingSettingsController;
 use App\Http\Controllers\Api\V1\SiteConfigController;
 use App\Http\Controllers\Api\V1\SubscribeController;
+use App\Http\Controllers\Api\V1\SubscriptionController;
+use App\Http\Controllers\Api\V1\SubscriptionWebhookController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ActivityLogController as SuperAdminActivityLogController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ImpersonationController as SuperAdminImpersonationController;
 use App\Http\Controllers\Api\V1\SuperAdmin\OverviewController as SuperAdminOverviewController;
@@ -80,6 +82,14 @@ Route::prefix('v1')->group(function () {
     */
 
     Route::get('/canonical-host', CanonicalHostController::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Platform Subscription Plan Catalog (host-agnostic — shared across stores)
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get('/subscription/plans', [SubscriptionController::class, 'plans']);
 
     /*
     |--------------------------------------------------------------------------
@@ -188,6 +198,9 @@ Route::prefix('v1')->group(function () {
     Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])
         ->whereIn('provider', ['stripe', 'paypal', 'square']);
 
+    // Platform subscription webhook (fixed URL, host-agnostic).
+    Route::post('/webhooks/subscription/stripe', [SubscriptionWebhookController::class, 'handle']);
+
     /*
     |--------------------------------------------------------------------------
     | Authenticated Routes
@@ -227,6 +240,8 @@ Route::prefix('v1')->group(function () {
             Route::delete('/stores/{store}', [SuperAdminStoreController::class, 'destroy']);
             Route::post('/stores/{store}/activate', [SuperAdminStoreController::class, 'activate']);
             Route::post('/stores/{store}/deactivate', [SuperAdminStoreController::class, 'deactivate']);
+            Route::post('/stores/{store}/comp', [SuperAdminStoreController::class, 'comp']);
+            Route::post('/stores/{store}/uncomp', [SuperAdminStoreController::class, 'uncomp']);
 
             // Start impersonation (super_admin only)
             Route::post('/users/{user}/impersonate', [SuperAdminImpersonationController::class, 'start']);
@@ -247,6 +262,13 @@ Route::prefix('v1')->group(function () {
 
         // Dashboard
         Route::get('/dashboard/stats', [DashboardController::class, 'stats'])->middleware('subscribed');
+
+        // Platform subscription — deliberately NOT inside the `subscribed` gate:
+        // a store suspended for non-payment must still be able to fetch its
+        // status, start checkout, or open the billing portal.
+        Route::get('/subscription', [SubscriptionController::class, 'show']);
+        Route::post('/subscription/checkout', [SubscriptionController::class, 'checkout']);
+        Route::post('/subscription/portal', [SubscriptionController::class, 'portal']);
 
         // Order management
         Route::get('/orders', [OrderController::class, 'index']);
