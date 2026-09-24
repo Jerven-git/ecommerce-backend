@@ -18,26 +18,43 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Default Plan
+    | Sellable Plans
     |--------------------------------------------------------------------------
     |
-    | Seed values for the first sellable plan (subscription_plans table). Prices
-    | are in cents. The setup fee is charged once with the first period; the
-    | recurring price is billed each `interval` thereafter via the gateway.
+    | Seed values for the priced plans (subscription_plans table). Prices are in
+    | cents. The setup fee is charged once with the first period; the recurring
+    | price is billed each `interval` thereafter via the gateway. The yearly
+    | plan is priced as ~2 months free against the monthly rate.
     |
     */
 
-    'default_plan' => [
-        'name' => 'Standard',
-        'slug' => 'standard',
-        'interval' => 'monthly',
-        'price_cents' => (int) env('SUBSCRIPTION_PRICE_CENTS', 4900),
-        'setup_fee_cents' => (int) env('SUBSCRIPTION_SETUP_FEE_CENTS', 0),
-        'features' => [
-            'Unlimited products',
-            'Custom domain',
-            'Order management',
-            'Email support',
+    'plans' => [
+        'standard' => [
+            'name' => 'Standard',
+            'slug' => 'standard',
+            'interval' => 'monthly',
+            'price_cents' => (int) env('SUBSCRIPTION_PRICE_CENTS', 20000),
+            'setup_fee_cents' => (int) env('SUBSCRIPTION_SETUP_FEE_CENTS', 0),
+            'features' => [
+                'Unlimited products',
+                'Custom domain',
+                'Order management',
+                'Email support',
+            ],
+        ],
+        'standard-yearly' => [
+            'name' => 'Standard (Yearly)',
+            'slug' => 'standard-yearly',
+            'interval' => 'yearly',
+            'price_cents' => (int) env('SUBSCRIPTION_YEARLY_PRICE_CENTS', 200000),
+            'setup_fee_cents' => (int) env('SUBSCRIPTION_YEARLY_SETUP_FEE_CENTS', 0),
+            'features' => [
+                'Unlimited products',
+                'Custom domain',
+                'Order management',
+                'Email support',
+                '2 months free (vs monthly)',
+            ],
         ],
     ],
 

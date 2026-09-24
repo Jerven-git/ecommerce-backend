@@ -141,4 +141,16 @@ class SubscriptionStatusTest extends TestCase
         $this->assertSame('monthly', $plan->interval);
         $this->assertTrue($plan->is_active);
     }
+
+    public function test_seeder_creates_yearly_plan(): void
+    {
+        $this->seed(\Database\Seeders\SubscriptionPlanSeeder::class);
+
+        $plan = SubscriptionPlan::query()->where('slug', 'standard-yearly')->first();
+
+        $this->assertNotNull($plan);
+        $this->assertSame('yearly', $plan->interval);
+        $this->assertTrue($plan->is_active);
+        $this->assertSame((int) config('subscriptions.plans.standard-yearly.price_cents'), $plan->price_cents);
+    }
 }
