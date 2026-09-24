@@ -15,18 +15,18 @@ class SubscriptionPlanSeeder extends Seeder
      */
     public function run(): void
     {
-        $plan = config('subscriptions.default_plan');
-
-        SubscriptionPlan::query()->updateOrCreate(
-            ['slug' => $plan['slug']],
-            [
-                'name' => $plan['name'],
-                'interval' => $plan['interval'],
-                'price_cents' => $plan['price_cents'],
-                'setup_fee_cents' => $plan['setup_fee_cents'],
-                'features' => $plan['features'],
-                'is_active' => true,
-            ]
-        );
+        foreach (config('subscriptions.plans') as $plan) {
+            SubscriptionPlan::query()->updateOrCreate(
+                ['slug' => $plan['slug']],
+                [
+                    'name' => $plan['name'],
+                    'interval' => $plan['interval'],
+                    'price_cents' => $plan['price_cents'],
+                    'setup_fee_cents' => $plan['setup_fee_cents'],
+                    'features' => $plan['features'],
+                    'is_active' => true,
+                ]
+            );
+        }
     }
 }
