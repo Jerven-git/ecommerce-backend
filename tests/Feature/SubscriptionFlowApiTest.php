@@ -101,8 +101,8 @@ class SubscriptionFlowApiTest extends TestCase
         $this->assertSame('cus_test_123', $captured['customer']);
         $this->assertSame((string) $this->store->id, $captured['client_reference_id']);
         $this->assertSame('standard-monthly', $captured['metadata']['plan_slug']);
-        $this->assertSame('https://spa.test/subscribe?status=success', $captured['success_url']);
-        $this->assertSame('https://spa.test/subscribe?status=cancelled', $captured['cancel_url']);
+        $this->assertSame('https://spa.test/admin/subscription?status=success', $captured['success_url']);
+        $this->assertSame('https://spa.test/admin/subscription?status=cancelled', $captured['cancel_url']);
 
         // Combined single checkout: one one-time setup-fee line + one recurring line.
         $this->assertCount(2, $captured['line_items']);
@@ -381,7 +381,7 @@ class SubscriptionFlowApiTest extends TestCase
 
         $stripe = Mockery::mock(Stripe::class);
         $stripe->shouldReceive('createBillingPortalSession')->once()
-            ->with('cus_portal', 'https://spa.test/subscribe?status=portal')
+            ->with('cus_portal', 'https://spa.test/admin/subscription?status=portal')
             ->andReturn('https://billing.stripe.com/p/session/xyz');
 
         $this->app->instance(Stripe::class, $stripe);

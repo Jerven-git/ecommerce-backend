@@ -130,8 +130,8 @@ class SubscriptionController extends Controller
                 'store_id' => (string) $store->id,
                 'plan_slug' => $plan->slug,
             ],
-            'success_url' => $frontend.'/subscribe?status=success',
-            'cancel_url' => $frontend.'/subscribe?status=cancelled',
+            'success_url' => $frontend.'/admin/subscription?status=success',
+            'cancel_url' => $frontend.'/admin/subscription?status=cancelled',
         ]);
 
         return response()->json(['url' => $url]);
@@ -166,7 +166,7 @@ class SubscriptionController extends Controller
         $frontend = rtrim((string) config('app.frontend_url'), '/');
         $url = $this->stripe->createBillingPortalSession(
             $customerId,
-            $frontend.'/subscribe?status=portal',
+            $frontend.'/admin/subscription?status=portal',
         );
 
         return response()->json(['url' => $url]);
