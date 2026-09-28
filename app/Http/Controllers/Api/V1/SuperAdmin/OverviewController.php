@@ -16,6 +16,8 @@ class OverviewController extends Controller
             ->selectRaw("SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active")
             ->selectRaw("SUM(CASE WHEN status <> 'active' THEN 1 ELSE 0 END) as inactive")
             ->selectRaw('SUM(CASE WHEN domain IS NOT NULL AND domain_verified_at IS NOT NULL THEN 1 ELSE 0 END) as verified_domains')
+            ->selectRaw('SUM(CASE WHEN domain IS NOT NULL AND domain_verified_at IS NULL THEN 1 ELSE 0 END) as unverified_domains')
+            ->selectRaw('SUM(CASE WHEN domain IS NULL THEN 1 ELSE 0 END) as no_domain')
             ->first();
 
         $adminQuery = User::query()
@@ -61,6 +63,8 @@ class OverviewController extends Controller
                     'active' => (int) ($storeTotals->active ?? 0),
                     'inactive' => (int) ($storeTotals->inactive ?? 0),
                     'verified_domains' => (int) ($storeTotals->verified_domains ?? 0),
+                    'unverified_domains' => (int) ($storeTotals->unverified_domains ?? 0),
+                    'no_domain' => (int) ($storeTotals->no_domain ?? 0),
                 ],
                 'users' => ['total' => $storeUsers],
                 'admins' => [
