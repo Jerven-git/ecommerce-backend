@@ -62,6 +62,51 @@ class UserDisableTest extends TestCase
             ->assertJsonPath('code', 'account_disabled');
     }
 
+    public function test_disabled_super_admin_cannot_use_control_plane_routes(): void
+    {
+        $this->superAdmin->update([
+            'status' => User::STATUS_DISABLED,
+            'disabled_at' => now(),
+        ]);
+
+        foreach ([
+            '/api/v1/super-admin/overview',
+            '/api/v1/activity-log',
+            '/api/v1/orders',
+        ] as $uri) {
+            $this->actingAs($this->superAdmin)
+                ->getJson($uri)
+                ->assertForbidden()
+                ->assertJsonPath('code', 'account_disabled');
+        }
+    }
+
+    public function test_disabled_super_admin_is_rejected_by_the_user_endpoint(): void
+    {
+        $this->superAdmin->update([
+            'status' => User::STATUS_DISABLED,
+            'disabled_at' => now(),
+        ]);
+
+        $this->actingAs($this->superAdmin)
+            ->getJson('/api/v1/user')
+            ->assertForbidden()
+            ->assertJsonPath('code', 'account_disabled');
+    }
+
+    public function test_disabled_super_admin_can_still_log_out(): void
+    {
+        $this->superAdmin->update([
+            'status' => User::STATUS_DISABLED,
+            'disabled_at' => now(),
+        ]);
+
+        $this->actingAs($this->superAdmin)
+            ->postJson('/api/v1/logout')
+            ->assertOk()
+            ->assertJsonPath('message', 'Logged out successfully');
+    }
+
     public function test_disabled_admin_login_is_rejected(): void
     {
         $this->storeAdmin->update([

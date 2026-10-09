@@ -218,21 +218,23 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
-        \Log::channel('single')->info('IMP_DEBUG /user', [
-            'session_id' => $request->hasSession() ? $request->session()->getId() : null,
-            'cookie_session' => $request->cookies->has(config('session.cookie')),
-            'has_user' => (bool) $user,
-            'user_id' => $user?->id,
-            'session_keys' => $request->hasSession() ? array_keys($request->session()->all()) : [],
-            'web_guard_check' => \Illuminate\Support\Facades\Auth::guard('web')->check(),
-        ]);
-
         if (! $user) {
             return response()->json(['user' => null]);
         }
 
         $manager = app(\Lab404\Impersonate\Services\ImpersonateManager::class);
         $isImpersonating = $manager->isImpersonating();
+
+        // A disabled effective account remains denied everywhere else, but an
+        // active impersonation must be identifiable after a page reload so the
+        // original operator can use the dedicated leave endpoint.
+        if ($user->isDisabled() && ! $isImpersonating) {
+            return response()->json([
+                'message' => 'Your account has been disabled. Contact a super admin.',
+                'code' => 'account_disabled',
+            ], 403);
+        }
+
         $impersonator = null;
 
         if ($isImpersonating) {

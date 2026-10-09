@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Lab404\Impersonate\Services\ImpersonateManager;
 use Spatie\Activitylog\Support\CauserResolver;
+use Throwable;
 
 class ImpersonationController extends Controller
 {
@@ -42,67 +43,65 @@ class ImpersonationController extends Controller
             ], 422);
         }
 
-        \Log::channel('single')->info('IMP_DEBUG start:before-take', [
-            'session_id' => session()->getId(),
-            'session_keys' => array_keys(session()->all()),
-        ]);
+        $guardName = $this->impersonate->getCurrentAuthGuardName()
+            ?? $this->impersonate->getDefaultSessionGuard();
 
-        $takeResult = $this->impersonate->take($impersonator, $user);
-
-        \Log::channel('single')->info('IMP_DEBUG take_result', ['ok' => $takeResult]);
-
-        // Diagnostic: surface the exception lab404 swallows in take()'s try/catch.
         try {
-            \Illuminate\Support\Facades\Auth::guard('web')->quietLogin($user);
-            \Log::channel('single')->info('IMP_DEBUG manual_quietLogin_ok', [
-                'web_user_id' => optional(\Illuminate\Support\Facades\Auth::guard('web')->user())->id,
-            ]);
-        } catch (\Throwable $e) {
-            \Log::channel('single')->error('IMP_DEBUG manual_quietLogin_FAILED', [
-                'class' => get_class($e),
-                'msg' => $e->getMessage(),
-                'at' => $e->getFile().':'.$e->getLine(),
-            ]);
+            $takeResult = $this->impersonate->take($impersonator, $user, $guardName);
+
+            if (! $takeResult
+                || ! $this->impersonate->isImpersonating()
+                || (int) Auth::guard($guardName)->id() !== (int) $user->id) {
+                throw new \RuntimeException('The impersonation session could not be established.');
+            }
+
+            $this->syncSessionPasswordHash($user, $guardName);
+
+            $targetData = $this->serializeUser($user->load(['roles', 'store']));
+            $impersonatorData = $this->serializeUser($impersonator->fresh()->load(['roles', 'store']));
+
+            activity('impersonation')
+                ->causedBy($impersonator)
+                ->performedOn($user)
+                ->withProperties([
+                    'impersonator_id' => $impersonator->id,
+                    'impersonator_email' => $impersonator->email,
+                    'target_id' => $user->id,
+                    'target_email' => $user->email,
+                ])
+                ->event('impersonation_started')
+                ->log("Super admin {$impersonator->email} started impersonating {$user->email}");
+        } catch (Throwable $exception) {
+            $restored = $this->restoreImpersonator($impersonator, $guardName);
+
+            if (! $restored) {
+                $this->terminateImpersonationSession($request, $guardName);
+            }
+
+            try {
+                report($exception);
+            } catch (Throwable) {
+                // Session recovery must not be undone by a failing log sink.
+            }
+
+            return response()->json([
+                'message' => $restored
+                    ? 'Unable to start impersonation. Your session was restored.'
+                    : 'Unable to start impersonation. Please sign in again.',
+                'code' => 'impersonation_start_failed',
+            ], 500);
         }
-
-        $this->syncSessionPasswordHash($user);
-
-        \Log::channel('single')->info('IMP_DEBUG start:after-take', [
-            'session_id' => session()->getId(),
-            'session_keys' => array_keys(session()->all()),
-            'is_impersonating' => $this->impersonate->isImpersonating(),
-            'web_guard_id' => optional(\Illuminate\Support\Facades\Auth::guard('web')->user())->id,
-            'request_session_same' => session()->getId() === request()->session()->getId(),
-            'session_cookie_name' => config('session.cookie'),
-            'session_domain' => config('session.domain'),
-            'session_same_site' => config('session.same_site'),
-            'session_secure' => config('session.secure'),
-        ]);
-
-        activity('impersonation')
-            ->causedBy($impersonator)
-            ->performedOn($user)
-            ->withProperties([
-                'impersonator_id' => $impersonator->id,
-                'impersonator_email' => $impersonator->email,
-                'target_id' => $user->id,
-                'target_email' => $user->email,
-            ])
-            ->event('impersonation_started')
-            ->log("Super admin {$impersonator->email} started impersonating {$user->email}");
-
-        $user->load(['roles', 'store']);
 
         return response()->json([
             'message' => 'Impersonation started.',
             'data' => [
-                'user' => $this->serializeUser($user),
-                'impersonator' => $this->serializeUser($impersonator->fresh()->load(['roles', 'store'])),
+                'user' => $targetData,
+                'impersonator' => $impersonatorData,
             ],
         ]);
     }
 
-    public function leave(): JsonResponse
+    public function leave(Request $request): JsonResponse
     {
         if (! $this->impersonate->isImpersonating()) {
             return response()->json([
@@ -113,33 +112,79 @@ class ImpersonationController extends Controller
         $impersonated = Auth::user();
         $impersonatorId = session(config('laravel-impersonate.session_key'));
         $impersonator = User::find($impersonatorId);
+        $impersonatorGuard = $this->impersonate->getImpersonatorGuardName()
+            ?? $this->impersonate->getDefaultSessionGuard();
 
-        $this->impersonate->leave();
+        if (! $impersonator?->canImpersonate()) {
+            $this->terminateImpersonationSession($request, $impersonatorGuard);
 
-        if ($impersonator) {
-            $this->syncSessionPasswordHash($impersonator);
-
-            app(CauserResolver::class)->setCauser($impersonator);
-
-            activity('impersonation')
-                ->causedBy($impersonator)
-                ->performedOn($impersonated)
-                ->withProperties([
-                    'impersonator_id' => $impersonator->id,
-                    'impersonator_email' => $impersonator->email,
-                    'target_id' => $impersonated?->id,
-                    'target_email' => $impersonated?->email,
-                ])
-                ->event('impersonation_stopped')
-                ->log("Super admin {$impersonator->email} stopped impersonating {$impersonated?->email}");
+            return response()->json([
+                'message' => 'The originating account is no longer available. Please sign in again.',
+                'code' => 'impersonation_source_unavailable',
+            ], 401);
         }
+
+        $left = $this->impersonate->leave();
+
+        if (! $left
+            || $this->impersonate->isImpersonating()
+            || (int) Auth::guard($impersonatorGuard)->id() !== (int) $impersonator->id) {
+            if (! $this->restoreImpersonator($impersonator, $impersonatorGuard)) {
+                $this->terminateImpersonationSession($request, $impersonatorGuard);
+
+                return response()->json([
+                    'message' => 'Unable to restore the originating account. Please sign in again.',
+                    'code' => 'impersonation_leave_failed',
+                ], 500);
+            }
+        }
+
+        $this->syncSessionPasswordHash($impersonator, $impersonatorGuard);
+
+        app(CauserResolver::class)->setCauser($impersonator);
+
+        activity('impersonation')
+            ->causedBy($impersonator)
+            ->performedOn($impersonated)
+            ->withProperties([
+                'impersonator_id' => $impersonator->id,
+                'impersonator_email' => $impersonator->email,
+                'target_id' => $impersonated?->id,
+                'target_email' => $impersonated?->email,
+            ])
+            ->event('impersonation_stopped')
+            ->log("Super admin {$impersonator->email} stopped impersonating {$impersonated?->email}");
 
         return response()->json([
             'message' => 'Impersonation ended.',
             'data' => [
-                'user' => $impersonator ? $this->serializeUser($impersonator->fresh()->load(['roles', 'store'])) : null,
+                'user' => $this->serializeUser($impersonator->fresh()->load(['roles', 'store'])),
             ],
         ]);
+    }
+
+    private function restoreImpersonator(User $impersonator, string $guardName): bool
+    {
+        try {
+            $this->impersonate->clear();
+            Auth::guard($guardName)->quietLogin($impersonator);
+            $this->syncSessionPasswordHash($impersonator, $guardName);
+
+            return (int) Auth::guard($guardName)->id() === (int) $impersonator->id;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function terminateImpersonationSession(Request $request, string $guardName): void
+    {
+        $this->impersonate->clear();
+        Auth::guard($guardName)->quietLogout();
+
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
     }
 
     /**
@@ -154,9 +199,9 @@ class ImpersonationController extends Controller
      * Re-stamping the fingerprint keeps the protection intact while letting the
      * swap survive into subsequent requests.
      */
-    private function syncSessionPasswordHash(User $user): void
+    private function syncSessionPasswordHash(User $user, ?string $driver = null): void
     {
-        $driver = Auth::getDefaultDriver();
+        $driver ??= Auth::getDefaultDriver();
         $guard = Auth::guard($driver);
 
         if (! method_exists($guard, 'hashPasswordForCookie')) {

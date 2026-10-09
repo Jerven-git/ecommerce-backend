@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AdminMiddleware;
+use App\Http\Middleware\EnsureAccountActive;
 use App\Http\Middleware\ResolveAdminStore;
 use App\Http\Middleware\ResolveStorefrontStore;
 use App\Http\Middleware\SanitizeInput;
@@ -43,6 +44,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin' => AdminMiddleware::class,
+            'account.active' => EnsureAccountActive::class,
             'super_admin' => SuperAdminMiddleware::class,
             'subscribed' => SubscriptionMiddleware::class,
             'tenant' => ResolveAdminStore::class,
@@ -53,8 +55,26 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->encryptCookies(except: []);
 
+        // Sanctum validates CSRF for stateful browser requests. Exempt only
+        // public/provider mutations that can legitimately begin without an SPA
+        // session; authenticated admin and super-admin mutations stay covered.
         $middleware->validateCsrfTokens(except: [
-            'api/*',
+            'api/forgot-password',
+            'api/reset-password',
+            'api/v1/contact',
+            'api/v1/gift-cards/validate',
+            'api/v1/commission-requests',
+            'api/v1/subscribe',
+            'api/v1/discounts/validate',
+            'api/v1/shipping/calculate',
+            'api/v1/tax/calculate',
+            'api/v1/tax/calculate-cart',
+            'api/v1/orders',
+            'api/v1/orders/*/pay',
+            'api/v1/orders/*/stripe/intent',
+            'api/v1/paypal/capture',
+            'api/v1/backorders/pay/*',
+            'api/v1/webhooks/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {})->create();

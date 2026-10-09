@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Lab404\Impersonate\Services\ImpersonateManager;
 use Tests\TestCase;
 
 class ImpersonationTest extends TestCase
@@ -127,5 +128,140 @@ class ImpersonationTest extends TestCase
             'event' => 'impersonation_stopped',
             'causer_id' => $this->superAdmin->id,
         ]);
+    }
+
+    public function test_failed_start_restores_the_super_admin_session(): void
+    {
+        $manager = \Mockery::mock(ImpersonateManager::class);
+        $manager->shouldReceive('isImpersonating')->once()->andReturnFalse();
+        $manager->shouldReceive('getCurrentAuthGuardName')->once()->andReturn('web');
+        $manager->shouldReceive('take')->once()->withArgs(function (User $from, User $to, string $guard): bool {
+            return $from->is($this->superAdmin) && $to->is($this->admin) && $guard === 'web';
+        })->andReturnUsing(function (): bool {
+            session()->put(config('laravel-impersonate.session_key'), $this->superAdmin->id);
+            session()->put(config('laravel-impersonate.session_guard'), 'web');
+            session()->put(config('laravel-impersonate.session_guard_using'), 'web');
+            \Illuminate\Support\Facades\Auth::guard('web')->quietLogout();
+
+            return false;
+        });
+        $manager->shouldReceive('clear')->once()->andReturnUsing(function (): void {
+            session()->forget([
+                config('laravel-impersonate.session_key'),
+                config('laravel-impersonate.session_guard'),
+                config('laravel-impersonate.session_guard_using'),
+            ]);
+        });
+        $this->app->instance(ImpersonateManager::class, $manager);
+
+        $this->actingAs($this->superAdmin)
+            ->postJson("/api/v1/super-admin/users/{$this->admin->id}/impersonate")
+            ->assertStatus(500)
+            ->assertJsonPath('code', 'impersonation_start_failed')
+            ->assertSessionMissing(config('laravel-impersonate.session_key'));
+
+        $this->assertAuthenticatedAs($this->superAdmin, 'web');
+        $this->assertDatabaseMissing('activity_log', [
+            'log_name' => 'impersonation',
+            'event' => 'impersonation_started',
+        ]);
+    }
+
+    public function test_failed_leave_falls_back_to_restoring_the_super_admin(): void
+    {
+        $manager = \Mockery::mock(ImpersonateManager::class);
+        $manager->shouldReceive('isImpersonating')->once()->andReturnTrue();
+        $manager->shouldReceive('getImpersonatorGuardName')->once()->andReturn('web');
+        $manager->shouldReceive('leave')->once()->andReturnFalse();
+        $manager->shouldReceive('clear')->once()->andReturnUsing(function (): void {
+            session()->forget([
+                config('laravel-impersonate.session_key'),
+                config('laravel-impersonate.session_guard'),
+                config('laravel-impersonate.session_guard_using'),
+            ]);
+        });
+        $this->app->instance(ImpersonateManager::class, $manager);
+
+        $this->actingAs($this->admin)
+            ->withSession([
+                config('laravel-impersonate.session_key') => $this->superAdmin->id,
+                config('laravel-impersonate.session_guard') => 'web',
+                config('laravel-impersonate.session_guard_using') => 'web',
+            ])
+            ->postJson('/api/v1/super-admin/impersonate/leave')
+            ->assertOk()
+            ->assertJsonPath('data.user.id', $this->superAdmin->id)
+            ->assertSessionMissing(config('laravel-impersonate.session_key'));
+
+        $this->assertAuthenticatedAs($this->superAdmin, 'web');
+        $this->assertDatabaseHas('activity_log', [
+            'log_name' => 'impersonation',
+            'event' => 'impersonation_stopped',
+            'causer_id' => $this->superAdmin->id,
+            'subject_id' => $this->admin->id,
+        ]);
+    }
+
+    public function test_leave_terminates_the_session_when_the_originating_account_was_disabled(): void
+    {
+        $this->superAdmin->update([
+            'status' => User::STATUS_DISABLED,
+            'disabled_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->withSession([
+                config('laravel-impersonate.session_key') => $this->superAdmin->id,
+                config('laravel-impersonate.session_guard') => 'web',
+                config('laravel-impersonate.session_guard_using') => 'web',
+            ])
+            ->postJson('/api/v1/super-admin/impersonate/leave')
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'impersonation_source_unavailable')
+            ->assertSessionMissing(config('laravel-impersonate.session_key'));
+
+        $this->assertGuest('web');
+    }
+
+    public function test_disabled_impersonated_user_can_still_leave_impersonation(): void
+    {
+        $this->admin->update([
+            'status' => User::STATUS_DISABLED,
+            'disabled_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->withSession([
+                config('laravel-impersonate.session_key') => $this->superAdmin->id,
+                config('laravel-impersonate.session_guard') => 'web',
+                config('laravel-impersonate.session_guard_using') => 'web',
+            ])
+            ->postJson('/api/v1/super-admin/impersonate/leave')
+            ->assertOk()
+            ->assertJsonPath('data.user.id', $this->superAdmin->id)
+            ->assertSessionMissing(config('laravel-impersonate.session_key'));
+
+        $this->assertAuthenticatedAs($this->superAdmin, 'web');
+    }
+
+    public function test_disabled_impersonated_user_can_rehydrate_the_recovery_state(): void
+    {
+        $this->admin->update([
+            'status' => User::STATUS_DISABLED,
+            'disabled_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->withSession([
+                config('laravel-impersonate.session_key') => $this->superAdmin->id,
+                config('laravel-impersonate.session_guard') => 'web',
+                config('laravel-impersonate.session_guard_using') => 'web',
+            ])
+            ->getJson('/api/v1/user')
+            ->assertOk()
+            ->assertJsonPath('user.id', $this->admin->id)
+            ->assertJsonPath('user.status', User::STATUS_DISABLED)
+            ->assertJsonPath('user.is_impersonating', true)
+            ->assertJsonPath('user.impersonator.id', $this->superAdmin->id);
     }
 }
