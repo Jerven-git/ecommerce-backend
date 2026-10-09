@@ -8,7 +8,21 @@ use Illuminate\Validation\Rule;
 
 class UpdateStoreRequest extends FormRequest
 {
-    use CanonicalisesDomainInput;
+    use CanonicalisesDomainInput {
+        prepareForValidation as prepareDomainForValidation;
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->prepareDomainForValidation();
+
+        if (! $this->has('timezone') || ! is_string($this->input('timezone'))) {
+            return;
+        }
+
+        $timezone = trim($this->input('timezone'));
+        $this->merge(['timezone' => $timezone === '' ? null : $timezone]);
+    }
 
     public function authorize(): bool
     {
@@ -30,7 +44,7 @@ class UpdateStoreRequest extends FormRequest
                 Rule::unique('stores', 'slug')->ignore($storeId),
             ],
             'status' => ['sometimes', 'in:active,inactive'],
-            'default_currency_id' => ['sometimes', 'nullable', 'integer', 'exists:currencies,id'],
+            'timezone' => ['sometimes', 'nullable', 'string', 'max:64', 'timezone:all'],
             'domain' => [
                 'nullable',
                 'string',
@@ -47,6 +61,7 @@ class UpdateStoreRequest extends FormRequest
             'slug.regex' => 'Slug may only contain lowercase letters, numbers, and dashes.',
             'slug.unique' => 'A store with that slug already exists.',
             'domain.unique' => 'That domain is already claimed by another store.',
+            'timezone.timezone' => 'Choose a valid IANA timezone, such as Asia/Singapore.',
         ];
     }
 }

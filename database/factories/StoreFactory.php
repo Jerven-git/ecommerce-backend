@@ -25,7 +25,6 @@ class StoreFactory extends Factory
             // flowing). Real stores created by the app default to 'unsubscribed'
             // via the column default; tests build gated stores with ->unsubscribed().
             'subscription_status' => 'comped',
-            'default_currency_id' => null,
         ];
     }
 

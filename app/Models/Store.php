@@ -37,11 +37,11 @@ class Store extends Model
         'domain',
         'domain_verified_at',
         'status',
+        'timezone',
         'subscription_status',
         'subscription_plan_id',
         'subscribed_at',
         'subscription_expires_at',
-        'default_currency_id',
     ];
 
     protected function casts(): array
@@ -125,11 +125,6 @@ class Store extends Model
         return $this->hasOne(SiteConfig::class);
     }
 
-    public function defaultCurrency(): BelongsTo
-    {
-        return $this->belongsTo(Currency::class, 'default_currency_id');
-    }
-
     public function subscriptionPlan(): BelongsTo
     {
         return $this->belongsTo(SubscriptionPlan::class, 'subscription_plan_id');
@@ -146,6 +141,11 @@ class Store extends Model
     public function isActive(): bool
     {
         return $this->status === 'active';
+    }
+
+    public function resolvedTimezone(): string
+    {
+        return $this->timezone ?: (string) config('app.timezone', 'UTC');
     }
 
     /**
@@ -201,7 +201,7 @@ class Store extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['name', 'slug', 'domain', 'status', 'subscription_status', 'subscription_plan_id', 'subscribed_at', 'subscription_expires_at', 'default_currency_id'])
+            ->logOnly(['name', 'slug', 'domain', 'status', 'timezone', 'subscription_status', 'subscription_plan_id', 'subscribed_at', 'subscription_expires_at'])
             ->logOnlyDirty()
             ->dontLogEmptyChanges()
             ->useLogName('store');

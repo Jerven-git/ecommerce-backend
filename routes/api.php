@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\V1\SuperAdmin\ImpersonationController as SuperAdmin
 use App\Http\Controllers\Api\V1\SuperAdmin\OverviewController as SuperAdminOverviewController;
 use App\Http\Controllers\Api\V1\SuperAdmin\StoreController as SuperAdminStoreController;
 use App\Http\Controllers\Api\V1\SuperAdmin\StoreDomainController as SuperAdminStoreDomainController;
+use App\Http\Controllers\Api\V1\SuperAdmin\StoreReadinessController as SuperAdminStoreReadinessController;
 use App\Http\Controllers\Api\V1\TaxReportController;
 use App\Http\Controllers\Api\V1\TaxRuleController;
 use App\Http\Controllers\Api\V1\TaxSettingsController;
@@ -226,7 +227,6 @@ Route::prefix('v1')->group(function () {
             // Stores
             Route::get('/overview', SuperAdminOverviewController::class);
             Route::get('/stores', [SuperAdminStoreController::class, 'index']);
-            Route::post('/stores', [SuperAdminStoreController::class, 'store']);
             Route::get('/store-options', [SuperAdminStoreController::class, 'options']);
 
             // Must precede /stores/{store} so the literal path isn't captured
@@ -236,6 +236,7 @@ Route::prefix('v1')->group(function () {
 
             Route::get('/stores/{store}', [SuperAdminStoreController::class, 'show']);
             Route::get('/stores/{store}/admins', [SuperAdminStoreController::class, 'admins']);
+            Route::get('/stores/{store}/readiness', SuperAdminStoreReadinessController::class);
             Route::patch('/stores/{store}', [SuperAdminStoreController::class, 'update']);
             Route::delete('/stores/{store}', [SuperAdminStoreController::class, 'destroy']);
             Route::post('/stores/{store}/activate', [SuperAdminStoreController::class, 'activate']);

@@ -48,7 +48,6 @@ class OverviewController extends Controller
                 'domain_verified' => $store->hasVerifiedDomain(),
                 'status' => $store->status,
                 'is_default' => $store->slug === Store::DEFAULT_SLUG,
-                'default_currency_id' => $store->default_currency_id,
                 'users_count' => $store->users_count,
                 'created_at' => $store->created_at,
                 'updated_at' => $store->updated_at,

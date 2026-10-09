@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api\V1\SuperAdmin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\SuperAdmin\StoreStoreRequest;
 use App\Http\Requests\SuperAdmin\UpdateStoreRequest;
 use App\Models\Store;
 use App\Models\SubscriptionPlan;
@@ -11,6 +10,7 @@ use App\Models\User;
 use App\Support\Subscriptions\SubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class StoreController extends Controller
 {
@@ -22,6 +22,16 @@ class StoreController extends Controller
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
             'search' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'status' => ['sometimes', 'nullable', Rule::in(['active', 'inactive'])],
+            'subscription_status' => ['sometimes', 'nullable', Rule::in([
+                Store::SUBSCRIPTION_UNSUBSCRIBED,
+                Store::SUBSCRIPTION_PENDING,
+                Store::SUBSCRIPTION_ACTIVE,
+                Store::SUBSCRIPTION_CANCELLED,
+                Store::SUBSCRIPTION_EXPIRED,
+                Store::SUBSCRIPTION_COMPED,
+            ])],
+            'domain_status' => ['sometimes', 'nullable', Rule::in(['verified', 'unverified', 'none'])],
         ]);
 
         $search = trim((string) ($validated['search'] ?? ''));
@@ -35,6 +45,18 @@ class StoreController extends Controller
                         ->orWhere('slug', 'like', "%{$search}%")
                         ->orWhere('domain', 'like', "%{$search}%");
                 });
+            })
+            ->when($validated['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+            ->when(
+                $validated['subscription_status'] ?? null,
+                fn ($query, $status) => $query->where('subscription_status', $status)
+            )
+            ->when($validated['domain_status'] ?? null, function ($query, $domainStatus) {
+                match ($domainStatus) {
+                    'verified' => $query->whereNotNull('domain')->whereNotNull('domain_verified_at'),
+                    'unverified' => $query->whereNotNull('domain')->whereNull('domain_verified_at'),
+                    'none' => $query->whereNull('domain'),
+                };
             })
             ->orderBy('name')
             ->paginate((int) ($validated['per_page'] ?? 25));
@@ -98,22 +120,6 @@ class StoreController extends Controller
         return response()->json([
             'data' => $users->map(fn (User $user) => $this->serializeAdmin($user))->values(),
         ]);
-    }
-
-    public function store(StoreStoreRequest $request): JsonResponse
-    {
-        $data = $request->validated();
-
-        // A freshly claimed domain is always unverified; it starts routing only
-        // once its DNS is shown to point here.
-        $data['domain_verified_at'] = null;
-
-        $store = Store::create($data);
-        $store->loadCount('users');
-
-        return response()->json([
-            'data' => $this->serialize($store),
-        ], 201);
     }
 
     public function update(UpdateStoreRequest $request, Store $store): JsonResponse
@@ -232,6 +238,9 @@ class StoreController extends Controller
             'domain_verified_at' => $store->domain_verified_at,
             'domain_verified' => $store->hasVerifiedDomain(),
             'status' => $store->status,
+            'timezone' => $store->timezone,
+            'resolved_timezone' => $store->resolvedTimezone(),
+            'platform_timezone' => (string) config('app.timezone', 'UTC'),
             'subscription_status' => $store->subscription_status,
             'subscription_plan_id' => $store->subscription_plan_id,
             'subscription_plan' => $store->subscriptionPlan ? [
@@ -245,7 +254,6 @@ class StoreController extends Controller
             'subscribed_at' => $store->subscribed_at,
             'subscription_expires_at' => $store->subscription_expires_at,
             'is_default' => $store->slug === Store::DEFAULT_SLUG,
-            'default_currency_id' => $store->default_currency_id,
             'users_count' => $store->users_count ?? 0,
             'created_at' => $store->created_at,
             'updated_at' => $store->updated_at,

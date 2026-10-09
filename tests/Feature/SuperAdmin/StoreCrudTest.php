@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class StoreCrudTest extends TestCase
@@ -64,6 +65,50 @@ class StoreCrudTest extends TestCase
             ->assertJsonPath('data.0.slug', 'needle-tenant');
     }
 
+    public function test_store_directory_filters_can_be_combined(): void
+    {
+        Store::factory()->create([
+            'name' => 'Ready Active Store',
+            'status' => 'active',
+            'subscription_status' => Store::SUBSCRIPTION_ACTIVE,
+            'domain' => 'ready.example.com',
+            'domain_verified_at' => now(),
+        ]);
+        Store::factory()->create([
+            'name' => 'Unverified Active Store',
+            'status' => 'active',
+            'subscription_status' => Store::SUBSCRIPTION_ACTIVE,
+            'domain' => 'pending.example.com',
+            'domain_verified_at' => null,
+        ]);
+        Store::factory()->create([
+            'name' => 'Ready Inactive Store',
+            'status' => 'inactive',
+            'subscription_status' => Store::SUBSCRIPTION_COMPED,
+            'domain' => null,
+            'domain_verified_at' => null,
+        ]);
+
+        $this->actingAs($this->superAdmin)
+            ->getJson('/api/v1/super-admin/stores?status=active&subscription_status=active&domain_status=verified')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Ready Active Store');
+
+        $this->actingAs($this->superAdmin)
+            ->getJson('/api/v1/super-admin/stores?domain_status=none')
+            ->assertOk()
+            ->assertJsonFragment(['name' => 'Ready Inactive Store']);
+    }
+
+    public function test_store_directory_rejects_unknown_filters(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->getJson('/api/v1/super-admin/stores?status=archived&domain_status=broken')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['status', 'domain_status']);
+    }
+
     public function test_super_admin_can_load_store_options_and_store_admins(): void
     {
         $defaultStore = Store::where('slug', Store::DEFAULT_SLUG)->firstOrFail();
@@ -100,30 +145,78 @@ class StoreCrudTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_super_admin_can_create_a_store(): void
+    public function test_stores_cannot_be_created_without_their_first_admin(): void
     {
         $this->actingAs($this->superAdmin)
             ->postJson('/api/v1/super-admin/stores', [
                 'name' => 'Watch World',
                 'slug' => 'watch-world',
             ])
-            ->assertCreated()
-            ->assertJsonPath('data.slug', 'watch-world');
+            ->assertMethodNotAllowed();
 
-        $this->assertDatabaseHas('stores', ['slug' => 'watch-world', 'status' => 'active']);
+        $this->assertDatabaseMissing('stores', ['slug' => 'watch-world']);
     }
 
-    public function test_super_admin_cannot_create_a_store_with_duplicate_slug(): void
+    public function test_store_api_does_not_expose_or_mutate_deprecated_default_currency(): void
     {
-        Store::factory()->create(['slug' => 'taken']);
+        $currencyId = DB::table('currencies')->insertGetId([
+            'code' => 'AUD',
+            'name' => 'Australian Dollar',
+            'symbol' => 'A$',
+            'symbol_position' => 'before',
+            'decimal_places' => 2,
+            'rate' => 1,
+            'is_base' => false,
+            'is_enabled' => true,
+            'sort_order' => 10,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $store = Store::factory()->create();
+        DB::table('stores')->where('id', $store->id)->update(['default_currency_id' => $currencyId]);
 
         $this->actingAs($this->superAdmin)
-            ->postJson('/api/v1/super-admin/stores', [
-                'name' => 'Other',
-                'slug' => 'taken',
+            ->getJson("/api/v1/super-admin/stores/{$store->id}")
+            ->assertOk()
+            ->assertJsonMissingPath('data.default_currency_id');
+
+        $this->actingAs($this->superAdmin)
+            ->patchJson("/api/v1/super-admin/stores/{$store->id}", [
+                'name' => 'Renamed Store',
+                'default_currency_id' => null,
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('slug');
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Renamed Store')
+            ->assertJsonMissingPath('data.default_currency_id');
+
+        $this->assertSame($currencyId, DB::table('stores')->where('id', $store->id)->value('default_currency_id'));
+    }
+
+    public function test_super_admin_can_set_and_clear_a_store_timezone(): void
+    {
+        $store = Store::factory()->create(['timezone' => null]);
+
+        $this->actingAs($this->superAdmin)
+            ->patchJson("/api/v1/super-admin/stores/{$store->id}", ['timezone' => ' Asia/Singapore '])
+            ->assertOk()
+            ->assertJsonPath('data.timezone', 'Asia/Singapore')
+            ->assertJsonPath('data.resolved_timezone', 'Asia/Singapore');
+
+        $this->actingAs($this->superAdmin)
+            ->patchJson("/api/v1/super-admin/stores/{$store->id}", ['timezone' => ''])
+            ->assertOk()
+            ->assertJsonPath('data.timezone', null)
+            ->assertJsonPath('data.resolved_timezone', 'UTC');
+    }
+
+    public function test_store_timezone_must_be_a_valid_iana_identifier(): void
+    {
+        $store = Store::factory()->create();
+
+        $this->actingAs($this->superAdmin)
+            ->patchJson("/api/v1/super-admin/stores/{$store->id}", ['timezone' => 'Singapore-ish'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('timezone');
     }
 
     public function test_super_admin_can_deactivate_a_store(): void

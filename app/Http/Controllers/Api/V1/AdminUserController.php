@@ -4,10 +4,9 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Role;
-use App\Models\Scopes\StoreScope;
-use App\Models\SiteConfig;
 use App\Models\Store;
 use App\Models\User;
+use App\Support\Tenancy\StoreProvisioner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +14,8 @@ use Illuminate\Validation\Rule;
 
 class AdminUserController extends Controller
 {
+    public function __construct(private StoreProvisioner $storeProvisioner) {}
+
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -83,14 +84,10 @@ class AdminUserController extends Controller
                 } else {
                     $slug = $validated['store_slug'] ?? Store::generateUniqueSlug($validated['store_name']);
 
-                    $store = Store::create([
+                    $store = $this->storeProvisioner->provision([
                         'name' => $validated['store_name'],
                         'slug' => $slug,
                         'status' => 'active',
-                    ]);
-
-                    SiteConfig::withoutGlobalScope(StoreScope::class)->create([
-                        'store_id' => $store->id,
                     ]);
 
                     $storeId = $store->id;

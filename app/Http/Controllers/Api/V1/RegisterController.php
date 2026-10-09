@@ -5,10 +5,9 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\RegisterRequest;
 use App\Models\Role;
-use App\Models\Scopes\StoreScope;
-use App\Models\SiteConfig;
 use App\Models\Store;
 use App\Models\User;
+use App\Support\Tenancy\StoreProvisioner;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +15,8 @@ use Illuminate\Support\Facades\Http;
 
 class RegisterController extends Controller
 {
+    public function __construct(private StoreProvisioner $storeProvisioner) {}
+
     /**
      * Self-service signup: a prospect creates their account plus a brand-new
      * store in one atomic step, which is created gated (`unsubscribed`) until
@@ -29,17 +30,13 @@ class RegisterController extends Controller
         $this->verifyRecaptcha($validated['recaptcha_token'] ?? null);
 
         $user = DB::transaction(function () use ($validated): User {
-            $store = Store::create([
+            $store = $this->storeProvisioner->provision([
                 'name' => $validated['store_name'],
                 'slug' => $validated['store_slug'] ?? Store::generateUniqueSlug($validated['store_name']),
                 'status' => 'active',
                 // New self-service stores start gated; the column default would
                 // do this anyway, but being explicit keeps the contract visible.
                 'subscription_status' => Store::SUBSCRIPTION_UNSUBSCRIBED,
-            ]);
-
-            SiteConfig::withoutGlobalScope(StoreScope::class)->create([
-                'store_id' => $store->id,
             ]);
 
             $role = Role::query()->firstOrCreate(['name' => 'admin']);

@@ -20,16 +20,18 @@ class CsrfProtectionTest extends TestCase
 
         $this->actingAs($superAdmin)
             ->withHeader('Origin', 'http://localhost')
-            ->postJson('/api/v1/super-admin/stores', [
-                'name' => 'Protected Store',
-                'slug' => 'protected-store',
-                'domain' => 'protected-store.test',
+            ->postJson('/api/v1/super-admin/users', [
+                'name' => 'Protected Admin',
+                'email' => 'protected@example.com',
+                'password' => 'secret123',
+                'password_confirmation' => 'secret123',
+                'role' => 'admin',
+                'store_name' => 'Protected Store',
             ])
             ->assertStatus(419);
 
-        $this->assertDatabaseMissing('stores', [
-            'domain' => 'protected-store.test',
-        ]);
+        $this->assertDatabaseMissing('users', ['email' => 'protected@example.com']);
+        $this->assertDatabaseMissing('stores', ['slug' => 'protected-store']);
     }
 
     public function test_stateful_super_admin_mutation_accepts_a_matching_csrf_token(): void
@@ -45,15 +47,18 @@ class CsrfProtectionTest extends TestCase
                 'Origin' => 'http://localhost',
                 'X-CSRF-TOKEN' => $token,
             ])
-            ->postJson('/api/v1/super-admin/stores', [
-                'name' => 'Protected Store',
-                'slug' => 'protected-store',
-                'domain' => 'protected-store.test',
+            ->postJson('/api/v1/super-admin/users', [
+                'name' => 'Protected Admin',
+                'email' => 'protected@example.com',
+                'password' => 'secret123',
+                'password_confirmation' => 'secret123',
+                'role' => 'admin',
+                'store_name' => 'Protected Store',
             ])
             ->assertCreated();
 
         $this->assertDatabaseHas('stores', [
-            'domain' => 'protected-store.test',
+            'slug' => 'protected-store',
         ]);
     }
 
