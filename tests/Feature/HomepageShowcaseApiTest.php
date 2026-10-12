@@ -133,7 +133,7 @@ class HomepageShowcaseApiTest extends TestCase
             ->assertJsonValidationErrors('homepage_showcase.tiles');
     }
 
-    public function test_update_rejects_enabled_showcase_without_heading(): void
+    public function test_update_allows_enabled_showcase_without_heading(): void
     {
         $category = Category::create(['name' => 'Skincare']);
         $product = Product::create([
@@ -154,11 +154,10 @@ class HomepageShowcaseApiTest extends TestCase
                     ],
                 ],
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('homepage_showcase.heading');
+            ->assertOk();
     }
 
-    public function test_update_rejects_enabled_showcase_with_no_complete_tile(): void
+    public function test_update_allows_enabled_showcase_with_no_complete_tile(): void
     {
         $this->asAdmin()
             ->patchJson('/api/v1/site-config', [
@@ -170,11 +169,10 @@ class HomepageShowcaseApiTest extends TestCase
                     ]),
                 ],
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('homepage_showcase.tiles');
+            ->assertOk();
     }
 
-    public function test_update_rejects_partial_tile_with_title_but_no_category(): void
+    public function test_update_allows_partial_tile_as_draft_content(): void
     {
         $this->asAdmin()
             ->patchJson('/api/v1/site-config', [
@@ -188,11 +186,7 @@ class HomepageShowcaseApiTest extends TestCase
                     ],
                 ],
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors([
-                'homepage_showcase.tiles.0.category_id',
-                'homepage_showcase.tiles.0.featured_product_id',
-            ]);
+            ->assertOk();
     }
 
     public function test_update_rejects_unknown_category_or_product_id(): void

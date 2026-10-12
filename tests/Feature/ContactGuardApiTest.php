@@ -30,7 +30,7 @@ class ContactGuardApiTest extends TestCase
             ->withoutMiddleware(SessionLifetimeMiddleware::class);
     }
 
-    public function test_enabling_contact_module_without_an_email_is_rejected(): void
+    public function test_contact_content_can_be_saved_without_an_email(): void
     {
         $this->asAdmin()
             ->patchJson('/api/v1/site-config', [
@@ -38,8 +38,7 @@ class ContactGuardApiTest extends TestCase
                 'contact_entries' => [],
                 'contact_email' => null,
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('contact_entries');
+            ->assertOk();
     }
 
     public function test_enabling_contact_module_with_a_contact_email_is_allowed(): void
@@ -64,7 +63,7 @@ class ContactGuardApiTest extends TestCase
             ->assertOk();
     }
 
-    public function test_clearing_the_last_contact_email_while_module_enabled_is_rejected(): void
+    public function test_last_contact_email_can_be_cleared_while_module_is_enabled(): void
     {
         SiteConfig::create([
             'modules_enabled' => ['contact' => true],
@@ -76,8 +75,7 @@ class ContactGuardApiTest extends TestCase
                 'contact_entries' => [],
                 'contact_email' => null,
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('contact_entries');
+            ->assertOk();
     }
 
     public function test_disabling_the_contact_module_without_an_email_is_allowed(): void

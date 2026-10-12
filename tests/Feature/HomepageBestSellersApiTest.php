@@ -202,7 +202,7 @@ class HomepageBestSellersApiTest extends TestCase
         );
     }
 
-    public function test_update_rejects_enabled_without_heading(): void
+    public function test_update_allows_enabled_without_heading(): void
     {
         $this->asAdmin()
             ->patchJson('/api/v1/site-config', [
@@ -211,8 +211,7 @@ class HomepageBestSellersApiTest extends TestCase
                     'heading' => '',
                 ],
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('homepage_best_sellers.heading');
+            ->assertOk();
     }
 
     public function test_update_rejects_unknown_fallback_product_id(): void

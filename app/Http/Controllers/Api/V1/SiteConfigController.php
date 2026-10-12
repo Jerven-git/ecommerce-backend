@@ -760,7 +760,7 @@ class SiteConfigController extends Controller
             'contact_email' => 'nullable|email',
             'contact_phone' => 'nullable|string|max:20',
             'contact_entries' => 'nullable|array|max:20',
-            'contact_entries.*.label' => 'required|string|max:100',
+            'contact_entries.*.label' => 'nullable|string|max:100',
             'contact_entries.*.email' => 'nullable|email|max:255',
             'contact_entries.*.phone' => 'nullable|string|max:30',
             'social_links' => 'nullable|array|max:20',
@@ -779,17 +779,17 @@ class SiteConfigController extends Controller
             'homepage_steps.subtitle' => 'nullable|string|max:255',
             'homepage_steps.items' => 'nullable|array|max:12',
             'homepage_steps.items.*.icon' => 'nullable|string|max:100',
-            'homepage_steps.items.*.title' => 'required|string|max:100',
-            'homepage_steps.items.*.description' => 'required|string|max:255',
+            'homepage_steps.items.*.title' => 'nullable|string|max:100',
+            'homepage_steps.items.*.description' => 'nullable|string|max:255',
             'homepage_features' => 'nullable|array',
             'homepage_features.items' => 'nullable|array|max:12',
             'homepage_features.items.*.icon' => 'nullable|string|max:100',
-            'homepage_features.items.*.title' => 'required|string|max:100',
-            'homepage_features.items.*.description' => 'required|string|max:255',
+            'homepage_features.items.*.title' => 'nullable|string|max:100',
+            'homepage_features.items.*.description' => 'nullable|string|max:255',
             'homepage_stats' => 'nullable|array',
             'homepage_stats.items' => 'nullable|array|max:8',
-            'homepage_stats.items.*.value' => 'required|string|max:50',
-            'homepage_stats.items.*.label' => 'required|string|max:100',
+            'homepage_stats.items.*.value' => 'nullable|string|max:50',
+            'homepage_stats.items.*.label' => 'nullable|string|max:100',
             'homepage_statement' => 'nullable|array',
             'homepage_statement.enabled' => 'nullable|boolean',
             'homepage_statement.eyebrow' => 'nullable|string|max:100',
@@ -832,8 +832,8 @@ class SiteConfigController extends Controller
             'about_highlights' => 'nullable|array',
             'about_highlights.items' => 'nullable|array|max:12',
             'about_highlights.items.*.icon' => 'nullable|string|max:50',
-            'about_highlights.items.*.title' => 'required|string|max:100',
-            'about_highlights.items.*.description' => 'required|string|max:255',
+            'about_highlights.items.*.title' => 'nullable|string|max:100',
+            'about_highlights.items.*.description' => 'nullable|string|max:255',
             'shop_header' => 'nullable|array',
             'shop_header.label' => 'nullable|string|max:100',
             'shop_header.heading' => 'nullable|string|max:255',
@@ -852,14 +852,14 @@ class SiteConfigController extends Controller
             'contact_page.info_badge' => 'nullable|string|max:100',
             'contact_page.promises' => 'nullable|array|max:12',
             'contact_page.promises.*.icon' => 'nullable|string|max:100',
-            'contact_page.promises.*.title' => 'required|string|max:100',
-            'contact_page.promises.*.description' => 'required|string|max:255',
+            'contact_page.promises.*.title' => 'nullable|string|max:100',
+            'contact_page.promises.*.description' => 'nullable|string|max:255',
             'contact_page.faq_label' => 'nullable|string|max:50',
             'contact_page.faq_heading' => 'nullable|string|max:100',
             'contact_page.faq_subtitle' => 'nullable|string|max:255',
             'contact_page.faqs' => 'nullable|array|max:30',
-            'contact_page.faqs.*.question' => 'required|string|max:255',
-            'contact_page.faqs.*.answer' => 'required|string|max:1000',
+            'contact_page.faqs.*.question' => 'nullable|string|max:255',
+            'contact_page.faqs.*.answer' => 'nullable|string|max:1000',
             'blog_page' => 'nullable|array',
             'blog_page.header' => 'nullable|array',
             'blog_page.header.label' => 'nullable|string|max:100',
@@ -885,12 +885,12 @@ class SiteConfigController extends Controller
             'services_page.header.secondary_cta.link' => 'nullable|string|max:500',
             'services_page.summary' => 'nullable|array',
             'services_page.summary.items' => 'nullable|array|max:6',
-            'services_page.summary.items.*.title' => 'required|string|max:100',
-            'services_page.summary.items.*.description' => 'required|string|max:255',
+            'services_page.summary.items.*.title' => 'nullable|string|max:100',
+            'services_page.summary.items.*.description' => 'nullable|string|max:255',
             'services_page.stats' => 'nullable|array',
             'services_page.stats.items' => 'nullable|array|max:6',
-            'services_page.stats.items.*.value' => 'required|string|max:50',
-            'services_page.stats.items.*.label' => 'required|string|max:150',
+            'services_page.stats.items.*.value' => 'nullable|string|max:50',
+            'services_page.stats.items.*.label' => 'nullable|string|max:150',
             'services_page.cta' => 'nullable|array',
             'services_page.cta.heading' => 'nullable|string|max:255',
             'services_page.cta.subtitle' => 'nullable|string|max:500',
@@ -948,12 +948,13 @@ class SiteConfigController extends Controller
             ],
         ]);
 
-        $this->validateShowcaseRules($validated);
-        $this->validateWatchShopRules($validated);
-        $this->validateBestSellersRules($validated);
-        $this->validateContactRules($validated, SiteConfig::first());
-
         $config = SiteConfig::first() ?? SiteConfig::create([]);
+
+        // The legacy column is NOT NULL even though the API accepts nullable
+        // editable content. Persist an intentional blank as an empty string.
+        if (array_key_exists('contact_email', $validated) && $validated['contact_email'] === null) {
+            $validated['contact_email'] = '';
+        }
 
         // Merge theme: keep existing values, override only what's sent
         if (isset($validated['theme'])) {

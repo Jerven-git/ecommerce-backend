@@ -104,7 +104,7 @@ class HomepageWatchShopApiTest extends TestCase
             ->assertJsonPath('data.homepage_watch_shop.cards.0.product.slug', 'mighty-bamboo-cream');
     }
 
-    public function test_update_rejects_enabled_watch_shop_without_heading(): void
+    public function test_update_allows_enabled_watch_shop_without_heading(): void
     {
         $product = $this->makeProduct();
 
@@ -118,11 +118,10 @@ class HomepageWatchShopApiTest extends TestCase
                     ],
                 ],
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('homepage_watch_shop.heading');
+            ->assertOk();
     }
 
-    public function test_update_rejects_enabled_watch_shop_with_no_cards(): void
+    public function test_update_allows_enabled_watch_shop_with_no_cards(): void
     {
         $this->asAdmin()
             ->patchJson('/api/v1/site-config', [
@@ -132,11 +131,10 @@ class HomepageWatchShopApiTest extends TestCase
                     'cards' => [],
                 ],
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('homepage_watch_shop.cards');
+            ->assertOk();
     }
 
-    public function test_update_rejects_card_without_product(): void
+    public function test_update_allows_card_without_product_as_draft_content(): void
     {
         $this->asAdmin()
             ->patchJson('/api/v1/site-config', [
@@ -147,8 +145,7 @@ class HomepageWatchShopApiTest extends TestCase
                     ],
                 ],
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('homepage_watch_shop.cards.0.product_id');
+            ->assertOk();
     }
 
     public function test_update_rejects_more_than_twelve_cards(): void
