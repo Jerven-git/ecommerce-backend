@@ -28,6 +28,8 @@ use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\ShipmentController;
 use App\Http\Controllers\Api\V1\ShippingSettingsController;
 use App\Http\Controllers\Api\V1\SiteConfigController;
+use App\Http\Controllers\Api\V1\SiteConfigDraftController;
+use App\Http\Controllers\Api\V1\SiteConfigVersionController;
 use App\Http\Controllers\Api\V1\SubscribeController;
 use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SubscriptionWebhookController;
@@ -387,6 +389,13 @@ Route::prefix('v1')->group(function () {
 
                 // Site config
                 Route::patch('/site-config', [SiteConfigController::class, 'update']);
+                Route::get('/site-config/draft', [SiteConfigDraftController::class, 'show']);
+                Route::put('/site-config/draft', [SiteConfigDraftController::class, 'store']);
+                Route::delete('/site-config/draft', [SiteConfigDraftController::class, 'destroy']);
+                Route::post('/site-config/draft/publish', [SiteConfigDraftController::class, 'publish']);
+                Route::get('/site-config/versions', [SiteConfigVersionController::class, 'index']);
+                Route::get('/site-config/versions/{version}', [SiteConfigVersionController::class, 'show']);
+                Route::post('/site-config/versions/{version}/restore', [SiteConfigVersionController::class, 'restore']);
                 Route::post('/site-config/media/{collection}', [SiteConfigController::class, 'uploadMedia']);
                 Route::delete('/site-config/media/{collection}', [SiteConfigController::class, 'deleteMedia']);
                 Route::post('/site-config/watch-shop/cards', [SiteConfigController::class, 'uploadWatchShopCard']);

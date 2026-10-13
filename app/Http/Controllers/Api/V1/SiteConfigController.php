@@ -12,6 +12,7 @@ use App\Models\SiteConfig;
 use App\Modules\Media\MediaService;
 use App\Support\Tenancy\CurrentStore;
 use App\Support\Tenancy\HostStoreResolver;
+use App\Support\WebsiteEditor\HomepageSnapshot;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -667,6 +668,7 @@ class SiteConfigController extends Controller
                 'homepage_showcase' => $this->resolveShowcase($config),
                 'homepage_watch_shop' => $this->resolveWatchShop($config),
                 'homepage_best_sellers' => $this->resolveBestSellers($config),
+                'homepage_sections' => $config->homepage_sections ?: HomepageSnapshot::DEFAULT_SECTIONS,
                 'about_highlights' => $config->about_highlights,
                 'shop_header' => $config->shop_header,
                 'shop_promo' => $config->shop_promo,
