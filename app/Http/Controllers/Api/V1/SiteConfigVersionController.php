@@ -9,6 +9,7 @@ use App\Models\SiteConfig;
 use App\Models\SiteConfigDraft;
 use App\Models\SiteConfigVersion;
 use App\Support\WebsiteEditor\HomepageSnapshot;
+use App\Support\WebsiteEditor\WebsiteEditorAssets;
 use App\Support\WebsiteEditor\WebsiteEditorAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,7 +19,10 @@ use Throwable;
 
 class SiteConfigVersionController extends Controller
 {
-    public function __construct(private readonly WebsiteEditorAudit $audit) {}
+    public function __construct(
+        private readonly WebsiteEditorAudit $audit,
+        private readonly WebsiteEditorAssets $assets,
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -90,9 +94,11 @@ class SiteConfigVersionController extends Controller
                     'published_by' => $request->user()->id,
                 ]);
                 $config->update(HomepageSnapshot::forPersistence($snapshot->payload));
+                $this->assets->publish($config, $snapshot->payload);
                 SiteConfigDraft::withoutGlobalScope(StoreScope::class)
                     ->where('store_id', $storeId)
                     ->delete();
+                $this->assets->purgeAllDraftAssets($config);
                 $this->audit->record('version_restored', $config, $request->user(), [
                     'restored_version_id' => $snapshot->id,
                     'archived_version_id' => $archived->id,
@@ -105,6 +111,38 @@ class SiteConfigVersionController extends Controller
         } catch (Throwable $exception) {
             $this->audit->failed('restore', $storeId, $request->user()->id, $exception, [
                 'restored_version_id' => $version,
+            ]);
+
+            throw $exception;
+        }
+    }
+
+    public function destroy(Request $request, int $version): JsonResponse
+    {
+        $storeId = (int) $request->user()->store_id;
+
+        try {
+            return DB::transaction(function () use ($request, $version, $storeId): JsonResponse {
+                $config = SiteConfig::withoutGlobalScope(StoreScope::class)
+                    ->where('store_id', $storeId)
+                    ->firstOrFail();
+                $snapshot = SiteConfigVersion::withoutGlobalScope(StoreScope::class)
+                    ->where('store_id', $storeId)
+                    ->lockForUpdate()
+                    ->findOrFail($version);
+
+                $snapshot->delete();
+                $this->audit->record('version_deleted', $config, $request->user(), [
+                    'deleted_version_id' => $version,
+                ]);
+
+                return response()->json([
+                    'message' => 'Published website version deleted.',
+                ]);
+            });
+        } catch (Throwable $exception) {
+            $this->audit->failed('delete_version', $storeId, $request->user()->id, $exception, [
+                'deleted_version_id' => $version,
             ]);
 
             throw $exception;

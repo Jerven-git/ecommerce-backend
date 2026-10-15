@@ -393,9 +393,11 @@ Route::prefix('v1')->group(function () {
                 Route::put('/site-config/draft', [SiteConfigDraftController::class, 'store']);
                 Route::delete('/site-config/draft', [SiteConfigDraftController::class, 'destroy']);
                 Route::post('/site-config/draft/publish', [SiteConfigDraftController::class, 'publish']);
+                Route::post('/site-config/draft/media/{collection}', [SiteConfigDraftController::class, 'uploadMedia']);
                 Route::get('/site-config/versions', [SiteConfigVersionController::class, 'index']);
                 Route::get('/site-config/versions/{version}', [SiteConfigVersionController::class, 'show']);
                 Route::post('/site-config/versions/{version}/restore', [SiteConfigVersionController::class, 'restore']);
+                Route::delete('/site-config/versions/{version}', [SiteConfigVersionController::class, 'destroy']);
                 Route::post('/site-config/media/{collection}', [SiteConfigController::class, 'uploadMedia']);
                 Route::delete('/site-config/media/{collection}', [SiteConfigController::class, 'deleteMedia']);
                 Route::post('/site-config/watch-shop/cards', [SiteConfigController::class, 'uploadWatchShopCard']);

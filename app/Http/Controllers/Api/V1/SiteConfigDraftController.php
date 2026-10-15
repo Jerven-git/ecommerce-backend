@@ -9,15 +9,20 @@ use App\Models\SiteConfig;
 use App\Models\SiteConfigDraft;
 use App\Models\SiteConfigVersion;
 use App\Support\WebsiteEditor\HomepageSnapshot;
+use App\Support\WebsiteEditor\WebsiteEditorAssets;
 use App\Support\WebsiteEditor\WebsiteEditorAudit;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Throwable;
 
 class SiteConfigDraftController extends Controller
 {
-    public function __construct(private readonly WebsiteEditorAudit $audit) {}
+    public function __construct(
+        private readonly WebsiteEditorAudit $audit,
+        private readonly WebsiteEditorAssets $assets,
+    ) {}
 
     public function show(): JsonResponse
     {
@@ -52,12 +57,14 @@ class SiteConfigDraftController extends Controller
             return $this->draftSaveConflictResponse();
         }
 
+        $payload = $this->assets->normalizePayload($config, $request->validated('payload'));
+
         if ($existing) {
             $updated = SiteConfigDraft::query()
                 ->whereKey($existing->id)
                 ->where('lock_version', $submittedVersion)
                 ->update([
-                    'payload' => HomepageSnapshot::forPersistence($request->validated('payload')),
+                    'payload' => HomepageSnapshot::forDraft($payload),
                     'base_updated_at' => $expectedBase,
                     'lock_version' => DB::raw('lock_version + 1'),
                     'updated_by' => $request->user()->id,
@@ -71,7 +78,7 @@ class SiteConfigDraftController extends Controller
         } else {
             $draft = SiteConfigDraft::query()->create([
                 'store_id' => $config->store_id,
-                'payload' => HomepageSnapshot::forPersistence($request->validated('payload')),
+                'payload' => HomepageSnapshot::forDraft($payload),
                 'base_updated_at' => $expectedBase,
                 'base_hash' => HomepageSnapshot::hash(HomepageSnapshot::fromConfig($config)),
                 'lock_version' => 1,
@@ -79,6 +86,8 @@ class SiteConfigDraftController extends Controller
                 'updated_by' => $request->user()->id,
             ]);
         }
+
+        $this->assets->purgeUnusedDraftAssets($config, $draft->payload);
 
         $this->audit->record('draft_saved', $config, $request->user(), [
             'draft_id' => $draft->id,
@@ -107,6 +116,8 @@ class SiteConfigDraftController extends Controller
                 'draft_version' => $draftVersion,
             ]);
         }
+
+        $this->assets->purgeAllDraftAssets($config);
 
         return response()->json([
             'data' => $this->responseData($config, null),
@@ -138,7 +149,10 @@ class SiteConfigDraftController extends Controller
 
                 $publishedPayload = HomepageSnapshot::fromConfig($config);
 
-                if (! hash_equals($draft->base_hash, HomepageSnapshot::hash($publishedPayload))) {
+                $matchesPublishedSnapshot = collect(HomepageSnapshot::compatibleBaseHashes($publishedPayload))
+                    ->contains(fn (string $hash): bool => hash_equals($draft->base_hash, $hash));
+
+                if (! $matchesPublishedSnapshot) {
                     $this->audit->rejected('publish', 'draft_conflict', $storeId, $user->id, [
                         'draft_id' => $draft->id,
                     ]);
@@ -159,6 +173,7 @@ class SiteConfigDraftController extends Controller
                 $draftId = $draft->id;
                 $draftVersion = $draft->lock_version;
                 $config->update(HomepageSnapshot::forPersistence($draft->payload));
+                $this->assets->publish($config, $draft->payload);
                 $draft->delete();
                 $this->audit->record('website_published', $config, $user, [
                     'draft_id' => $draftId,
@@ -176,6 +191,17 @@ class SiteConfigDraftController extends Controller
 
             throw $exception;
         }
+    }
+
+    public function uploadMedia(Request $request, string $collection): JsonResponse
+    {
+        abort_unless(in_array($collection, WebsiteEditorAssets::SLOTS, true), 404);
+
+        $validated = $request->validate(['file' => WebsiteEditorAssets::uploadRules($collection)]);
+
+        return response()->json(
+            $this->assets->upload($this->configForAuthenticatedStore(), $validated['file'], $collection),
+        );
     }
 
     private function configForAuthenticatedStore(): SiteConfig

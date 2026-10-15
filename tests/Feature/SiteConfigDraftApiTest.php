@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Middleware\SessionLifetimeMiddleware;
 use App\Http\Middleware\SubscriptionMiddleware;
+use App\Models\Media;
 use App\Models\Role;
 use App\Models\Scopes\StoreScope;
 use App\Models\SiteConfig;
@@ -11,7 +12,11 @@ use App\Models\SiteConfigDraft;
 use App\Models\SiteConfigVersion;
 use App\Models\Store;
 use App\Models\User;
+use App\Support\WebsiteEditor\HomepageSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class SiteConfigDraftApiTest extends TestCase
@@ -54,6 +59,39 @@ class SiteConfigDraftApiTest extends TestCase
     private function payload(string $heroTitle): array
     {
         return [
+            'site_name' => 'My Store',
+            'contact_email' => '',
+            'contact_phone' => '',
+            'contact_entries' => [],
+            'social_links' => [],
+            'logo_media_id' => null,
+            'logo_url' => null,
+            'favicon_media_id' => null,
+            'favicon_url' => null,
+            'cart_icon_media_id' => null,
+            'cart_icon_url' => null,
+            'footer_logo_media_id' => null,
+            'footer_logo_url' => null,
+            'logo_alt_text' => '',
+            'logo_size' => 36,
+            'footer_logo_size' => 128,
+            'hero_media_id' => null,
+            'hero_image_url' => null,
+            'hero_media_mime' => null,
+            'homepage_statement_media_id' => null,
+            'homepage_statement_image_url' => null,
+            'about_media_id' => null,
+            'about_image_url' => null,
+            'story_image_a_media_id' => null,
+            'story_image_a_url' => null,
+            'story_image_b_media_id' => null,
+            'story_image_b_url' => null,
+            'contact_media_id' => null,
+            'contact_image_url' => null,
+            'blog_media_id' => null,
+            'blog_image_url' => null,
+            'services_media_id' => null,
+            'services_image_url' => null,
             'hero_title' => $heroTitle,
             'hero_subtitle' => 'Draft subtitle',
             'hero_overlay_color' => '#000000',
@@ -274,6 +312,249 @@ class SiteConfigDraftApiTest extends TestCase
         $this->assertSame('Shop the collection', $published->shop_header['heading']);
         $this->assertSame('Store journal', $published->blog_page['header']['heading']);
         $this->assertSame('A private welcome offer', $published->welcome_popup_heading);
+    }
+
+    public function test_global_store_details_publish_and_restore_with_the_website_snapshot(): void
+    {
+        $this->config->update([
+            'site_name' => 'Original Store',
+            'contact_email' => 'hello@original.test',
+            'contact_phone' => '+1 555 1000',
+            'contact_entries' => [['label' => 'Sales', 'email' => 'sales@original.test', 'phone' => '']],
+            'social_links' => [['platform' => 'instagram', 'url' => 'https://instagram.com/original', 'label' => 'Original Instagram']],
+        ]);
+
+        $base = $this->asAdmin()->getJson('/api/v1/site-config/draft')->json('data.base_updated_at');
+        $payload = $this->payload('Website draft');
+        $payload['site_name'] = 'Published Store';
+        $payload['contact_email'] = '';
+        $payload['contact_phone'] = '';
+        $payload['contact_entries'] = [['label' => 'Support', 'email' => 'support@published.test', 'phone' => '+1 555 2000']];
+        $payload['social_links'] = [['platform' => 'facebook', 'url' => 'https://facebook.com/published', 'label' => 'Published Facebook']];
+
+        $this->asAdmin()->putJson('/api/v1/site-config/draft', [
+            'base_updated_at' => $base,
+            'payload' => $payload,
+        ])->assertOk();
+
+        $private = $this->config->fresh();
+        $this->assertSame('Original Store', $private->site_name);
+        $this->assertSame('hello@original.test', $private->contact_email);
+
+        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
+
+        $published = $this->config->fresh();
+        $this->assertSame('Published Store', $published->site_name);
+        $this->assertSame('', $published->contact_email);
+        $this->assertSame('support@published.test', $published->contact_entries[0]['email']);
+        $this->assertSame('facebook', $published->social_links[0]['platform']);
+
+        $history = $this->asAdmin()->getJson('/api/v1/site-config/versions')->assertOk();
+        $versionId = $history->json('data.0.id');
+        $this->asAdmin()->postJson("/api/v1/site-config/versions/{$versionId}/restore", [
+            'base_hash' => $history->json('published_hash'),
+        ])->assertOk();
+
+        $restored = $this->config->fresh();
+        $this->assertSame('Original Store', $restored->site_name);
+        $this->assertSame('hello@original.test', $restored->contact_email);
+        $this->assertSame('sales@original.test', $restored->contact_entries[0]['email']);
+        $this->assertSame('instagram', $restored->social_links[0]['platform']);
+    }
+
+    public function test_a_draft_created_before_global_details_still_publishes_safely(): void
+    {
+        $published = HomepageSnapshot::fromConfig($this->config->fresh());
+        $legacyPayload = collect($published)->except([
+            'site_name', 'contact_email', 'contact_phone', 'contact_entries', 'social_links',
+        ])->all();
+        $legacyPayload['hero_title'] = 'Legacy draft hero';
+
+        SiteConfigDraft::withoutGlobalScope(StoreScope::class)->create([
+            'store_id' => $this->store->id,
+            'payload' => $legacyPayload,
+            'base_updated_at' => $this->config->updated_at,
+            'base_hash' => HomepageSnapshot::hashBeforeGlobalDetails($published),
+            'lock_version' => 1,
+            'created_by' => $this->admin->id,
+            'updated_by' => $this->admin->id,
+        ]);
+
+        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
+
+        $fresh = $this->config->fresh();
+        $this->assertSame('Legacy draft hero', $fresh->hero_title);
+        $this->assertSame('My Store', $fresh->site_name);
+    }
+
+    public function test_brand_assets_remain_private_until_publish_and_restore_with_versions(): void
+    {
+        Storage::fake('public');
+        Queue::fake();
+
+        $original = $this->asAdmin()->post('/api/v1/site-config/media/logo', [
+            'file' => UploadedFile::fake()->image('original-logo.png', 240, 80),
+        ])->assertOk();
+        $originalId = $original->json('id');
+
+        $base = $this->asAdmin()->getJson('/api/v1/site-config/draft')->json('data.base_updated_at');
+        $draftAsset = $this->asAdmin()->post('/api/v1/site-config/draft/media/logo', [
+            'file' => UploadedFile::fake()->image('draft-logo.png', 300, 100),
+        ])->assertOk();
+        $draftAssetId = $draftAsset->json('id');
+
+        $this->assertSame($originalId, $this->config->fresh()->logoMedia?->id);
+        $this->assertSame('website_editor_draft_logo', Media::findOrFail($draftAssetId)->collection);
+
+        $payload = $this->payload('Website draft');
+        $payload['logo_media_id'] = $draftAssetId;
+        $payload['logo_url'] = 'https://untrusted.example/ignored.png';
+        $payload['logo_alt_text'] = 'Draft logo';
+        $payload['logo_size'] = 52;
+
+        $saved = $this->asAdmin()->putJson('/api/v1/site-config/draft', [
+            'base_updated_at' => $base,
+            'payload' => $payload,
+        ])->assertOk();
+
+        $this->assertSame($draftAsset->json('url'), $saved->json('data.payload.logo_url'));
+        $this->assertSame($originalId, $this->config->fresh()->logoMedia?->id);
+
+        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
+
+        $published = $this->config->fresh();
+        $this->assertSame($draftAssetId, $published->logoMedia?->id);
+        $this->assertSame('Draft logo', $published->logo_alt_text);
+        $this->assertSame(52, $published->logo_size);
+        $this->assertSame('website_editor_asset_logo', Media::findOrFail($originalId)->collection);
+
+        $history = $this->asAdmin()->getJson('/api/v1/site-config/versions')->assertOk();
+        $versionId = $history->json('data.0.id');
+        $this->asAdmin()->postJson("/api/v1/site-config/versions/{$versionId}/restore", [
+            'base_hash' => $history->json('published_hash'),
+        ])->assertOk();
+
+        $this->assertSame($originalId, $this->config->fresh()->logoMedia?->id);
+        $this->assertSame('website_editor_asset_logo', Media::findOrFail($draftAssetId)->collection);
+    }
+
+    public function test_page_media_remains_private_and_restores_with_the_published_version(): void
+    {
+        Storage::fake('public');
+        Queue::fake();
+
+        $original = $this->asAdmin()->post('/api/v1/site-config/media/about', [
+            'file' => UploadedFile::fake()->image('original-about.jpg', 1200, 800),
+        ])->assertOk();
+        $draftAsset = $this->asAdmin()->post('/api/v1/site-config/draft/media/about', [
+            'file' => UploadedFile::fake()->image('draft-about.jpg', 1200, 800),
+        ])->assertOk();
+        $draftHero = $this->asAdmin()->post('/api/v1/site-config/draft/media/hero', [
+            'file' => UploadedFile::fake()->image('draft-hero.png', 1600, 900),
+        ])->assertOk();
+
+        $base = $this->asAdmin()->getJson('/api/v1/site-config/draft')->json('data.base_updated_at');
+        $payload = $this->payload('Website draft');
+        $payload['about_media_id'] = $draftAsset->json('id');
+        $payload['about_image_url'] = 'https://untrusted.example/ignored.jpg';
+        $payload['hero_media_id'] = $draftHero->json('id');
+        $payload['hero_image_url'] = 'https://untrusted.example/ignored.png';
+        $payload['hero_media_mime'] = 'video/mp4';
+
+        $saved = $this->asAdmin()->putJson('/api/v1/site-config/draft', [
+            'base_updated_at' => $base,
+            'payload' => $payload,
+        ])->assertOk();
+
+        $this->assertSame($draftAsset->json('url'), $saved->json('data.payload.about_image_url'));
+        $this->assertSame($draftHero->json('url'), $saved->json('data.payload.hero_image_url'));
+        $this->assertSame('image/png', $saved->json('data.payload.hero_media_mime'));
+        $this->assertSame($original->json('id'), $this->config->fresh()->aboutMedia?->id);
+
+        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
+        $this->assertSame($draftAsset->json('id'), $this->config->fresh()->aboutMedia?->id);
+
+        $history = $this->asAdmin()->getJson('/api/v1/site-config/versions')->assertOk();
+        $this->asAdmin()->postJson('/api/v1/site-config/versions/'.$history->json('data.0.id').'/restore', [
+            'base_hash' => $history->json('published_hash'),
+        ])->assertOk();
+
+        $restored = $this->config->fresh();
+        $this->assertSame($original->json('id'), $restored->aboutMedia?->id);
+        $this->assertSame($original->json('url'), $restored->about_image_url);
+    }
+
+    public function test_a_draft_created_before_page_media_fields_still_publishes(): void
+    {
+        $published = HomepageSnapshot::fromConfig($this->config->fresh());
+        $legacyPayload = collect($published)->except([
+            'hero_media_id', 'hero_image_url', 'hero_media_mime',
+            'homepage_statement_media_id', 'homepage_statement_image_url',
+            'about_media_id', 'about_image_url',
+            'story_image_a_media_id', 'story_image_a_url',
+            'story_image_b_media_id', 'story_image_b_url',
+            'contact_media_id', 'contact_image_url',
+            'blog_media_id', 'blog_image_url',
+            'services_media_id', 'services_image_url',
+        ])->all();
+        $legacyPayload['hero_title'] = 'Pre-media draft';
+
+        SiteConfigDraft::withoutGlobalScope(StoreScope::class)->create([
+            'store_id' => $this->store->id,
+            'payload' => $legacyPayload,
+            'base_updated_at' => $this->config->updated_at,
+            'base_hash' => HomepageSnapshot::hashBeforePageMedia($published),
+            'lock_version' => 1,
+            'created_by' => $this->admin->id,
+            'updated_by' => $this->admin->id,
+        ]);
+
+        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
+        $this->assertSame('Pre-media draft', $this->config->fresh()->hero_title);
+    }
+
+    public function test_brand_asset_ids_cannot_cross_store_boundaries(): void
+    {
+        Storage::fake('public');
+        Queue::fake();
+
+        $otherStore = Store::factory()->create();
+        $otherConfig = SiteConfig::withoutGlobalScope(StoreScope::class)->create(['store_id' => $otherStore->id]);
+        $foreign = $otherConfig->media()->create([
+            'collection' => 'logo',
+            'hash' => 'foreign-logo',
+            'path' => 'site-config/foreign-logo.png',
+            'format' => 'png',
+            'mime_type' => 'image/png',
+            'size' => 100,
+        ]);
+
+        $base = $this->asAdmin()->getJson('/api/v1/site-config/draft')->json('data.base_updated_at');
+        $payload = $this->payload('Website draft');
+        $payload['logo_media_id'] = $foreign->id;
+        $payload['logo_url'] = $foreign->url;
+
+        $this->asAdmin()->putJson('/api/v1/site-config/draft', [
+            'base_updated_at' => $base,
+            'payload' => $payload,
+        ])->assertUnprocessable()->assertJsonValidationErrors('payload.logo_media_id');
+    }
+
+    public function test_discarding_a_draft_removes_unpublished_brand_assets(): void
+    {
+        Storage::fake('public');
+        Queue::fake();
+
+        $asset = $this->asAdmin()->post('/api/v1/site-config/draft/media/favicon', [
+            'file' => UploadedFile::fake()->image('draft-icon.png', 64, 64),
+        ])->assertOk();
+        $assetId = $asset->json('id');
+        $path = Media::findOrFail($assetId)->path;
+
+        $this->asAdmin()->deleteJson('/api/v1/site-config/draft')->assertOk();
+
+        $this->assertDatabaseMissing('media', ['id' => $assetId]);
+        Storage::disk('public')->assertMissing($path);
     }
 
     public function test_drafts_are_isolated_by_store(): void

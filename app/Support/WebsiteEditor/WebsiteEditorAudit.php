@@ -66,6 +66,7 @@ class WebsiteEditorAudit
             'draft_discarded' => 'Website draft discarded',
             'website_published' => 'Website draft published',
             'version_restored' => 'Website version restored and published',
+            'version_deleted' => 'Website version deleted',
             default => 'Website editor changed',
         };
     }

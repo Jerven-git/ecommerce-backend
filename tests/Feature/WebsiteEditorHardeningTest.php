@@ -82,6 +82,7 @@ class WebsiteEditorHardeningTest extends TestCase
     public function test_editor_routes_require_authentication_and_admin_access(): void
     {
         $this->getJson('/api/v1/site-config/draft')->assertUnauthorized();
+        $this->postJson('/api/v1/site-config/draft/media/logo')->assertUnauthorized();
 
         $customer = User::factory()->create([
             'is_admin' => false,
@@ -91,6 +92,10 @@ class WebsiteEditorHardeningTest extends TestCase
         $this->actingAs($customer)
             ->withoutMiddleware([SessionLifetimeMiddleware::class, SubscriptionMiddleware::class])
             ->getJson('/api/v1/site-config/draft')
+            ->assertForbidden();
+        $this->actingAs($customer)
+            ->withoutMiddleware([SessionLifetimeMiddleware::class, SubscriptionMiddleware::class])
+            ->postJson('/api/v1/site-config/draft/media/logo')
             ->assertForbidden();
     }
 
@@ -112,9 +117,32 @@ class WebsiteEditorHardeningTest extends TestCase
         $this->asAdmin()->postJson("/api/v1/site-config/versions/{$otherVersion->id}/restore", [
             'base_hash' => HomepageSnapshot::hash($this->payload('Published hero')),
         ])->assertNotFound();
+        $this->asAdmin()->deleteJson("/api/v1/site-config/versions/{$otherVersion->id}")
+            ->assertNotFound();
 
         $this->assertSame('Published hero', $this->config->fresh()->hero_title);
         $this->assertSame('Other tenant', $otherConfig->fresh()->hero_title);
+        $this->assertDatabaseHas('site_config_versions', ['id' => $otherVersion->id]);
+    }
+
+    public function test_admin_can_delete_an_earlier_published_version_without_changing_the_live_site(): void
+    {
+        $version = SiteConfigVersion::withoutGlobalScope(StoreScope::class)->create([
+            'store_id' => $this->store->id,
+            'payload' => $this->payload('Earlier published hero'),
+            'published_by' => $this->admin->id,
+        ]);
+
+        $this->asAdmin()->deleteJson("/api/v1/site-config/versions/{$version->id}")
+            ->assertOk()
+            ->assertJsonPath('message', 'Published website version deleted.');
+
+        $this->assertDatabaseMissing('site_config_versions', ['id' => $version->id]);
+        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
+        $this->assertDatabaseHas('activity_log', [
+            'event' => 'version_deleted',
+            'subject_id' => $this->config->id,
+        ]);
     }
 
     public function test_unsafe_storefront_links_are_rejected_server_side(): void
