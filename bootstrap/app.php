@@ -53,7 +53,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'session.lifetime' => SessionLifetimeMiddleware::class,
         ]);
 
-        $middleware->encryptCookies(except: []);
+        // This non-sensitive display preference is written by the storefront
+        // client so it must remain readable without Laravel encryption.
+        $middleware->encryptCookies(except: ['storefront_locale']);
 
         // Sanctum validates CSRF for stateful browser requests. Exempt only
         // public/provider mutations that can legitimately begin without an SPA

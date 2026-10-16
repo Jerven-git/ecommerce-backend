@@ -7,14 +7,17 @@ use App\Http\Requests\SaveSiteConfigDraftRequest;
 use App\Models\Scopes\StoreScope;
 use App\Models\SiteConfig;
 use App\Models\SiteConfigDraft;
-use App\Models\SiteConfigVersion;
+use App\Models\Store;
 use App\Support\WebsiteEditor\HomepageSnapshot;
 use App\Support\WebsiteEditor\WebsiteEditorAssets;
 use App\Support\WebsiteEditor\WebsiteEditorAudit;
+use App\Support\WebsiteEditor\WebsiteEditorWorkflow;
+use App\Support\WebsiteEditor\WebsiteLocalization;
+use App\Support\WebsiteEditor\WebsiteDraftPublisher;
+use App\Support\WebsiteEditor\WebsiteDraftPublishException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 use Throwable;
 
 class SiteConfigDraftController extends Controller
@@ -22,6 +25,9 @@ class SiteConfigDraftController extends Controller
     public function __construct(
         private readonly WebsiteEditorAudit $audit,
         private readonly WebsiteEditorAssets $assets,
+        private readonly WebsiteEditorWorkflow $workflow,
+        private readonly WebsiteDraftPublisher $publisher,
+        private readonly WebsiteLocalization $localization,
     ) {}
 
     public function show(): JsonResponse
@@ -57,7 +63,9 @@ class SiteConfigDraftController extends Controller
             return $this->draftSaveConflictResponse();
         }
 
-        $payload = $this->assets->normalizePayload($config, $request->validated('payload'));
+        $submittedPayload = $request->validated('payload');
+        $this->localization->validateDraftPayload($submittedPayload);
+        $payload = $this->assets->normalizePayload($config, $submittedPayload);
 
         if ($existing) {
             $updated = SiteConfigDraft::query()
@@ -68,6 +76,7 @@ class SiteConfigDraftController extends Controller
                     'base_updated_at' => $expectedBase,
                     'lock_version' => DB::raw('lock_version + 1'),
                     'updated_by' => $request->user()->id,
+                    ...$this->resetWorkflow(),
                 ]);
 
             if ($updated !== 1) {
@@ -129,63 +138,23 @@ class SiteConfigDraftController extends Controller
     {
         $user = request()->user();
         $storeId = (int) $user->store_id;
+        $validated = request()->validate([
+            'release_note' => ['nullable', 'string', 'max:500'],
+        ]);
+        $releaseNote = trim((string) ($validated['release_note'] ?? '')) ?: null;
 
         try {
-            return DB::transaction(function () use ($storeId, $user): JsonResponse {
-                $config = SiteConfig::withoutGlobalScope(StoreScope::class)
-                    ->where('store_id', $storeId)
-                    ->lockForUpdate()
-                    ->firstOrFail();
-                $draft = SiteConfigDraft::withoutGlobalScope(StoreScope::class)
-                    ->where('store_id', $storeId)
-                    ->lockForUpdate()
-                    ->first();
+            $result = $this->publisher->publish($storeId, $user, $releaseNote);
 
-                if (! $draft) {
-                    $this->audit->rejected('publish', 'draft_missing', $storeId, $user->id);
-
-                    return response()->json(['message' => 'There is no saved draft to publish.'], 404);
-                }
-
-                $publishedPayload = HomepageSnapshot::fromConfig($config);
-
-                $matchesPublishedSnapshot = collect(HomepageSnapshot::compatibleBaseHashes($publishedPayload))
-                    ->contains(fn (string $hash): bool => hash_equals($draft->base_hash, $hash));
-
-                if (! $matchesPublishedSnapshot) {
-                    $this->audit->rejected('publish', 'draft_conflict', $storeId, $user->id, [
-                        'draft_id' => $draft->id,
-                    ]);
-
-                    return $this->conflictResponse();
-                }
-
-                Validator::make(
-                    ['payload' => $draft->payload],
-                    SaveSiteConfigDraftRequest::payloadRules(),
-                )->validate();
-
-                $version = SiteConfigVersion::withoutGlobalScope(StoreScope::class)->create([
-                    'store_id' => $storeId,
-                    'payload' => $publishedPayload,
-                    'published_by' => $user->id,
-                ]);
-                $draftId = $draft->id;
-                $draftVersion = $draft->lock_version;
-                $config->update(HomepageSnapshot::forPersistence($draft->payload));
-                $this->assets->publish($config, $draft->payload);
-                $draft->delete();
-                $this->audit->record('website_published', $config, $user, [
-                    'draft_id' => $draftId,
-                    'draft_version' => $draftVersion,
-                    'archived_version_id' => $version->id,
-                ]);
-
-                return response()->json([
-                    'data' => $this->responseData($config->fresh(), null),
-                    'message' => 'Website published.',
-                ]);
-            });
+            return response()->json([
+                'data' => $this->responseData($result['config'], null),
+                'message' => 'Website published.',
+            ]);
+        } catch (WebsiteDraftPublishException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->errorCode,
+            ], $exception->status);
         } catch (Throwable $exception) {
             $this->audit->failed('publish', $storeId, $user->id, $exception);
 
@@ -222,6 +191,7 @@ class SiteConfigDraftController extends Controller
             'has_draft' => $draft !== null,
             'draft_updated_at' => $draft?->updated_at?->toJSON(),
             'draft_version' => $draft?->lock_version,
+            'workflow' => $this->workflow->serialize($draft, Store::query()->findOrFail($config->store_id)),
         ];
     }
 
@@ -239,5 +209,21 @@ class SiteConfigDraftController extends Controller
             'message' => 'This private draft was updated in another editor. Refresh before saving your changes.',
             'code' => 'draft_save_conflict',
         ], 409);
+    }
+
+    /** @return array<string, mixed> */
+    private function resetWorkflow(): array
+    {
+        return [
+            'review_status' => 'draft',
+            'review_requested_by' => null,
+            'review_requested_at' => null,
+            'reviewed_by' => null,
+            'reviewed_at' => null,
+            'review_note' => null,
+            'scheduled_publish_at' => null,
+            'scheduled_by' => null,
+            'scheduled_release_note' => null,
+        ];
     }
 }

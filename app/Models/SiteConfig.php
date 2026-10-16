@@ -30,6 +30,9 @@ class SiteConfig extends Model
     protected $fillable = [
         'store_id',
         'site_name',
+        'default_locale',
+        'supported_locales',
+        'localized_content',
         'theme',
         'hero_title',
         'hero_subtitle',
@@ -257,6 +260,8 @@ class SiteConfig extends Model
         'footer_banner' => 'array',
         'footer' => 'array',
         'story_page' => 'array',
+        'supported_locales' => 'array',
+        'localized_content' => 'array',
     ];
 
     public function media()

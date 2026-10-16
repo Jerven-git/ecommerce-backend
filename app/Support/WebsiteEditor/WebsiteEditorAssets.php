@@ -7,6 +7,7 @@ use App\Models\SiteConfig;
 use App\Modules\Media\MediaService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class WebsiteEditorAssets
@@ -59,6 +60,18 @@ class WebsiteEditorAssets
         return 'website_editor_asset_'.$slot;
     }
 
+    /** @return array<int, string> */
+    public static function libraryCollections(): array
+    {
+        return collect(self::SLOTS)
+            ->flatMap(fn (string $slot): array => [
+                $slot,
+                self::draftCollection($slot),
+                self::archiveCollection($slot),
+            ])
+            ->all();
+    }
+
     /** @return array{id: int, collection: string, url: string, mime_type: string} */
     public function upload(SiteConfig $config, UploadedFile $file, string $slot): array
     {
@@ -77,6 +90,89 @@ class WebsiteEditorAssets
             'url' => $media->url,
             'mime_type' => $media->mime_type,
         ];
+    }
+
+    /** @return array{id: int, collection: string, url: string, mime_type: string} */
+    public function reuse(SiteConfig $config, Media $source, string $slot): array
+    {
+        abort_unless(in_array($slot, self::SLOTS, true), 404);
+        abort_unless($source->imageable_type === $config->getMorphClass() && (int) $source->imageable_id === (int) $config->id, 404);
+        abort_unless(in_array($source->collection, self::libraryCollections(), true), 404);
+
+        if (! $this->isCompatible($source, $slot)) {
+            throw ValidationException::withMessages([
+                'media_id' => ['This asset does not meet the file type or size requirements for this placement.'],
+            ]);
+        }
+
+        $allowedForSlot = [
+            $slot,
+            self::draftCollection($slot),
+            self::archiveCollection($slot),
+        ];
+        $media = $source;
+
+        if (! in_array($source->collection, $allowedForSlot, true)) {
+            $extension = pathinfo($source->path, PATHINFO_EXTENSION) ?: $source->format;
+            $copyPath = 'site-config/'.Str::random(40).($extension ? '.'.$extension : '');
+            if (Storage::disk('public')->copy($source->path, $copyPath) !== true) {
+                throw new \RuntimeException('The selected media could not be copied.');
+            }
+
+            try {
+                $media = $config->media()->create([
+                    'hash' => $source->hash,
+                    'path' => $copyPath,
+                    'format' => $source->format,
+                    'mime_type' => $source->mime_type,
+                    'size' => $source->size,
+                    'collection' => self::draftCollection($slot),
+                    'processing_status' => 'ready',
+                    'alt_text' => $source->alt_text,
+                    'original_name' => $source->original_name,
+                ]);
+            } catch (\Throwable $exception) {
+                Storage::disk('public')->delete($copyPath);
+                throw $exception;
+            }
+        }
+
+        return [
+            'id' => $media->id,
+            'collection' => $slot,
+            'url' => $media->url,
+            'mime_type' => $media->mime_type,
+        ];
+    }
+
+    public function isCompatible(Media $media, string $slot): bool
+    {
+        if (! in_array($slot, self::SLOTS, true)) {
+            return false;
+        }
+
+        $brandSlot = in_array($slot, ['logo', 'favicon', 'cart_icon', 'footer_logo'], true);
+        $maxBytes = ($brandSlot ? 2048 : 10240) * 1024;
+        if ((int) $media->size > $maxBytes) {
+            return false;
+        }
+
+        if (in_array($media->mime_type, ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'], true)) {
+            return true;
+        }
+
+        return $slot === 'hero' && in_array($media->mime_type, ['video/mp4', 'video/webm'], true);
+    }
+
+    public function deleteLibraryAsset(SiteConfig $config, Media $media): string
+    {
+        abort_unless($media->imageable_type === $config->getMorphClass() && (int) $media->imageable_id === (int) $config->id, 404);
+        abort_unless(str_starts_with($media->collection, 'website_editor_asset_'), 409, 'Only unused archived assets can be deleted.');
+
+        $path = $media->path;
+        $media->delete();
+
+        return $path;
     }
 
     /** @return array<int, string> */

@@ -12,7 +12,7 @@ class Media extends Model
     use HasFactory;
 
     protected $fillable = [
-        'hash', 'path', 'format', 'mime_type', 'size', 'collection', 'processing_status', 'alt_text',
+        'hash', 'path', 'format', 'mime_type', 'size', 'collection', 'processing_status', 'alt_text', 'original_name',
     ];
 
     protected function format(): Attribute

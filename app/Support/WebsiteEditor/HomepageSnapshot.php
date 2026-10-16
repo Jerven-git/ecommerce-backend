@@ -49,6 +49,15 @@ class HomepageSnapshot
         'social_links',
     ];
 
+    private const LOCALIZATION_FIELDS = [
+        'default_locale',
+        'supported_locales',
+        'localized_content',
+        'default_seo_title',
+        'default_seo_description',
+        'pages_seo',
+    ];
+
     public const DEFAULT_SECTIONS = [
         ['id' => 'hero', 'visible' => true],
         ['id' => 'featured-products', 'visible' => true],
@@ -64,6 +73,12 @@ class HomepageSnapshot
 
     public const FIELDS = [
         'site_name',
+        'default_locale',
+        'supported_locales',
+        'localized_content',
+        'default_seo_title',
+        'default_seo_description',
+        'pages_seo',
         'contact_email',
         'contact_phone',
         'contact_entries',
@@ -111,6 +126,21 @@ class HomepageSnapshot
     {
         $payload = Arr::only($config->toArray(), self::FIELDS);
         $payload['site_name'] = $payload['site_name'] ?? '';
+        $localization = app(WebsiteLocalization::class);
+        $payload['default_locale'] = $localization->normalizeLocale($payload['default_locale'] ?? null)
+            ?? WebsiteLocalization::DEFAULT_LOCALE;
+        $payload['supported_locales'] = $localization->supportedLocales(
+            $payload['supported_locales'] ?? [],
+            $payload['default_locale'],
+        );
+        $payload['localized_content'] = $localization->sanitizeLocalizedContent(
+            $payload['localized_content'] ?? [],
+            $payload['supported_locales'],
+            $payload['default_locale'],
+        );
+        $payload['default_seo_title'] = $payload['default_seo_title'] ?? null;
+        $payload['default_seo_description'] = $payload['default_seo_description'] ?? null;
+        $payload['pages_seo'] = ($payload['pages_seo'] ?? null) ?: [];
         $payload['contact_email'] = $payload['contact_email'] ?? '';
         $payload['contact_phone'] = $payload['contact_phone'] ?? '';
         $payload['contact_entries'] = ($payload['contact_entries'] ?? null) ?: [];
@@ -272,7 +302,7 @@ class HomepageSnapshot
      */
     public static function compatibleBaseHashes(array $payload): array
     {
-        return [
+        $current = [
             self::hash($payload),
             self::hash(Arr::except($payload, self::GLOBAL_DETAILS_FIELDS)),
             self::hash(Arr::except($payload, self::GLOBAL_APPEARANCE_FIELDS)),
@@ -286,6 +316,21 @@ class HomepageSnapshot
                 ...self::PAGE_MEDIA_FIELDS,
             ])),
         ];
+        $legacy = collect([
+            [],
+            self::GLOBAL_DETAILS_FIELDS,
+            self::GLOBAL_APPEARANCE_FIELDS,
+            [...self::GLOBAL_DETAILS_FIELDS, ...self::GLOBAL_APPEARANCE_FIELDS],
+            self::PAGE_MEDIA_FIELDS,
+            [...self::GLOBAL_DETAILS_FIELDS, ...self::PAGE_MEDIA_FIELDS],
+            [...self::GLOBAL_APPEARANCE_FIELDS, ...self::PAGE_MEDIA_FIELDS],
+            [...self::GLOBAL_DETAILS_FIELDS, ...self::GLOBAL_APPEARANCE_FIELDS, ...self::PAGE_MEDIA_FIELDS],
+        ])->map(fn (array $fields): string => self::hash(Arr::except($payload, [
+            ...$fields,
+            ...self::LOCALIZATION_FIELDS,
+        ])))->all();
+
+        return array_values(array_unique([...$current, ...$legacy]));
     }
 
     /** @param array<string, mixed> $payload
@@ -306,6 +351,18 @@ class HomepageSnapshot
     public static function forPersistence(array $payload): array
     {
         $payload = Arr::only($payload, self::FIELDS);
+        $localization = app(WebsiteLocalization::class);
+        $payload['default_locale'] = $localization->normalizeLocale($payload['default_locale'] ?? null)
+            ?? WebsiteLocalization::DEFAULT_LOCALE;
+        $payload['supported_locales'] = $localization->supportedLocales(
+            $payload['supported_locales'] ?? [],
+            $payload['default_locale'],
+        );
+        $payload['localized_content'] = $localization->sanitizeLocalizedContent(
+            $payload['localized_content'] ?? [],
+            $payload['supported_locales'],
+            $payload['default_locale'],
+        );
 
         foreach (['site_name', 'contact_email', 'contact_phone', 'welcome_popup_heading', 'welcome_popup_body'] as $field) {
             if (array_key_exists($field, $payload) && $payload[$field] === null) {

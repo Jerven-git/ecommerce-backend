@@ -19,3 +19,5 @@ Schedule::command('backorders:expire-tokens')->everyFifteenMinutes();
 Schedule::command('subscriptions:expire')->dailyAt('03:00');
 
 Schedule::command('website-editor:monitor')->everyFifteenMinutes()->withoutOverlapping();
+
+Schedule::command('website-editor:publish-scheduled')->everyMinute()->withoutOverlapping();

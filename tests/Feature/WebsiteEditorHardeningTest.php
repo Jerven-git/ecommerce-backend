@@ -83,6 +83,9 @@ class WebsiteEditorHardeningTest extends TestCase
     {
         $this->getJson('/api/v1/site-config/draft')->assertUnauthorized();
         $this->postJson('/api/v1/site-config/draft/media/logo')->assertUnauthorized();
+        $this->getJson('/api/v1/site-config/media-library')->assertUnauthorized();
+        $this->postJson('/api/v1/site-config/draft/review/request')->assertUnauthorized();
+        $this->postJson('/api/v1/site-config/draft/schedule')->assertUnauthorized();
 
         $customer = User::factory()->create([
             'is_admin' => false,
@@ -96,6 +99,14 @@ class WebsiteEditorHardeningTest extends TestCase
         $this->actingAs($customer)
             ->withoutMiddleware([SessionLifetimeMiddleware::class, SubscriptionMiddleware::class])
             ->postJson('/api/v1/site-config/draft/media/logo')
+            ->assertForbidden();
+        $this->actingAs($customer)
+            ->withoutMiddleware([SessionLifetimeMiddleware::class, SubscriptionMiddleware::class])
+            ->getJson('/api/v1/site-config/media-library')
+            ->assertForbidden();
+        $this->actingAs($customer)
+            ->withoutMiddleware([SessionLifetimeMiddleware::class, SubscriptionMiddleware::class])
+            ->postJson('/api/v1/site-config/draft/review/request')
             ->assertForbidden();
     }
 
@@ -239,7 +250,7 @@ class WebsiteEditorHardeningTest extends TestCase
             ->once();
     }
 
-    public function test_version_restore_is_audited_and_clears_the_private_draft(): void
+    public function test_version_restore_is_audited_and_replaces_only_the_private_draft(): void
     {
         $historicalPayload = $this->payload('Historical hero');
         $version = SiteConfigVersion::withoutGlobalScope(StoreScope::class)->create([
@@ -247,19 +258,25 @@ class WebsiteEditorHardeningTest extends TestCase
             'payload' => $historicalPayload,
             'published_by' => $this->admin->id,
         ]);
-        $this->saveDraft($this->payload('Draft replaced by restore'));
+        $draft = $this->saveDraft($this->payload('Draft replaced by restore'));
         $currentHash = HomepageSnapshot::hash(HomepageSnapshot::fromConfig($this->config->fresh()));
 
         $this->asAdmin()->postJson("/api/v1/site-config/versions/{$version->id}/restore", [
             'base_hash' => $currentHash,
-        ])->assertOk();
+            'draft_version' => $draft->lock_version,
+        ])->assertOk()
+            ->assertJsonPath('data.payload.hero_title', 'Historical hero')
+            ->assertJsonPath('data.has_draft', true);
 
-        $this->assertSame('Historical hero', $this->config->fresh()->hero_title);
-        $this->assertDatabaseMissing('site_config_drafts', ['store_id' => $this->store->id]);
+        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
+        $this->assertSame('Historical hero', SiteConfigDraft::withoutGlobalScope(StoreScope::class)
+            ->where('store_id', $this->store->id)
+            ->firstOrFail()
+            ->payload['hero_title']);
         $this->assertDatabaseHas('activity_log', [
             'store_id' => $this->store->id,
             'causer_id' => $this->admin->id,
-            'event' => 'version_restored',
+            'event' => 'version_restored_to_draft',
         ]);
     }
 
@@ -279,7 +296,30 @@ class WebsiteEditorHardeningTest extends TestCase
 
         $this->assertSame('Newer publication', $this->config->fresh()->hero_title);
         $this->assertDatabaseCount('site_config_versions', 1);
-        $this->assertDatabaseMissing('activity_log', ['event' => 'version_restored']);
+        $this->assertDatabaseMissing('activity_log', ['event' => 'version_restored_to_draft']);
+    }
+
+    public function test_version_restore_rejects_a_stale_private_draft_version(): void
+    {
+        $version = SiteConfigVersion::withoutGlobalScope(StoreScope::class)->create([
+            'store_id' => $this->store->id,
+            'payload' => $this->payload('Historical hero'),
+            'published_by' => $this->admin->id,
+        ]);
+        $draft = $this->saveDraft($this->payload('Current private draft'));
+        $draft->update([
+            'payload' => $this->payload('Newer private draft'),
+            'lock_version' => 2,
+        ]);
+
+        $this->asAdmin()->postJson("/api/v1/site-config/versions/{$version->id}/restore", [
+            'base_hash' => HomepageSnapshot::hash(HomepageSnapshot::fromConfig($this->config->fresh())),
+            'draft_version' => 1,
+        ])->assertConflict()->assertJsonPath('code', 'version_restore_draft_conflict');
+
+        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
+        $this->assertSame('Newer private draft', $draft->fresh()->payload['hero_title']);
+        $this->assertDatabaseMissing('activity_log', ['event' => 'version_restored_to_draft']);
     }
 
     public function test_monitor_reports_stale_drafts_and_stalled_media(): void

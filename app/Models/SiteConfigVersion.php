@@ -16,11 +16,16 @@ class SiteConfigVersion extends Model
         'store_id',
         'payload',
         'published_by',
+        'release_note',
+        'changed_areas',
     ];
 
     protected function casts(): array
     {
-        return ['payload' => 'array'];
+        return [
+            'payload' => 'array',
+            'changed_areas' => 'array',
+        ];
     }
 
     public function publisher(): BelongsTo

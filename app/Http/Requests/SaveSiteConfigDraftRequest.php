@@ -25,6 +25,15 @@ class SaveSiteConfigDraftRequest extends FormRequest
     public static function payloadRules(): array
     {
         return [
+            'payload.default_locale' => ['sometimes', 'string', 'max:10'],
+            'payload.supported_locales' => ['sometimes', 'array', 'min:1', 'max:12'],
+            'payload.supported_locales.*' => ['string', 'max:10', 'distinct'],
+            'payload.localized_content' => ['sometimes', 'array', 'max:12'],
+            'payload.localized_content.*' => ['array', 'max:500'],
+            'payload.localized_content.*.*' => ['nullable', 'string', 'max:10000'],
+            'payload.default_seo_title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'payload.default_seo_description' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'payload.pages_seo' => ['sometimes', 'array'],
             'payload.site_name' => ['nullable', 'string', 'max:255'],
             'payload.contact_email' => ['nullable', 'email', 'max:255'],
             'payload.contact_phone' => ['nullable', 'string', 'max:20'],

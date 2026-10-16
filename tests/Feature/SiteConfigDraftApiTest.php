@@ -185,13 +185,23 @@ class SiteConfigDraftApiTest extends TestCase
             'payload' => $this->payload('Published from draft'),
         ])->assertOk();
 
-        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')
+        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish', [
+            'release_note' => 'Updated the homepage message.',
+        ])
             ->assertOk()
             ->assertJsonPath('data.has_draft', false);
 
         $this->assertSame('Published from draft', $this->config->fresh()->hero_title);
         $this->assertDatabaseMissing('site_config_drafts', ['store_id' => $this->store->id]);
         $this->assertDatabaseCount('site_config_versions', 1);
+        $version = SiteConfigVersion::withoutGlobalScope(StoreScope::class)->firstOrFail();
+        $this->assertSame('Updated the homepage message.', $version->release_note);
+        $this->assertContains('Home hero', $version->changed_areas);
+
+        $this->asAdmin()->getJson('/api/v1/site-config/versions')
+            ->assertOk()
+            ->assertJsonPath('data.0.publisher_name', $this->admin->name)
+            ->assertJsonPath('data.0.release_note', 'Updated the homepage message.');
 
         $newBase = $this->config->fresh()->updated_at->toJSON();
         $this->asAdmin()->putJson('/api/v1/site-config/draft', [
@@ -279,12 +289,15 @@ class SiteConfigDraftApiTest extends TestCase
         $this->asAdmin()->getJson("/api/v1/site-config/versions/{$versionId}")
             ->assertOk()
             ->assertJsonPath('data.payload.hero_title', 'Published hero');
-        $this->asAdmin()->postJson("/api/v1/site-config/versions/{$versionId}/restore", [
+        $restore = $this->asAdmin()->postJson("/api/v1/site-config/versions/{$versionId}/restore", [
             'base_hash' => $publishedHash,
-        ])->assertOk();
+        ])->assertOk()
+            ->assertJsonPath('data.has_draft', true)
+            ->assertJsonPath('data.payload.hero_title', 'Published hero');
 
-        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
-        $this->assertSame(2, SiteConfigVersion::withoutGlobalScope(StoreScope::class)->count());
+        $this->assertSame('New published homepage', $this->config->fresh()->hero_title);
+        $this->assertSame(1, SiteConfigVersion::withoutGlobalScope(StoreScope::class)->count());
+        $this->assertSame(1, $restore->json('data.draft_version'));
     }
 
     public function test_additional_storefront_pages_publish_through_the_same_draft(): void
@@ -354,6 +367,11 @@ class SiteConfigDraftApiTest extends TestCase
         $this->asAdmin()->postJson("/api/v1/site-config/versions/{$versionId}/restore", [
             'base_hash' => $history->json('published_hash'),
         ])->assertOk();
+
+        $stillPublished = $this->config->fresh();
+        $this->assertSame('Published Store', $stillPublished->site_name);
+
+        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
 
         $restored = $this->config->fresh();
         $this->assertSame('Original Store', $restored->site_name);
@@ -434,6 +452,10 @@ class SiteConfigDraftApiTest extends TestCase
             'base_hash' => $history->json('published_hash'),
         ])->assertOk();
 
+        $this->assertSame($draftAssetId, $this->config->fresh()->logoMedia?->id);
+        $this->assertSame($originalId, SiteConfigDraft::withoutGlobalScope(StoreScope::class)->where('store_id', $this->store->id)->firstOrFail()->payload['logo_media_id']);
+
+        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
         $this->assertSame($originalId, $this->config->fresh()->logoMedia?->id);
         $this->assertSame('website_editor_asset_logo', Media::findOrFail($draftAssetId)->collection);
     }
@@ -478,6 +500,9 @@ class SiteConfigDraftApiTest extends TestCase
         $this->asAdmin()->postJson('/api/v1/site-config/versions/'.$history->json('data.0.id').'/restore', [
             'base_hash' => $history->json('published_hash'),
         ])->assertOk();
+
+        $this->assertSame($draftAsset->json('id'), $this->config->fresh()->aboutMedia?->id);
+        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
 
         $restored = $this->config->fresh();
         $this->assertSame($original->json('id'), $restored->aboutMedia?->id);

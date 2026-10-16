@@ -13,6 +13,7 @@ use App\Modules\Media\MediaService;
 use App\Support\Tenancy\CurrentStore;
 use App\Support\Tenancy\HostStoreResolver;
 use App\Support\WebsiteEditor\HomepageSnapshot;
+use App\Support\WebsiteEditor\WebsiteLocalization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -20,7 +21,10 @@ use Illuminate\Validation\ValidationException;
 
 class SiteConfigController extends Controller
 {
-    public function __construct(private MediaService $mediaService) {}
+    public function __construct(
+        private MediaService $mediaService,
+        private WebsiteLocalization $localization,
+    ) {}
 
     private const MODULE_KEYS = ['shop', 'blog', 'services', 'about', 'contact', 'commissions', 'gift_cards'];
 
@@ -621,9 +625,17 @@ class SiteConfigController extends Controller
     public function show()
     {
         $config = $this->config();
+        $defaultLocale = $this->localization->normalizeLocale($config->default_locale)
+            ?? WebsiteLocalization::DEFAULT_LOCALE;
+        $supportedLocales = $this->localization->supportedLocales($config->supported_locales, $defaultLocale);
+        $locale = $this->localization->resolveRequestLocale($config, request());
+        $localizedContent = $this->localization->sanitizeLocalizedContent(
+            $config->localized_content,
+            $supportedLocales,
+            $defaultLocale,
+        );
 
-        return response()->json([
-            'data' => [
+        $data = [
                 'id' => $config->id,
                 // False when the request Host is the bare apex (no custom domain
                 // or store subdomain). The SPA uses this to route apex visitors
@@ -634,6 +646,9 @@ class SiteConfigController extends Controller
                 // for environments not fronted by that config.
                 'canonical_host' => app(HostStoreResolver::class)->canonicalHostFor(request()->getHost()),
                 'site_name' => $config->site_name,
+                'default_locale' => $defaultLocale,
+                'supported_locales' => $supportedLocales,
+                'locale' => $locale,
                 'theme' => $config->resolved_theme,
                 'hero_title' => $config->hero_title,
                 'hero_subtitle' => $config->hero_subtitle,
@@ -707,8 +722,21 @@ class SiteConfigController extends Controller
                 'contact_image_url' => $config->contact_image_url ?: optional($config->contactMedia)->url,
                 'blog_image_url' => $config->blog_image_url ?: optional($config->blogMedia)->url,
                 'services_image_url' => $config->services_image_url ?: optional($config->servicesMedia)->url,
-            ],
-        ]);
+        ];
+
+        if (request()->user()) {
+            $data['localized_content'] = $localizedContent;
+        }
+
+        $data = $this->localization->apply(
+            $data,
+            $localizedContent,
+            $locale,
+        );
+
+        return response()->json(['data' => $data])
+            ->header('Content-Language', $locale)
+            ->header('Vary', 'Accept-Language, Cookie');
     }
 
     public function update(Request $request)

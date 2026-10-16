@@ -68,6 +68,7 @@ class MediaService
             'size' => $file->getSize(),
             'collection' => $collection,
             'processing_status' => in_array($mime, self::OPTIMIZABLE_MIMES, true) ? 'pending' : 'ready',
+            'original_name' => Str::limit($file->getClientOriginalName(), 255, ''),
         ]);
 
         $model->media()->save($media);
@@ -91,6 +92,7 @@ class MediaService
             'mime_type' => $mime,
             'size' => $size,
             'collection' => $collection,
+            'original_name' => Str::limit($file->getClientOriginalName(), 255, ''),
         ]);
 
         $model->media()->save($media);

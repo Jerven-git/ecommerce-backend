@@ -18,6 +18,15 @@ class SiteConfigDraft extends Model
         'lock_version',
         'created_by',
         'updated_by',
+        'review_status',
+        'review_requested_by',
+        'review_requested_at',
+        'reviewed_by',
+        'reviewed_at',
+        'review_note',
+        'scheduled_publish_at',
+        'scheduled_by',
+        'scheduled_release_note',
     ];
 
     protected function casts(): array
@@ -26,6 +35,9 @@ class SiteConfigDraft extends Model
             'payload' => 'array',
             'base_updated_at' => 'datetime',
             'lock_version' => 'integer',
+            'review_requested_at' => 'datetime',
+            'reviewed_at' => 'datetime',
+            'scheduled_publish_at' => 'datetime',
         ];
     }
 
@@ -37,5 +49,20 @@ class SiteConfigDraft extends Model
     public function updater(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function reviewRequester(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'review_requested_by');
+    }
+
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function scheduler(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'scheduled_by');
     }
 }
