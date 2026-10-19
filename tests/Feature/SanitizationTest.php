@@ -13,6 +13,9 @@ use App\Models\Shipment;
 use App\Models\SiteConfig;
 use App\Models\TaxSetting;
 use App\Models\User;
+use App\Support\WebsiteEditor\HomepageSnapshot;
+use App\Support\WebsiteEditor\WebsiteDocumentDefaults;
+use App\Support\WebsiteEditor\WebsiteDocumentStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -153,24 +156,30 @@ class SanitizationTest extends TestCase
         $this->assertEquals('FedEx', $shipment->carrier);
     }
 
-    public function test_site_config_sanitized(): void
+    public function test_site_config_and_website_document_are_sanitized(): void
     {
         $config = SiteConfig::create([
+            'contact_email' => '  ADMIN@STORE.COM  ',
+        ]);
+        app(WebsiteDocumentStore::class)->write($config, [
+            ...WebsiteDocumentDefaults::published(),
             'site_name' => '<script>x</script>My Store',
             'hero_title' => '<b>Welcome</b><script>x</script>',
             'hero_subtitle' => '<img onerror=x>Shop Now',
             'contact_email' => '  ADMIN@STORE.COM  ',
             'contact_phone' => '  +1234567890  ',
         ]);
+        $document = HomepageSnapshot::fromConfig($config);
 
-        $this->assertStringNotContainsString('<script>', $config->site_name);
-        $this->assertStringContainsString('My Store', $config->site_name);
-        $this->assertStringNotContainsString('<script>', $config->hero_title);
-        $this->assertStringContainsString('Welcome', $config->hero_title);
-        $this->assertStringNotContainsString('<img', $config->hero_subtitle);
-        $this->assertStringContainsString('Shop Now', $config->hero_subtitle);
+        $this->assertStringNotContainsString('<script>', $document['site_name']);
+        $this->assertStringContainsString('My Store', $document['site_name']);
+        $this->assertStringNotContainsString('<script>', $document['hero_title']);
+        $this->assertStringContainsString('Welcome', $document['hero_title']);
+        $this->assertStringNotContainsString('<img', $document['hero_subtitle']);
+        $this->assertStringContainsString('Shop Now', $document['hero_subtitle']);
         $this->assertEquals('admin@store.com', $config->contact_email);
-        $this->assertEquals('+1234567890', $config->contact_phone);
+        $this->assertEquals('admin@store.com', $document['contact_email']);
+        $this->assertEquals('+1234567890', $document['contact_phone']);
     }
 
     public function test_tax_setting_name_strips_tags(): void

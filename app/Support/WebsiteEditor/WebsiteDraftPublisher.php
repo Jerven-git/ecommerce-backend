@@ -2,7 +2,6 @@
 
 namespace App\Support\WebsiteEditor;
 
-use App\Http\Requests\SaveSiteConfigDraftRequest;
 use App\Models\Scopes\StoreScope;
 use App\Models\SiteConfig;
 use App\Models\SiteConfigDraft;
@@ -13,34 +12,11 @@ use Illuminate\Support\Facades\Validator;
 
 class WebsiteDraftPublisher
 {
-    /** @var array<string, array<int, string>> */
-    private const PUBLISH_AREA_FIELDS = [
-        'Brand assets' => ['logo_media_id', 'logo_url', 'favicon_media_id', 'favicon_url', 'cart_icon_media_id', 'cart_icon_url', 'footer_logo_media_id', 'footer_logo_url', 'logo_alt_text', 'logo_size', 'footer_logo_size'],
-        'Store details' => ['site_name', 'contact_email', 'contact_phone', 'contact_entries', 'social_links'],
-        'Header' => ['header_cta'],
-        'Announcement banner' => ['footer_banner'],
-        'Footer' => ['footer'],
-        'Home hero' => ['hero_media_id', 'hero_image_url', 'hero_media_mime', 'hero_title', 'hero_subtitle', 'hero_overlay_color', 'hero_overlay_opacity', 'hero_full_bleed', 'hero_focal_x', 'hero_focal_y'],
-        'Home layout' => ['homepage_sections'],
-        'How it works' => ['homepage_steps'],
-        'Features' => ['homepage_features'],
-        'Stats' => ['homepage_stats'],
-        'Statement' => ['homepage_statement_media_id', 'homepage_statement_image_url', 'homepage_statement'],
-        'Newsletter' => ['homepage_newsletter'],
-        'About' => ['about_media_id', 'about_image_url', 'about_content', 'about_highlights'],
-        'Story' => ['story_page', 'story_image_a_media_id', 'story_image_a_url', 'story_image_b_media_id', 'story_image_b_url'],
-        'Contact' => ['contact_page', 'contact_media_id', 'contact_image_url'],
-        'Shop' => ['shop_header', 'shop_promo'],
-        'Blog' => ['blog_page', 'blog_media_id', 'blog_image_url'],
-        'Services' => ['services_page', 'services_media_id', 'services_image_url'],
-        'Welcome popup' => ['welcome_popup_enabled', 'welcome_popup_heading', 'welcome_popup_body'],
-        'Languages' => ['default_locale', 'supported_locales', 'localized_content', 'default_seo_title', 'default_seo_description', 'pages_seo'],
-    ];
-
     public function __construct(
         private readonly WebsiteEditorAudit $audit,
         private readonly WebsiteEditorAssets $assets,
         private readonly WebsiteLocalization $localization,
+        private readonly WebsiteDocumentStore $documents,
     ) {}
 
     /** @return array{config: SiteConfig, version: SiteConfigVersion} */
@@ -80,7 +56,7 @@ class WebsiteDraftPublisher
 
             Validator::make(
                 ['payload' => $draft->payload],
-                SaveSiteConfigDraftRequest::payloadRules(),
+                WebsiteDocumentRules::all(),
             )->validate();
             $this->localization->validateDraftPayload($draft->payload);
 
@@ -93,8 +69,13 @@ class WebsiteDraftPublisher
             ]);
             $draftId = $draft->id;
             $draftVersion = $draft->lock_version;
-            $config->update(HomepageSnapshot::forPersistence($draft->payload));
+            $this->documents->write($config, $draft->payload);
+            $config->update([
+                'contact_email' => $draft->payload['contact_email'] ?? '',
+                'contact_entries' => $draft->payload['contact_entries'] ?? [],
+            ]);
             $this->assets->publish($config, $draft->payload);
+            $config->touch();
             $draft->delete();
             $this->audit->record($scheduled ? 'website_scheduled_publish_completed' : 'website_published', $config, $user, [
                 'draft_id' => $draftId,
@@ -110,13 +91,13 @@ class WebsiteDraftPublisher
     }
 
     /**
-     * @param array<string, mixed> $published
-     * @param array<string, mixed> $draft
+     * @param  array<string, mixed>  $published
+     * @param  array<string, mixed>  $draft
      * @return array<int, string>
      */
     private function changedAreas(array $published, array $draft): array
     {
-        return collect(self::PUBLISH_AREA_FIELDS)
+        return collect(WebsiteDocumentSchema::PUBLISH_AREAS)
             ->filter(function (array $fields) use ($published, $draft): bool {
                 foreach ($fields as $field) {
                     if (($published[$field] ?? null) !== ($draft[$field] ?? null)) {

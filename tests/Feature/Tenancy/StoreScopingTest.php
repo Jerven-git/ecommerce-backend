@@ -36,16 +36,18 @@ class StoreScopingTest extends TestCase
     {
         $otherStore = Store::factory()->create();
 
-        SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)
-            ->create(['store_id' => $this->defaultStore->id, 'site_name' => 'Default Site']);
-        SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)
-            ->create(['store_id' => $otherStore->id, 'site_name' => 'Other Site']);
+        $defaultConfig = SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)
+            ->create(['store_id' => $this->defaultStore->id]);
+        $otherConfig = SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)
+            ->create(['store_id' => $otherStore->id]);
+        $this->updateWebsiteDocument($defaultConfig, ['site_name' => 'Default Site']);
+        $this->updateWebsiteDocument($otherConfig, ['site_name' => 'Other Site']);
 
         app(CurrentStore::class)->set($this->defaultStore);
-        $this->assertSame('Default Site', SiteConfig::first()?->site_name);
+        $this->assertSame('Default Site', $this->websiteDocument(SiteConfig::first())['site_name']);
 
         app(CurrentStore::class)->set($otherStore);
-        $this->assertSame('Other Site', SiteConfig::first()?->site_name);
+        $this->assertSame('Other Site', $this->websiteDocument(SiteConfig::first())['site_name']);
     }
 
     public function test_creating_site_config_auto_fills_current_store_id(): void
@@ -53,7 +55,7 @@ class StoreScopingTest extends TestCase
         $store = Store::factory()->create();
         app(CurrentStore::class)->set($store);
 
-        $config = SiteConfig::create(['site_name' => 'Scoped Site']);
+        $config = SiteConfig::create([]);
 
         $this->assertSame($store->id, $config->store_id);
     }
@@ -63,9 +65,9 @@ class StoreScopingTest extends TestCase
         $otherStore = Store::factory()->create();
 
         $defaultConfig = SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)
-            ->create(['store_id' => $this->defaultStore->id, 'site_name' => 'Default Site']);
+            ->create(['store_id' => $this->defaultStore->id]);
         SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)
-            ->create(['store_id' => $otherStore->id, 'site_name' => 'Other Site']);
+            ->create(['store_id' => $otherStore->id]);
 
         app(CurrentStore::class)->set($otherStore);
 

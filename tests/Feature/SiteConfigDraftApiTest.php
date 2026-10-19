@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Support\WebsiteEditor\HomepageSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -36,8 +37,8 @@ class SiteConfigDraftApiTest extends TestCase
         $this->store = Store::factory()->create();
         $this->config = SiteConfig::withoutGlobalScope(StoreScope::class)->create([
             'store_id' => $this->store->id,
-            'hero_title' => 'Published hero',
         ]);
+        $this->updateWebsiteDocument($this->config, ['hero_title' => 'Published hero']);
         $this->admin = User::factory()->create([
             'is_admin' => true,
             'store_id' => $this->store->id,
@@ -173,7 +174,7 @@ class SiteConfigDraftApiTest extends TestCase
             'payload' => $this->payload('Private draft hero'),
         ])->assertOk()->assertJsonPath('data.has_draft', true);
 
-        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
+        $this->assertSame('Published hero', $this->websiteDocument($this->config)['hero_title']);
         $this->assertDatabaseHas('site_config_drafts', ['store_id' => $this->store->id]);
     }
 
@@ -191,7 +192,7 @@ class SiteConfigDraftApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.has_draft', false);
 
-        $this->assertSame('Published from draft', $this->config->fresh()->hero_title);
+        $this->assertSame('Published from draft', $this->websiteDocument($this->config)['hero_title']);
         $this->assertDatabaseMissing('site_config_drafts', ['store_id' => $this->store->id]);
         $this->assertDatabaseCount('site_config_versions', 1);
         $version = SiteConfigVersion::withoutGlobalScope(StoreScope::class)->firstOrFail();
@@ -212,6 +213,31 @@ class SiteConfigDraftApiTest extends TestCase
         $this->assertDatabaseMissing('site_config_drafts', ['store_id' => $this->store->id]);
     }
 
+    public function test_publish_batches_website_media_queries(): void
+    {
+        $base = $this->asAdmin()->getJson('/api/v1/site-config/draft')->json('data.base_updated_at');
+        $this->asAdmin()->putJson('/api/v1/site-config/draft', [
+            'base_updated_at' => $base,
+            'payload' => $this->payload('Query-budget draft'),
+        ])->assertOk();
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
+
+        $mediaQueries = collect(DB::getQueryLog())->filter(
+            fn (array $query): bool => str_contains($query['query'], 'from "media"'),
+        );
+        DB::disableQueryLog();
+
+        $this->assertLessThanOrEqual(
+            4,
+            $mediaQueries->count(),
+            $mediaQueries->pluck('query')->implode("\n"),
+        );
+    }
+
     public function test_publish_rejects_a_stale_draft(): void
     {
         $base = $this->asAdmin()->getJson('/api/v1/site-config/draft')->json('data.base_updated_at');
@@ -220,13 +246,13 @@ class SiteConfigDraftApiTest extends TestCase
             'payload' => $this->payload('Stale draft'),
         ])->assertOk();
 
-        $this->config->update(['hero_title' => 'Changed elsewhere']);
+        $this->updateWebsiteDocument($this->config, ['hero_title' => 'Changed elsewhere']);
 
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')
             ->assertStatus(409)
             ->assertJsonPath('code', 'draft_conflict');
 
-        $this->assertSame('Changed elsewhere', $this->config->fresh()->hero_title);
+        $this->assertSame('Changed elsewhere', $this->websiteDocument($this->config)['hero_title']);
         $this->assertDatabaseHas('site_config_drafts', ['store_id' => $this->store->id]);
     }
 
@@ -268,7 +294,7 @@ class SiteConfigDraftApiTest extends TestCase
         ])->assertOk();
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
 
-        $sections = $this->config->fresh()->homepage_sections;
+        $sections = $this->websiteDocument($this->config)['homepage_sections'];
         $this->assertSame('newsletter', $sections[0]['id']);
         $this->assertFalse($sections[0]['visible']);
     }
@@ -295,7 +321,7 @@ class SiteConfigDraftApiTest extends TestCase
             ->assertJsonPath('data.has_draft', true)
             ->assertJsonPath('data.payload.hero_title', 'Published hero');
 
-        $this->assertSame('New published homepage', $this->config->fresh()->hero_title);
+        $this->assertSame('New published homepage', $this->websiteDocument($this->config)['hero_title']);
         $this->assertSame(1, SiteConfigVersion::withoutGlobalScope(StoreScope::class)->count());
         $this->assertSame(1, $restore->json('data.draft_version'));
     }
@@ -315,27 +341,32 @@ class SiteConfigDraftApiTest extends TestCase
             'payload' => $payload,
         ])->assertOk();
 
-        $this->assertNull($this->config->fresh()->about_content);
+        $this->assertSame('', $this->websiteDocument($this->config)['about_content']);
 
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
 
-        $published = $this->config->fresh();
-        $this->assertSame('A private About page draft.', $published->about_content);
-        $this->assertSame('Book now', $published->header_cta['label']);
-        $this->assertSame('Shop the collection', $published->shop_header['heading']);
-        $this->assertSame('Store journal', $published->blog_page['header']['heading']);
-        $this->assertSame('A private welcome offer', $published->welcome_popup_heading);
+        $published = $this->websiteDocument($this->config);
+        $this->assertSame('A private About page draft.', $published['about_content']);
+        $this->assertSame('Book now', $published['header_cta']['label']);
+        $this->assertSame('Shop the collection', $published['shop_header']['heading']);
+        $this->assertSame('Store journal', $published['blog_page']['header']['heading']);
+        $this->assertSame('A private welcome offer', $published['welcome_popup_heading']);
     }
 
     public function test_global_store_details_publish_and_restore_with_the_website_snapshot(): void
     {
-        $this->config->update([
+        $details = [
             'site_name' => 'Original Store',
             'contact_email' => 'hello@original.test',
             'contact_phone' => '+1 555 1000',
             'contact_entries' => [['label' => 'Sales', 'email' => 'sales@original.test', 'phone' => '']],
             'social_links' => [['platform' => 'instagram', 'url' => 'https://instagram.com/original', 'label' => 'Original Instagram']],
+        ];
+        $this->config->update([
+            'contact_email' => $details['contact_email'],
+            'contact_entries' => $details['contact_entries'],
         ]);
+        $this->updateWebsiteDocument($this->config, $details);
 
         $base = $this->asAdmin()->getJson('/api/v1/site-config/draft')->json('data.base_updated_at');
         $payload = $this->payload('Website draft');
@@ -350,17 +381,17 @@ class SiteConfigDraftApiTest extends TestCase
             'payload' => $payload,
         ])->assertOk();
 
-        $private = $this->config->fresh();
-        $this->assertSame('Original Store', $private->site_name);
-        $this->assertSame('hello@original.test', $private->contact_email);
+        $private = $this->websiteDocument($this->config);
+        $this->assertSame('Original Store', $private['site_name']);
+        $this->assertSame('hello@original.test', $private['contact_email']);
 
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
 
-        $published = $this->config->fresh();
-        $this->assertSame('Published Store', $published->site_name);
-        $this->assertSame('', $published->contact_email);
-        $this->assertSame('support@published.test', $published->contact_entries[0]['email']);
-        $this->assertSame('facebook', $published->social_links[0]['platform']);
+        $published = $this->websiteDocument($this->config);
+        $this->assertSame('Published Store', $published['site_name']);
+        $this->assertSame('', $published['contact_email']);
+        $this->assertSame('support@published.test', $published['contact_entries'][0]['email']);
+        $this->assertSame('facebook', $published['social_links'][0]['platform']);
 
         $history = $this->asAdmin()->getJson('/api/v1/site-config/versions')->assertOk();
         $versionId = $history->json('data.0.id');
@@ -368,16 +399,16 @@ class SiteConfigDraftApiTest extends TestCase
             'base_hash' => $history->json('published_hash'),
         ])->assertOk();
 
-        $stillPublished = $this->config->fresh();
-        $this->assertSame('Published Store', $stillPublished->site_name);
+        $stillPublished = $this->websiteDocument($this->config);
+        $this->assertSame('Published Store', $stillPublished['site_name']);
 
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
 
-        $restored = $this->config->fresh();
-        $this->assertSame('Original Store', $restored->site_name);
-        $this->assertSame('hello@original.test', $restored->contact_email);
-        $this->assertSame('sales@original.test', $restored->contact_entries[0]['email']);
-        $this->assertSame('instagram', $restored->social_links[0]['platform']);
+        $restored = $this->websiteDocument($this->config);
+        $this->assertSame('Original Store', $restored['site_name']);
+        $this->assertSame('hello@original.test', $restored['contact_email']);
+        $this->assertSame('sales@original.test', $restored['contact_entries'][0]['email']);
+        $this->assertSame('instagram', $restored['social_links'][0]['platform']);
     }
 
     public function test_a_draft_created_before_global_details_still_publishes_safely(): void
@@ -400,9 +431,9 @@ class SiteConfigDraftApiTest extends TestCase
 
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
 
-        $fresh = $this->config->fresh();
-        $this->assertSame('Legacy draft hero', $fresh->hero_title);
-        $this->assertSame('My Store', $fresh->site_name);
+        $fresh = $this->websiteDocument($this->config);
+        $this->assertSame('Legacy draft hero', $fresh['hero_title']);
+        $this->assertSame('My Store', $fresh['site_name']);
     }
 
     public function test_brand_assets_remain_private_until_publish_and_restore_with_versions(): void
@@ -441,9 +472,10 @@ class SiteConfigDraftApiTest extends TestCase
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
 
         $published = $this->config->fresh();
+        $publishedDocument = $this->websiteDocument($published);
         $this->assertSame($draftAssetId, $published->logoMedia?->id);
-        $this->assertSame('Draft logo', $published->logo_alt_text);
-        $this->assertSame(52, $published->logo_size);
+        $this->assertSame('Draft logo', $publishedDocument['logo_alt_text']);
+        $this->assertSame(52, $publishedDocument['logo_size']);
         $this->assertSame('website_editor_asset_logo', Media::findOrFail($originalId)->collection);
 
         $history = $this->asAdmin()->getJson('/api/v1/site-config/versions')->assertOk();
@@ -506,7 +538,7 @@ class SiteConfigDraftApiTest extends TestCase
 
         $restored = $this->config->fresh();
         $this->assertSame($original->json('id'), $restored->aboutMedia?->id);
-        $this->assertSame($original->json('url'), $restored->about_image_url);
+        $this->assertSame($original->json('url'), $this->websiteDocument($restored)['about_image_url']);
     }
 
     public function test_a_draft_created_before_page_media_fields_still_publishes(): void
@@ -535,7 +567,7 @@ class SiteConfigDraftApiTest extends TestCase
         ]);
 
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
-        $this->assertSame('Pre-media draft', $this->config->fresh()->hero_title);
+        $this->assertSame('Pre-media draft', $this->websiteDocument($this->config)['hero_title']);
     }
 
     public function test_brand_asset_ids_cannot_cross_store_boundaries(): void
@@ -585,10 +617,10 @@ class SiteConfigDraftApiTest extends TestCase
     public function test_drafts_are_isolated_by_store(): void
     {
         $otherStore = Store::factory()->create();
-        SiteConfig::withoutGlobalScope(StoreScope::class)->create([
+        $otherConfig = SiteConfig::withoutGlobalScope(StoreScope::class)->create([
             'store_id' => $otherStore->id,
-            'hero_title' => 'Other published hero',
         ]);
+        $this->updateWebsiteDocument($otherConfig, ['hero_title' => 'Other published hero']);
         $otherAdmin = User::factory()->create([
             'is_admin' => true,
             'store_id' => $otherStore->id,

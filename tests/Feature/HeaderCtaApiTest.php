@@ -59,7 +59,7 @@ class HeaderCtaApiTest extends TestCase
 
         $this->assertSame(
             ['enabled' => true, 'label' => 'Shop Now', 'link' => '/shop'],
-            SiteConfig::first()->header_cta,
+            $this->websiteDocument(SiteConfig::first())['header_cta'],
         );
     }
 

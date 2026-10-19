@@ -23,14 +23,14 @@ class RealtimeBroadcastTest extends TestCase
         Event::fake([ModelChanged::class]);
 
         $bigValue = str_repeat('x', 20_000);
-        $config->update(['about_content' => $bigValue]);
+        $config->update(['homepage_showcase' => ['description' => $bigValue]]);
 
         Event::assertDispatched(ModelChanged::class, function (ModelChanged $event) use ($bigValue) {
             $encoded = json_encode($event->broadcastWith());
 
             return $event->action === 'updated'
                 && $event->modelType === 'SiteConfig'
-                && in_array('about_content', $event->data['changed'] ?? [], true)
+                && in_array('homepage_showcase', $event->data['changed'] ?? [], true)
                 && ! str_contains($encoded, $bigValue)   // the value itself is not broadcast
                 && strlen($encoded) < 2_000;             // comfortably under Reverb's limit
         });
@@ -42,7 +42,7 @@ class RealtimeBroadcastTest extends TestCase
 
         Event::fake([ModelChanged::class]);
 
-        SiteConfig::create(['about_content' => str_repeat('y', 20_000)]);
+        SiteConfig::create(['homepage_showcase' => ['description' => str_repeat('y', 20_000)]]);
 
         Event::assertDispatched(ModelChanged::class, function (ModelChanged $event) {
             return $event->action === 'created'

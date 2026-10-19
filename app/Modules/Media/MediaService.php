@@ -57,7 +57,10 @@ class MediaService
         $this->ensureDirectoryExists($directory);
 
         $path = $this->storeOriginal($file, $directory);
-        $mime = $file->getClientMimeType();
+        // Persist the server-detected MIME type. Client MIME values are supplied
+        // by the browser and can be both inaccurate (for example application/mp4)
+        // and unsafe to use for media classification.
+        $mime = (string) $file->getMimeType();
         $ext = strtolower($file->getClientOriginalExtension() ?: 'jpg');
 
         $media = new Media([
@@ -108,7 +111,7 @@ class MediaService
      */
     private function storeOptimized(UploadedFile $file, string $directory): array
     {
-        $mime = $file->getClientMimeType();
+        $mime = (string) $file->getMimeType();
         $ext = strtolower($file->getClientOriginalExtension() ?: 'jpg');
 
         if (! in_array($mime, self::OPTIMIZABLE_MIMES, true)) {

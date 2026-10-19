@@ -37,8 +37,8 @@ class WebsiteEditorHardeningTest extends TestCase
         $this->store = Store::factory()->create();
         $this->config = SiteConfig::withoutGlobalScope(StoreScope::class)->create([
             'store_id' => $this->store->id,
-            'hero_title' => 'Published hero',
         ]);
+        $this->updateWebsiteDocument($this->config, ['hero_title' => 'Published hero']);
         $this->admin = User::factory()->create([
             'is_admin' => true,
             'store_id' => $this->store->id,
@@ -115,8 +115,8 @@ class WebsiteEditorHardeningTest extends TestCase
         $otherStore = Store::factory()->create();
         $otherConfig = SiteConfig::withoutGlobalScope(StoreScope::class)->create([
             'store_id' => $otherStore->id,
-            'hero_title' => 'Other tenant',
         ]);
+        $this->updateWebsiteDocument($otherConfig, ['hero_title' => 'Other tenant']);
         $otherVersion = SiteConfigVersion::withoutGlobalScope(StoreScope::class)->create([
             'store_id' => $otherStore->id,
             'payload' => HomepageSnapshot::fromConfig($otherConfig),
@@ -131,8 +131,8 @@ class WebsiteEditorHardeningTest extends TestCase
         $this->asAdmin()->deleteJson("/api/v1/site-config/versions/{$otherVersion->id}")
             ->assertNotFound();
 
-        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
-        $this->assertSame('Other tenant', $otherConfig->fresh()->hero_title);
+        $this->assertSame('Published hero', $this->websiteDocument($this->config)['hero_title']);
+        $this->assertSame('Other tenant', $this->websiteDocument($otherConfig)['hero_title']);
         $this->assertDatabaseHas('site_config_versions', ['id' => $otherVersion->id]);
     }
 
@@ -149,7 +149,7 @@ class WebsiteEditorHardeningTest extends TestCase
             ->assertJsonPath('message', 'Published website version deleted.');
 
         $this->assertDatabaseMissing('site_config_versions', ['id' => $version->id]);
-        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
+        $this->assertSame('Published hero', $this->websiteDocument($this->config)['hero_title']);
         $this->assertDatabaseHas('activity_log', [
             'event' => 'version_deleted',
             'subject_id' => $this->config->id,
@@ -185,7 +185,7 @@ class WebsiteEditorHardeningTest extends TestCase
 
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertServerError();
 
-        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
+        $this->assertSame('Published hero', $this->websiteDocument($this->config)['hero_title']);
         $this->assertDatabaseHas('site_config_drafts', ['id' => $draft->id]);
         $this->assertDatabaseCount('site_config_versions', 0);
         $this->assertDatabaseMissing('activity_log', ['event' => 'website_published']);
@@ -204,7 +204,7 @@ class WebsiteEditorHardeningTest extends TestCase
         ])->assertServerError();
 
         $this->assertDatabaseMissing('site_config_drafts', ['store_id' => $this->store->id]);
-        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
+        $this->assertSame('Published hero', $this->websiteDocument($this->config)['hero_title']);
     }
 
     public function test_draft_publish_and_discard_actions_are_audited_without_content(): void
@@ -236,7 +236,7 @@ class WebsiteEditorHardeningTest extends TestCase
     {
         Log::spy();
         $draft = $this->saveDraft($this->payload('Stale publication'));
-        $this->config->update(['hero_title' => 'Changed elsewhere']);
+        $this->updateWebsiteDocument($this->config, ['hero_title' => 'Changed elsewhere']);
 
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')
             ->assertConflict()
@@ -268,7 +268,7 @@ class WebsiteEditorHardeningTest extends TestCase
             ->assertJsonPath('data.payload.hero_title', 'Historical hero')
             ->assertJsonPath('data.has_draft', true);
 
-        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
+        $this->assertSame('Published hero', $this->websiteDocument($this->config)['hero_title']);
         $this->assertSame('Historical hero', SiteConfigDraft::withoutGlobalScope(StoreScope::class)
             ->where('store_id', $this->store->id)
             ->firstOrFail()
@@ -288,13 +288,13 @@ class WebsiteEditorHardeningTest extends TestCase
             'published_by' => $this->admin->id,
         ]);
         $staleHash = HomepageSnapshot::hash(HomepageSnapshot::fromConfig($this->config->fresh()));
-        $this->config->update(['hero_title' => 'Newer publication']);
+        $this->updateWebsiteDocument($this->config, ['hero_title' => 'Newer publication']);
 
         $this->asAdmin()->postJson("/api/v1/site-config/versions/{$version->id}/restore", [
             'base_hash' => $staleHash,
         ])->assertConflict()->assertJsonPath('code', 'version_restore_conflict');
 
-        $this->assertSame('Newer publication', $this->config->fresh()->hero_title);
+        $this->assertSame('Newer publication', $this->websiteDocument($this->config)['hero_title']);
         $this->assertDatabaseCount('site_config_versions', 1);
         $this->assertDatabaseMissing('activity_log', ['event' => 'version_restored_to_draft']);
     }
@@ -317,7 +317,7 @@ class WebsiteEditorHardeningTest extends TestCase
             'draft_version' => 1,
         ])->assertConflict()->assertJsonPath('code', 'version_restore_draft_conflict');
 
-        $this->assertSame('Published hero', $this->config->fresh()->hero_title);
+        $this->assertSame('Published hero', $this->websiteDocument($this->config)['hero_title']);
         $this->assertSame('Newer private draft', $draft->fresh()->payload['hero_title']);
         $this->assertDatabaseMissing('activity_log', ['event' => 'version_restored_to_draft']);
     }

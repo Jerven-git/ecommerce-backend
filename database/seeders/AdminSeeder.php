@@ -7,6 +7,8 @@ use App\Models\SiteConfig;
 use App\Models\Store;
 use App\Models\User;
 use App\Support\Tenancy\CurrentStore;
+use App\Support\WebsiteEditor\HomepageSnapshot;
+use App\Support\WebsiteEditor\WebsiteDocumentStore;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -71,12 +73,10 @@ class AdminSeeder extends Seeder
 
         app(CurrentStore::class)->set($defaultStore);
 
-        SiteConfig::updateOrCreate(
+        $config = SiteConfig::updateOrCreate(
             ['store_id' => $defaultStore->id],
             [
-                'site_name' => 'My Store',
                 'contact_email' => 'sendekato@gmail.com',
-                'contact_phone' => '11112222',
                 'contact_entries' => [
                     [
                         'label' => 'General Inquiries',
@@ -86,6 +86,15 @@ class AdminSeeder extends Seeder
                 ],
             ]
         );
+        app(WebsiteDocumentStore::class)->write($config, array_replace(
+            HomepageSnapshot::fromConfig($config),
+            [
+                'site_name' => 'My Store',
+                'contact_email' => 'sendekato@gmail.com',
+                'contact_phone' => '11112222',
+                'contact_entries' => $config->contact_entries,
+            ],
+        ));
 
         $this->command->info('Site config contact settings seeded!');
     }

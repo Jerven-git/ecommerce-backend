@@ -93,7 +93,7 @@ class ProductApiTest extends TestCase
     {
         $product = Product::factory()->create(['name' => 'Widget']);
 
-        $this->getJson("/api/v1/products/{$product->id}")
+        $this->getJson("/api/v1/products/{$product->slug}")
             ->assertOk()
             ->assertJsonPath('data.name', 'Widget');
     }

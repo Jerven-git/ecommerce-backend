@@ -7,6 +7,8 @@ use App\Models\Scopes\StoreScope;
 use App\Modules\Realtime\Traits\BroadcastsChanges;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
@@ -29,75 +31,30 @@ class SiteConfig extends Model
 
     protected $fillable = [
         'store_id',
-        'site_name',
-        'default_locale',
-        'supported_locales',
-        'localized_content',
         'theme',
-        'hero_title',
-        'hero_subtitle',
-        'hero_overlay_color',
-        'hero_overlay_opacity',
-        'hero_full_bleed',
-        'hero_focal_x',
-        'hero_focal_y',
-        'hero_image_url',
-        'hero_media_mime',
-        'about_content',
         'about_overlay_color',
         'about_overlay_opacity',
-        'about_image_url',
-        'story_page',
         'contact_overlay_color',
         'contact_overlay_opacity',
-        'contact_image_url',
         'badge_in_stock_color',
         'contact_email',
-        'contact_phone',
         'contact_entries',
-        'social_links',
         'favorites_enabled',
         'show_stock_quantity',
         'backorder_enabled',
         'backorder_payment_link_expiry_hours',
-        'welcome_popup_enabled',
-        'welcome_popup_heading',
-        'welcome_popup_body',
         'welcome_popup_discount_id',
-        'homepage_steps',
-        'homepage_features',
-        'homepage_stats',
-        'homepage_statement',
-        'homepage_newsletter',
         'homepage_showcase',
         'homepage_watch_shop',
         'homepage_best_sellers',
-        'homepage_sections',
-        'about_highlights',
-        'shop_header',
-        'shop_promo',
-        'contact_page',
-        'blog_page',
         'blog_overlay_color',
         'blog_overlay_opacity',
-        'blog_image_url',
-        'services_page',
         'services_overlay_color',
         'services_overlay_opacity',
-        'services_image_url',
         'modules_enabled',
-        'default_seo_title',
-        'default_seo_description',
         'default_og_image_url',
-        'pages_seo',
         'canonical_base_url',
-        'logo_alt_text',
-        'logo_size',
-        'footer_logo_size',
         'loader_animation',
-        'header_cta',
-        'footer_banner',
-        'footer',
         'currency_code',
     ];
 
@@ -147,59 +104,10 @@ class SiteConfig extends Model
             ->create(['store_id' => $defaultStore->id]);
     }
 
-    protected function siteName(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
-        );
-    }
-
-    protected function heroTitle(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
-        );
-    }
-
-    protected function heroSubtitle(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
-        );
-    }
-
-    protected function aboutContent(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? trim($value) : $value,
-        );
-    }
-
     protected function contactEmail(): Attribute
     {
         return Attribute::make(
             set: fn ($value) => $value ? strtolower(trim($value)) : $value,
-        );
-    }
-
-    protected function contactPhone(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? trim($value) : $value,
-        );
-    }
-
-    protected function welcomePopupHeading(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
-        );
-    }
-
-    protected function welcomePopupBody(): Attribute
-    {
-        return Attribute::make(
-            set: fn ($value) => $value ? strip_tags(trim($value)) : $value,
         );
     }
 
@@ -222,51 +130,55 @@ class SiteConfig extends Model
         'updated_at' => 'datetime',
         'theme' => 'array',
         'contact_entries' => 'array',
-        'social_links' => 'array',
         'favorites_enabled' => 'boolean',
         'show_stock_quantity' => 'boolean',
         'backorder_enabled' => 'boolean',
         'backorder_payment_link_expiry_hours' => 'integer',
-        'hero_overlay_opacity' => 'integer',
         'about_overlay_opacity' => 'integer',
         'contact_overlay_opacity' => 'integer',
-        'hero_full_bleed' => 'boolean',
-        'logo_size' => 'integer',
-        'footer_logo_size' => 'integer',
-        'hero_focal_x' => 'integer',
-        'hero_focal_y' => 'integer',
-        'welcome_popup_enabled' => 'boolean',
         'welcome_popup_discount_id' => 'integer',
-        'homepage_steps' => 'array',
-        'homepage_features' => 'array',
-        'homepage_stats' => 'array',
-        'homepage_statement' => 'array',
-        'homepage_newsletter' => 'array',
         'homepage_showcase' => 'array',
         'homepage_watch_shop' => 'array',
         'homepage_best_sellers' => 'array',
-        'homepage_sections' => 'array',
-        'about_highlights' => 'array',
-        'shop_header' => 'array',
-        'shop_promo' => 'array',
-        'contact_page' => 'array',
-        'blog_page' => 'array',
         'blog_overlay_opacity' => 'integer',
-        'services_page' => 'array',
         'services_overlay_opacity' => 'integer',
         'modules_enabled' => 'array',
-        'pages_seo' => 'array',
-        'header_cta' => 'array',
-        'footer_banner' => 'array',
-        'footer' => 'array',
-        'story_page' => 'array',
-        'supported_locales' => 'array',
-        'localized_content' => 'array',
     ];
 
     public function media()
     {
         return $this->morphMany(Media::class, 'imageable');
+    }
+
+    public function storefrontMedia(): MorphMany
+    {
+        return $this->morphMany(Media::class, 'imageable')
+            ->where(function ($query): void {
+                $query->whereIn('collection', [
+                    'logo',
+                    'favicon',
+                    'cart_icon',
+                    'footer_logo',
+                    'loader_logo',
+                    'hero',
+                    'homepage_statement',
+                    'story_image_a',
+                    'story_image_b',
+                    'about',
+                    'contact',
+                    'blog',
+                    'services',
+                    'showcase_video',
+                    'showcase_video_poster',
+                    'watch_shop_card',
+                ])->orWhere('collection', 'like', 'watch_shop_poster:%');
+            });
+    }
+
+    public function websiteDocument(): HasOne
+    {
+        return $this->hasOne(SiteConfigDocument::class)
+            ->withoutGlobalScope(StoreScope::class);
     }
 
     public function logoMedia()

@@ -57,7 +57,7 @@ class FooterBannerApiTest extends TestCase
             ])
             ->assertOk();
 
-        $banner = SiteConfig::first()->footer_banner;
+        $banner = $this->websiteDocument(SiteConfig::first())['footer_banner'];
         $this->assertTrue($banner['enabled']);
         $this->assertSame('Summer sale on now', $banner['heading']);
         $this->assertSame('/shop', $banner['button_link']);
@@ -78,7 +78,7 @@ class FooterBannerApiTest extends TestCase
             ])
             ->assertOk();
 
-        $banner = SiteConfig::first()->footer_banner;
+        $banner = $this->websiteDocument(SiteConfig::first())['footer_banner'];
         $this->assertSame('#111827', $banner['background_color']);
         $this->assertSame('#b91c1c', $banner['background_color_to']);
     }

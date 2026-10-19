@@ -34,8 +34,8 @@ class WebsiteEditorEditorialWorkflowTest extends TestCase
         $this->store = Store::factory()->create(['timezone' => 'Asia/Singapore']);
         $this->config = SiteConfig::withoutGlobalScope(StoreScope::class)->create([
             'store_id' => $this->store->id,
-            'hero_title' => 'Published hero',
         ]);
+        $this->updateWebsiteDocument($this->config, ['hero_title' => 'Published hero']);
         $this->admin = User::factory()->create([
             'is_admin' => true,
             'store_id' => $this->store->id,
@@ -125,7 +125,7 @@ class WebsiteEditorEditorialWorkflowTest extends TestCase
         Carbon::setTestNow('2026-10-20 02:31:00 UTC');
         $this->assertSame(0, Artisan::call('website-editor:publish-scheduled'));
 
-        $this->assertSame('Scheduled hero', $this->config->fresh()->hero_title);
+        $this->assertSame('Scheduled hero', $this->websiteDocument($this->config)['hero_title']);
         $this->assertDatabaseMissing('site_config_drafts', ['store_id' => $this->store->id]);
         $version = SiteConfigVersion::withoutGlobalScope(StoreScope::class)->firstOrFail();
         $this->assertSame($this->admin->id, $version->published_by);

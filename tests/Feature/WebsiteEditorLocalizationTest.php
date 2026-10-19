@@ -30,6 +30,8 @@ class WebsiteEditorLocalizationTest extends TestCase
         $this->store = Store::factory()->create();
         $this->config = SiteConfig::withoutGlobalScope(StoreScope::class)->create([
             'store_id' => $this->store->id,
+        ]);
+        $this->updateWebsiteDocument($this->config, [
             'site_name' => 'Default Store',
             'hero_title' => 'Default hero',
             'hero_subtitle' => 'Default supporting text',
@@ -58,7 +60,7 @@ class WebsiteEditorLocalizationTest extends TestCase
 
     public function test_site_config_applies_supported_locale_overrides_with_default_fallbacks(): void
     {
-        $this->config->update([
+        $this->updateWebsiteDocument($this->config, [
             'default_locale' => 'en',
             'supported_locales' => ['en', 'fr'],
             'localized_content' => [
@@ -89,7 +91,7 @@ class WebsiteEditorLocalizationTest extends TestCase
 
     public function test_locale_resolution_honors_explicit_choice_cookie_and_browser_language(): void
     {
-        $this->config->update([
+        $this->updateWebsiteDocument($this->config, [
             'default_locale' => 'en',
             'supported_locales' => ['en', 'fr'],
             'localized_content' => ['fr' => ['hero_title' => 'Titre français']],
@@ -137,7 +139,7 @@ class WebsiteEditorLocalizationTest extends TestCase
 
         $this->asAdmin()->postJson('/api/v1/site-config/draft/publish')->assertOk();
 
-        $this->assertSame(['en', 'fr'], $this->config->fresh()->supported_locales);
+        $this->assertSame(['en', 'fr'], $this->websiteDocument($this->config)['supported_locales']);
         $this->asAdmin()->getJson('/api/v1/site-config?locale=fr')
             ->assertOk()
             ->assertJsonPath('data.hero_title', 'Lancement localisé')

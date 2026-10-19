@@ -168,10 +168,12 @@ class WebsiteLocalization
                 $normalized = $this->normalizeLocale($locale);
                 if (! $normalized || $normalized !== $locale || ! in_array($locale, $supported, true) || $locale === $default) {
                     $errors["payload.localized_content.{$locale}"][] = 'Translations must use a supported non-default language.';
+
                     continue;
                 }
                 if (! is_array($values) || count($values) > 500) {
                     $errors["payload.localized_content.{$locale}"][] = 'This language contains too many translated fields.';
+
                     continue;
                 }
                 foreach ($values as $path => $value) {
@@ -213,7 +215,7 @@ class WebsiteLocalization
     }
 
     /** @param array<string, mixed> $data
-     * @param array<string, array<string, string>> $translations
+     * @param  array<string, array<string, string>>  $translations
      * @return array<string, mixed>
      */
     public function apply(array $data, array $translations, string $locale): array
@@ -229,8 +231,19 @@ class WebsiteLocalization
 
     public function resolveRequestLocale(SiteConfig $config, Request $request): string
     {
-        $default = $this->normalizeLocale($config->default_locale) ?? self::DEFAULT_LOCALE;
-        $supported = $this->supportedLocales($config->supported_locales, $default);
+        $document = HomepageSnapshot::fromConfig($config);
+
+        return $this->resolveRequestLocaleFor(
+            $document['default_locale'],
+            $document['supported_locales'],
+            $request,
+        );
+    }
+
+    public function resolveRequestLocaleFor(mixed $defaultLocale, mixed $supportedLocales, Request $request): string
+    {
+        $default = $this->normalizeLocale($defaultLocale) ?? self::DEFAULT_LOCALE;
+        $supported = $this->supportedLocales($supportedLocales, $default);
         if ($request->query('locale') === 'default') {
             return $default;
         }

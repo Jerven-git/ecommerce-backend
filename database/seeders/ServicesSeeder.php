@@ -5,6 +5,8 @@ namespace Database\Seeders;
 use App\Models\Service;
 use App\Models\ServiceCategory;
 use App\Models\SiteConfig;
+use App\Support\WebsiteEditor\HomepageSnapshot;
+use App\Support\WebsiteEditor\WebsiteDocumentStore;
 use Illuminate\Database\Seeder;
 
 class ServicesSeeder extends Seeder
@@ -16,7 +18,10 @@ class ServicesSeeder extends Seeder
         $config->update([
             'services_overlay_color' => '#0f172a',
             'services_overlay_opacity' => 55,
-            'services_page' => [
+        ]);
+        app(WebsiteDocumentStore::class)->write($config, array_replace(
+            HomepageSnapshot::fromConfig($config),
+            ['services_page' => [
                 'header' => [
                     'label' => 'CARE & PERSONALISATION',
                     'heading' => 'More than just a checkout',
@@ -68,8 +73,8 @@ class ServicesSeeder extends Seeder
                     'button_label' => 'Contact support',
                     'button_link' => '/contact',
                 ],
-            ],
-        ]);
+            ]],
+        ));
 
         $customerCare = ServiceCategory::firstOrCreate(['slug' => 'customer-care'], [
             'name' => 'Customer Care',

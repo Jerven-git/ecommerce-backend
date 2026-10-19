@@ -9,10 +9,6 @@ trait BroadcastsChanges
 {
     public static function bootBroadcastsChanges(): void
     {
-        if (! config('realtime.enabled')) {
-            return;
-        }
-
         // Broadcast only the changed field NAMES, never attribute values.
         // Reverb enforces the Pusher ~10KB per-event limit, and large models
         // (e.g. SiteConfig with its homepage/theme JSON) blow past it, so the
@@ -31,6 +27,10 @@ trait BroadcastsChanges
 
     private static function safeBroadcast($model, string $action, array $data = []): void
     {
+        if (! config('realtime.enabled')) {
+            return;
+        }
+
         try {
             ModelChanged::dispatch(
                 class_basename($model),

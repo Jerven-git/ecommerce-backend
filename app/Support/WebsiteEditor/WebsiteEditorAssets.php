@@ -193,6 +193,15 @@ class WebsiteEditorAssets
      */
     public function normalizePayload(SiteConfig $config, array $payload): array
     {
+        $requested = collect(self::SLOTS)
+            ->filter(fn (string $slot): bool => isset($payload[self::idField($slot)]))
+            ->mapWithKeys(fn (string $slot): array => [
+                $slot => (int) $payload[self::idField($slot)],
+            ]);
+        $mediaById = $requested->isEmpty()
+            ? collect()
+            : $config->media()->whereKey($requested->values()->all())->get()->keyBy('id');
+
         foreach (self::SLOTS as $slot) {
             $idField = self::idField($slot);
             $urlField = self::urlField($slot);
@@ -210,8 +219,8 @@ class WebsiteEditorAssets
                 continue;
             }
 
-            $media = $this->findAllowedAsset($config, $slot, (int) $payload[$idField]);
-            if (! $media) {
+            $media = $mediaById->get((int) $payload[$idField]);
+            if (! $media || ! $this->isAllowedForSlot($media, $slot)) {
                 throw ValidationException::withMessages([
                     'payload.'.$idField => ['The selected asset is not available for this store.'],
                 ]);
@@ -230,6 +239,22 @@ class WebsiteEditorAssets
     /** @param array<string, mixed> $payload */
     public function publish(SiteConfig $config, array $payload): void
     {
+        $targetIds = collect(self::SLOTS)
+            ->filter(fn (string $slot): bool => isset($payload[self::idField($slot)]))
+            ->mapWithKeys(fn (string $slot): array => [
+                $slot => (int) $payload[self::idField($slot)],
+            ]);
+        $media = $config->media()
+            ->where(function ($query) use ($targetIds): void {
+                $query->whereIn('collection', self::SLOTS);
+                if ($targetIds->isNotEmpty()) {
+                    $query->orWhereIn('media.id', $targetIds->values()->all());
+                }
+            })
+            ->get();
+        $mediaById = $media->keyBy('id');
+        $currentByCollection = $media->keyBy('collection');
+
         foreach (self::SLOTS as $slot) {
             $idField = self::idField($slot);
             if (! array_key_exists($idField, $payload)) {
@@ -237,14 +262,14 @@ class WebsiteEditorAssets
             }
 
             $targetId = $payload[$idField] === null ? null : (int) $payload[$idField];
-            $target = $targetId ? $this->findAllowedAsset($config, $slot, $targetId) : null;
-            if ($targetId && ! $target) {
+            $target = $targetId ? $mediaById->get($targetId) : null;
+            if ($targetId && (! $target || ! $this->isAllowedForSlot($target, $slot))) {
                 throw ValidationException::withMessages([
                     'payload.'.$idField => ['The selected asset is not available for this store.'],
                 ]);
             }
 
-            $current = $config->media()->where('collection', $slot)->first();
+            $current = $currentByCollection->get($slot);
             if ($current && $current->id !== $target?->id) {
                 $current->update(['collection' => self::archiveCollection($slot)]);
             }
@@ -260,37 +285,34 @@ class WebsiteEditorAssets
     /** @param array<string, mixed> $payload */
     public function purgeUnusedDraftAssets(SiteConfig $config, array $payload): void
     {
-        foreach (self::SLOTS as $slot) {
-            $keepId = isset($payload[self::idField($slot)]) ? (int) $payload[self::idField($slot)] : null;
-            $query = $config->media()->where('collection', self::draftCollection($slot));
-            if ($keepId) {
-                $query->whereKeyNot($keepId);
-            }
+        $keepByCollection = collect(self::SLOTS)->mapWithKeys(fn (string $slot): array => [
+            self::draftCollection($slot) => isset($payload[self::idField($slot)])
+                ? (int) $payload[self::idField($slot)]
+                : null,
+        ]);
 
-            $query->get()->each(fn (Media $media) => $this->deleteMedia($media));
-        }
+        $config->media()
+            ->whereIn('collection', $keepByCollection->keys()->all())
+            ->get()
+            ->reject(fn (Media $media): bool => $keepByCollection->get($media->collection) === $media->id)
+            ->each(fn (Media $media) => $this->deleteMedia($media));
     }
 
     public function purgeAllDraftAssets(SiteConfig $config): void
     {
-        foreach (self::SLOTS as $slot) {
-            $config->media()
-                ->where('collection', self::draftCollection($slot))
-                ->get()
-                ->each(fn (Media $media) => $this->deleteMedia($media));
-        }
+        $config->media()
+            ->whereIn('collection', array_map(self::draftCollection(...), self::SLOTS))
+            ->get()
+            ->each(fn (Media $media) => $this->deleteMedia($media));
     }
 
-    private function findAllowedAsset(SiteConfig $config, string $slot, int $id): ?Media
+    private function isAllowedForSlot(Media $media, string $slot): bool
     {
-        return $config->media()
-            ->whereKey($id)
-            ->whereIn('collection', [
-                $slot,
-                self::draftCollection($slot),
-                self::archiveCollection($slot),
-            ])
-            ->first();
+        return in_array($media->collection, [
+            $slot,
+            self::draftCollection($slot),
+            self::archiveCollection($slot),
+        ], true);
     }
 
     private function deleteMedia(Media $media): void

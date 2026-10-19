@@ -13,71 +13,31 @@ return new class extends Migration
     {
         Schema::create('site_config', function (Blueprint $table) {
             $table->id();
-            $table->string('site_name')->default('My Store');
             $table->json('theme')->nullable();
-            $table->string('hero_title')->default('Welcome to Our Store');
-            $table->string('hero_subtitle')->default('Discover amazing products at great prices');
-            $table->string('hero_overlay_color', 7)->default('#000000');
-            $table->unsignedTinyInteger('hero_overlay_opacity')->default(45);
-            // When true, hero image flows under the (transparent) header.
-            // When false (default), header sits as a solid band above the hero.
-            $table->boolean('hero_full_bleed')->default(false);
-            // Focal point as percentages (0–100). Maps to CSS `object-position`
-            // so the chosen spot stays visible when the hero is cropped for
-            // different viewport aspect ratios. Default 50/50 = centre.
-            $table->unsignedTinyInteger('hero_focal_x')->default(50);
-            $table->unsignedTinyInteger('hero_focal_y')->default(50);
-            $table->string('hero_image_url')->nullable();
-            $table->string('hero_media_mime')->nullable();
-            $table->text('about_content')->nullable();
             $table->string('about_overlay_color', 7)->default('#000000');
             $table->unsignedTinyInteger('about_overlay_opacity')->default(45);
-            $table->string('about_image_url', 500)->nullable();
             $table->string('contact_overlay_color', 7)->default('#000000');
             $table->unsignedTinyInteger('contact_overlay_opacity')->default(45);
-            $table->string('contact_image_url', 500)->nullable();
             $table->string('badge_in_stock_color', 7)->default('#16a34a');
             $table->string('contact_email')->default('contact@store.com');
-            $table->string('contact_phone')->default('+1234567890');
             $table->json('contact_entries')->nullable();
-            $table->json('social_links')->nullable();
             $table->boolean('favorites_enabled')->default(false);
             $table->boolean('show_stock_quantity')->default(false);
             $table->boolean('backorder_enabled')->default(false);
             $table->unsignedInteger('backorder_payment_link_expiry_hours')->default(24);
-            $table->boolean('welcome_popup_enabled')->default(false);
-            $table->string('welcome_popup_heading')->default('Get 10% Off');
-            $table->string('welcome_popup_body', 1000)->default('Sign up and get a discount code sent right to your inbox.');
             $table->unsignedBigInteger('welcome_popup_discount_id')->nullable();
-            $table->json('homepage_steps')->nullable();
-            $table->json('homepage_features')->nullable();
-            $table->json('homepage_stats')->nullable();
-            $table->json('homepage_newsletter')->nullable();
             $table->json('homepage_showcase')->nullable();
             $table->json('homepage_watch_shop')->nullable();
             $table->json('homepage_best_sellers')->nullable();
-            $table->json('about_highlights')->nullable();
-            $table->json('shop_header')->nullable();
-            $table->json('shop_promo')->nullable();
-            $table->json('contact_page')->nullable();
-            $table->json('blog_page')->nullable();
             $table->string('blog_overlay_color', 7)->default('#000000');
             $table->integer('blog_overlay_opacity')->default(40);
-            $table->string('blog_image_url', 500)->nullable();
-            $table->json('services_page')->nullable();
             $table->string('services_overlay_color', 7)->default('#000000');
             $table->integer('services_overlay_opacity')->default(40);
-            $table->string('services_image_url', 500)->nullable();
             $table->json('modules_enabled')->nullable();
-            $table->string('default_seo_title')->nullable();
-            $table->string('default_seo_description', 500)->nullable();
             $table->string('default_og_image_url', 500)->nullable();
-            $table->json('pages_seo')->nullable();
             $table->string('canonical_base_url', 500)->nullable();
-            $table->string('logo_alt_text')->nullable();
+            $table->string('loader_animation', 20)->default('bounce');
             $table->string('currency_code', 3)->default('USD');
-            $table->json('header_cta')->nullable();
-            $table->json('footer_banner')->nullable();
             $table->timestamps();
         });
     }

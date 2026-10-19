@@ -6,6 +6,7 @@ use App\Models\Scopes\StoreScope;
 use App\Models\SiteConfig;
 use App\Models\Store;
 use App\Support\Tenancy\StoreProvisioner;
+use App\Support\WebsiteEditor\HomepageSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -25,7 +26,7 @@ class StoreProvisionerTest extends TestCase
             ->where('store_id', $store->id)
             ->firstOrFail();
 
-        $this->assertSame('My Store', $config->site_name);
+        $this->assertSame('My Store', HomepageSnapshot::fromConfig($config)['site_name']);
     }
 
     public function test_it_rolls_back_the_store_when_site_config_creation_fails(): void

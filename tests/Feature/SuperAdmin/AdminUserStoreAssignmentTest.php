@@ -5,6 +5,7 @@ namespace Tests\Feature\SuperAdmin;
 use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
+use App\Support\WebsiteEditor\HomepageSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -127,7 +128,7 @@ class AdminUserStoreAssignmentTest extends TestCase
         $config = \App\Models\SiteConfig::withoutGlobalScope(\App\Models\Scopes\StoreScope::class)
             ->where('store_id', $store->id)
             ->firstOrFail();
-        $this->assertSame('My Store', $config->site_name);
+        $this->assertSame('My Store', HomepageSnapshot::fromConfig($config)['site_name']);
     }
 
     public function test_admin_store_assignment_can_be_changed_via_update(): void

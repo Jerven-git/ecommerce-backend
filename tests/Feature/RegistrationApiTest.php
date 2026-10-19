@@ -6,6 +6,7 @@ use App\Models\Scopes\StoreScope;
 use App\Models\SiteConfig;
 use App\Models\Store;
 use App\Models\User;
+use App\Support\WebsiteEditor\HomepageSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -41,7 +42,7 @@ class RegistrationApiTest extends TestCase
         $config = SiteConfig::withoutGlobalScope(StoreScope::class)
             ->where('store_id', $store->id)
             ->firstOrFail();
-        $this->assertSame('My Store', $config->site_name);
+        $this->assertSame('My Store', HomepageSnapshot::fromConfig($config)['site_name']);
 
         // Response exposes the gated state so the UI can route to /subscribe.
         $response->assertJsonPath('data.store.subscription_status', Store::SUBSCRIPTION_UNSUBSCRIBED);
