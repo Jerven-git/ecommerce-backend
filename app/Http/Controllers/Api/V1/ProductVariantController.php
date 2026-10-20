@@ -5,13 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreProductVariantRequest;
 use App\Models\Product;
-use App\Models\ProductOption;
-use App\Models\ProductOptionValue;
 use App\Models\ProductVariant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class ProductVariantController extends Controller
 {
@@ -51,7 +50,7 @@ class ProductVariantController extends Controller
 
             foreach ($data['options'] as $optionData) {
                 if (! empty($optionData['id'])) {
-                    $option = ProductOption::findOrFail($optionData['id']);
+                    $option = $product->options()->findOrFail($optionData['id']);
                     $option->update([
                         'name' => $optionData['name'],
                         'position' => $optionData['position'],
@@ -68,7 +67,7 @@ class ProductVariantController extends Controller
 
                 foreach ($optionData['values'] as $valueData) {
                     if (! empty($valueData['id'])) {
-                        $value = ProductOptionValue::findOrFail($valueData['id']);
+                        $value = $option->values()->findOrFail($valueData['id']);
                         $value->update([
                             'label' => $valueData['label'],
                             'image_url' => $valueData['image_url'] ?? null,
@@ -103,7 +102,7 @@ class ProductVariantController extends Controller
                 ];
 
                 if (! empty($variantData['id'])) {
-                    $variant = ProductVariant::findOrFail($variantData['id']);
+                    $variant = $product->variants()->findOrFail($variantData['id']);
                     $variant->update($variantFields);
                 } else {
                     $variant = $product->variants()->create($variantFields);
@@ -112,8 +111,22 @@ class ProductVariantController extends Controller
                 $incomingVariantIds[] = $variant->id;
 
                 $pivotData = [];
+                $variantOptionIds = [];
                 foreach ($variantData['option_value_ids'] as $valueId) {
+                    if (! isset($valueIdMap[$valueId])) {
+                        throw ValidationException::withMessages([
+                            'variants' => ['Every variant value must belong to an option in this product payload.'],
+                        ]);
+                    }
+
+                    $variantOptionIds[] = $valueIdMap[$valueId];
                     $pivotData[$valueId] = ['product_option_id' => $valueIdMap[$valueId]];
+                }
+
+                if (count(array_unique($variantOptionIds)) !== count($data['options'])) {
+                    throw ValidationException::withMessages([
+                        'variants' => ['Each variant must supply exactly one value per option.'],
+                    ]);
                 }
                 $variant->optionValues()->sync($pivotData);
             }

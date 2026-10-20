@@ -295,9 +295,9 @@ class OrderController extends Controller
             'payment_method' => 'nullable|string|in:stripe,paypal,square',
 
             'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.product_id' => 'required|integer',
             'items.*.quantity' => 'required|integer|min:1',
-            'items.*.variant_id' => 'nullable|integer|exists:product_variants,id',
+            'items.*.variant_id' => 'nullable|integer',
 
             'gift_card_code' => 'nullable|string|max:20',
         ]);
@@ -347,6 +347,8 @@ class OrderController extends Controller
         if (! empty($variantIds)) {
             $variants = ProductVariant::with('optionValues.option')
                 ->whereIn('id', $variantIds)
+                ->whereIn('product_id', $products->keys())
+                ->where('is_active', true)
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get()
@@ -368,6 +370,10 @@ class OrderController extends Controller
 
             if ($variantId && ! $variant) {
                 throw new \Exception("Variant not found: {$variantId}");
+            }
+
+            if ($variant && (int) $variant->product_id !== $productId) {
+                throw new \Exception("Variant does not belong to product: {$productId}");
             }
 
             $availableStock = $variant ? $variant->stock : $product->stock;

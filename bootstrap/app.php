@@ -42,6 +42,17 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ]);
 
+        // Tenant context must exist before implicit route-model binding runs;
+        // otherwise scoped models can be resolved under a stale or empty store.
+        $middleware->prependToPriorityList(
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            ResolveStorefrontStore::class,
+        );
+        $middleware->prependToPriorityList(
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            ResolveAdminStore::class,
+        );
+
         $middleware->alias([
             'admin' => AdminMiddleware::class,
             'account.active' => EnsureAccountActive::class,

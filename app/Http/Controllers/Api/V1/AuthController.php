@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class AuthController extends Controller
 {
@@ -50,11 +51,21 @@ class AuthController extends Controller
             ]);
         }
 
-        // Generate and send 2FA code
-        $this->generateAndSendCode($user);
-
-        // Log out — user is NOT authenticated until 2FA is verified
+        // End the password-authenticated session before any fallible delivery
+        // work. A mail transport failure must never leave the user logged in.
         Auth::logout();
+        $request->session()->regenerate();
+        $request->session()->forget(['two_factor_user_id', 'two_factor_expires_at']);
+
+        try {
+            $this->generateAndSendCode($user);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'Unable to send the verification code. Please try again.',
+            ], 503);
+        }
 
         // Store pending 2FA state in session
         $request->session()->put('two_factor_user_id', $user->id);
@@ -183,8 +194,15 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // Generate and send a new code
-        $this->generateAndSendCode($user);
+        try {
+            $this->generateAndSendCode($user);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'Unable to send the verification code. Please try again.',
+            ], 503);
+        }
 
         // Reset session expiry
         $request->session()->put('two_factor_expires_at', now()->addMinutes(10)->timestamp);
@@ -290,13 +308,19 @@ class AuthController extends Controller
 
         $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
-        TwoFactorCode::create([
+        $twoFactorCode = TwoFactorCode::create([
             'user_id' => $user->id,
             'code' => Hash::make($code),
             'expires_at' => now()->addMinutes(10),
         ]);
 
-        Mail::to($user->email)->send(new TwoFactorCodeMail($code, $user->name));
+        try {
+            Mail::to($user->email)->send(new TwoFactorCodeMail($code, $user->name));
+        } catch (Throwable $e) {
+            $twoFactorCode->delete();
+
+            throw $e;
+        }
     }
 
     private function ensureSession(Request $request): void

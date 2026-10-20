@@ -10,6 +10,7 @@ use App\Models\Store;
 use App\Payments\Contracts\PaymentServiceInterface;
 use App\Payments\DTOs\PaymentInitData;
 use App\Support\Tenancy\CurrentStore;
+use Illuminate\Support\Str;
 
 class PaymentService implements PaymentServiceInterface
 {
@@ -28,6 +29,7 @@ class PaymentService implements PaymentServiceInterface
             'status' => self::PAYMENT_STATUS_PENDING,
             'amount' => $this->toCents($order->total_amount),
             'currency' => strtoupper($order->currency ?: 'USD'),
+            'public_token' => Str::random(64),
             'meta' => $data->toArray(),
         ]);
     }

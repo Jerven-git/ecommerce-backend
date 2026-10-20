@@ -43,6 +43,7 @@ return new class extends Migration
                 'backorder_notified',
                 'backorder_expired',
                 'backorder_cancelled',
+                'failed_needs_refund',
             ])->default('pending');
             $table->timestamp('stock_deducted_at')->nullable();
             $table->boolean('has_backorder_items')->default(false);

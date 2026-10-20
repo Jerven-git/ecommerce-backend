@@ -275,28 +275,30 @@ Route::prefix('v1')->group(function () {
         Route::post('/subscription/checkout', [SubscriptionController::class, 'checkout']);
         Route::post('/subscription/portal', [SubscriptionController::class, 'portal']);
 
-        // Order management
-        Route::get('/orders', [OrderController::class, 'index']);
-        Route::get('/orders/{id}', [OrderController::class, 'show']);
-        Route::patch('/orders/{id}', [OrderController::class, 'updateStatus']);
-        Route::post('/orders/{id}/confirm-payment', [OrderController::class, 'confirmPayment']);
-        Route::post('/orders/{id}/undo-payment', [OrderController::class, 'undoPayment']);
-        Route::post('/orders/{id}/cancel-refund', [OrderController::class, 'cancelAndRefund']);
-        Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
+        Route::middleware('admin')->group(function () {
+            // Order management
+            Route::get('/orders', [OrderController::class, 'index']);
+            Route::get('/orders/{id}', [OrderController::class, 'show']);
+            Route::patch('/orders/{id}', [OrderController::class, 'updateStatus']);
+            Route::post('/orders/{id}/confirm-payment', [OrderController::class, 'confirmPayment']);
+            Route::post('/orders/{id}/undo-payment', [OrderController::class, 'undoPayment']);
+            Route::post('/orders/{id}/cancel-refund', [OrderController::class, 'cancelAndRefund']);
+            Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
 
-        // Shipment management
-        Route::post('/orders/{id}/ship', [ShipmentController::class, 'ship']);
-        Route::patch('/shipments/{id}', [ShipmentController::class, 'update']);
+            // Shipment management
+            Route::post('/orders/{id}/ship', [ShipmentController::class, 'ship']);
+            Route::patch('/shipments/{id}', [ShipmentController::class, 'update']);
 
-        // Backorder management
-        Route::get('/backorders', [BackorderController::class, 'index']);
-        Route::get('/backorders/{id}', [BackorderController::class, 'show']);
-        Route::post('/backorders/{id}/notify', [BackorderController::class, 'notify']);
-        Route::post('/backorders/{id}/resend', [BackorderController::class, 'resend']);
-        Route::post('/backorders/{id}/cancel', [BackorderController::class, 'cancel']);
-        Route::post('/backorders/{id}/mark-paid', [BackorderController::class, 'markAsPaid']);
-        Route::get('/backorder-settings', [BackorderController::class, 'settings']);
-        Route::patch('/backorder-settings', [BackorderController::class, 'updateSettings']);
+            // Backorder management
+            Route::get('/backorders', [BackorderController::class, 'index']);
+            Route::get('/backorders/{id}', [BackorderController::class, 'show']);
+            Route::post('/backorders/{id}/notify', [BackorderController::class, 'notify']);
+            Route::post('/backorders/{id}/resend', [BackorderController::class, 'resend']);
+            Route::post('/backorders/{id}/cancel', [BackorderController::class, 'cancel']);
+            Route::post('/backorders/{id}/mark-paid', [BackorderController::class, 'markAsPaid']);
+            Route::get('/backorder-settings', [BackorderController::class, 'settings']);
+            Route::patch('/backorder-settings', [BackorderController::class, 'updateSettings']);
+        });
 
         /*
         |----------------------------------------------------------------------

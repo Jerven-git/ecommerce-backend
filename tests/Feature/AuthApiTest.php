@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
+use RuntimeException;
 use Tests\TestCase;
 
 class AuthApiTest extends TestCase
@@ -26,6 +28,33 @@ class AuthApiTest extends TestCase
                 'email' => $user->email,
                 'password' => 'secret123',
             ])->assertOk();
+    }
+
+    public function test_mail_failure_does_not_leave_password_login_authenticated(): void
+    {
+        $user = User::factory()->create(['password' => bcrypt('secret123')]);
+        $role = Role::create(['name' => 'admin']);
+        $user->roles()->attach($role);
+
+        Mail::shouldReceive('to')
+            ->once()
+            ->andThrow(new RuntimeException('SMTP unavailable'));
+
+        $this->withSession([])
+            ->postJson('/api/v1/login', [
+                'email' => $user->email,
+                'password' => 'secret123',
+            ])
+            ->assertStatus(503)
+            ->assertJsonPath('message', 'Unable to send the verification code. Please try again.')
+            ->assertSessionMissing('two_factor_user_id')
+            ->assertSessionMissing('two_factor_expires_at');
+
+        $this->assertGuest();
+        $this->assertDatabaseMissing('two_factor_codes', [
+            'user_id' => $user->id,
+            'used_at' => null,
+        ]);
     }
 
     public function test_user_payload_includes_store_domain(): void

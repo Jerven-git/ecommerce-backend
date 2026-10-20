@@ -9,7 +9,9 @@ use App\Models\Backorder;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\SiteConfig;
+use App\Payments\PaymentAccess;
 use App\Payments\PaymentService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -17,9 +19,14 @@ use Illuminate\Support\Str;
 
 class BackorderController extends Controller
 {
+    private function tenantBackorders(): Builder
+    {
+        return Backorder::query()->whereHas('order');
+    }
+
     public function index(Request $request)
     {
-        $query = Backorder::with(['order', 'product']);
+        $query = $this->tenantBackorders()->with(['order', 'product']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->query('status'));
@@ -43,7 +50,7 @@ class BackorderController extends Controller
 
         $query->orderBy('created_at', 'desc');
 
-        $statusCounts = Backorder::toBase()
+        $statusCounts = $this->tenantBackorders()
             ->selectRaw('status, count(*) as count')
             ->groupBy('status')
             ->pluck('count', 'status');
@@ -58,14 +65,14 @@ class BackorderController extends Controller
 
     public function show($id)
     {
-        $backorder = Backorder::with(['order.items', 'product'])->findOrFail($id);
+        $backorder = $this->tenantBackorders()->with(['order.items', 'product'])->findOrFail($id);
 
         return response()->json(['data' => $backorder]);
     }
 
     public function notify(Request $request, $id)
     {
-        $backorder = Backorder::with(['order', 'product'])->findOrFail($id);
+        $backorder = $this->tenantBackorders()->with(['order', 'product'])->findOrFail($id);
 
         if (! in_array($backorder->status, ['awaiting_stock', 'expired'])) {
             return response()->json([
@@ -78,7 +85,7 @@ class BackorderController extends Controller
 
     public function resend($id)
     {
-        $backorder = Backorder::with(['order', 'product'])->findOrFail($id);
+        $backorder = $this->tenantBackorders()->with(['order', 'product'])->findOrFail($id);
 
         if (! in_array($backorder->status, ['notified', 'expired'])) {
             return response()->json([
@@ -135,7 +142,7 @@ class BackorderController extends Controller
 
     public function cancel($id)
     {
-        $backorder = Backorder::with(['order', 'product'])->findOrFail($id);
+        $backorder = $this->tenantBackorders()->with(['order', 'product'])->findOrFail($id);
 
         if (in_array($backorder->status, ['paid', 'cancelled'])) {
             return response()->json([
@@ -243,7 +250,7 @@ class BackorderController extends Controller
     /**
      * Public endpoint: pay for a backorder via token.
      */
-    public function payByToken(Request $request, $token, PaymentService $payments)
+    public function payByToken(Request $request, $token, PaymentService $payments, PaymentAccess $access)
     {
         $backorder = Backorder::with(['order', 'product'])
             ->where('payment_token', $token)
@@ -302,8 +309,10 @@ class BackorderController extends Controller
             $payment = $payments->createPending($order, 'stripe', array_merge($init, [
                 'backorder_id' => $backorder->id,
             ]));
+            $access->grant($request, $payment);
 
             $responseData['payment_id'] = $payment->id;
+            $responseData['payment_token'] = $payment->public_token;
             $responseData['client_secret'] = $init['client_secret'];
         } else {
             // PayPal / Square: create payment through gateway to get redirect URL
@@ -317,8 +326,10 @@ class BackorderController extends Controller
             $payment = $payments->createPending($order, $provider, array_merge($init, [
                 'backorder_id' => $backorder->id,
             ]));
+            $access->grant($request, $payment);
 
             $responseData['payment_id'] = $payment->id;
+            $responseData['payment_token'] = $payment->public_token;
             $responseData['redirect_url'] = $init['redirect_url'] ?? $init['approval_url'] ?? $init['checkout_url'] ?? $init['url'] ?? null;
         }
 
@@ -381,7 +392,7 @@ class BackorderController extends Controller
      */
     public function markAsPaid($id)
     {
-        $backorder = Backorder::with(['order', 'product'])->findOrFail($id);
+        $backorder = $this->tenantBackorders()->with(['order', 'product'])->findOrFail($id);
 
         if ($backorder->status !== 'confirmed') {
             return response()->json([

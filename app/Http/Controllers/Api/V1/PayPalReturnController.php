@@ -61,11 +61,10 @@ class PayPalReturnController extends Controller
 
         // Idempotent
         if ($payment->status === 'paid') {
-            return response()->json([
-                'payment_id' => $payment->id,
-                'status' => 'paid',
-                'capture_id' => data_get($payment->meta, 'capture_id'),
-            ]);
+            return response()->json($this->captureResponse(
+                $payment,
+                data_get($payment->meta, 'capture_id'),
+            ));
         }
 
         $this->pinStoreFromPayment($payment);
@@ -125,11 +124,7 @@ class PayPalReturnController extends Controller
         // ✅ Finalize immediately: flips to paid + deducts stock + moves order
         $payments->markPaid($payment);
 
-        return response()->json([
-            'payment_id' => $payment->id,
-            'status' => 'paid',
-            'capture_id' => $captureId,
-        ]);
+        return response()->json($this->captureResponse($payment, $captureId));
     }
 
     public function return(Request $request, PayPalToken $token, PaymentService $payments)
@@ -150,7 +145,7 @@ class PayPalReturnController extends Controller
         }
 
         if ($payment->status === 'paid') {
-            return redirect($this->frontendUrl('/payment/complete?payment_id='.$payment->id));
+            return redirect($this->frontendUrl($this->paymentCompletePath($payment)));
         }
 
         $this->pinStoreFromPayment($payment);
@@ -210,7 +205,7 @@ class PayPalReturnController extends Controller
 
             $payments->markPaid($payment);
 
-            return redirect($this->frontendUrl('/payment/complete?payment_id='.$payment->id));
+            return redirect($this->frontendUrl($this->paymentCompletePath($payment)));
 
         } catch (\Throwable $e) {
             // keep redirect behavior; just log for visibility
@@ -239,5 +234,29 @@ class PayPalReturnController extends Controller
         );
 
         return $base.$path;
+    }
+
+    private function paymentCompletePath(Payment $payment): string
+    {
+        return '/payment/complete?'.http_build_query([
+            'payment_id' => $payment->id,
+            'payment_token' => $payment->public_token,
+        ]);
+    }
+
+    /**
+     * @return array{payment_id: int, payment_token: string|null, status: string, order_status: string|null, capture_id: mixed}
+     */
+    private function captureResponse(Payment $payment, mixed $captureId): array
+    {
+        return [
+            'payment_id' => $payment->id,
+            'payment_token' => $payment->public_token,
+            'status' => 'paid',
+            'order_status' => Order::withoutGlobalScope(StoreScope::class)
+                ->whereKey($payment->order_id)
+                ->value('status'),
+            'capture_id' => $captureId,
+        ];
     }
 }

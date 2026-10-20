@@ -117,6 +117,35 @@ class ProductVariantApiTest extends TestCase
         $this->assertDatabaseHas('product_option_values', ['label' => 'Blue']);
     }
 
+    public function test_sync_cannot_reparent_another_products_option(): void
+    {
+        $otherProduct = Product::factory()->create();
+        $otherOption = $otherProduct->options()->create(['name' => 'Material', 'position' => 0]);
+        $otherValue = $otherOption->values()->create(['label' => 'Steel', 'position' => 0]);
+
+        $payload = [
+            'options' => [[
+                'id' => $otherOption->id,
+                'name' => 'Hijacked',
+                'position' => 0,
+                'values' => [[
+                    'id' => $otherValue->id,
+                    'label' => 'Changed',
+                    'image_url' => null,
+                    'position' => 0,
+                ]],
+            ]],
+            'variants' => [],
+        ];
+
+        $this->actingAs($this->admin)
+            ->postJson("/api/v1/products/{$this->product->id}/variants/sync", $payload)
+            ->assertNotFound();
+
+        $this->assertSame('Material', $otherOption->fresh()->name);
+        $this->assertSame('Steel', $otherValue->fresh()->label);
+    }
+
     public function test_unauthenticated_cannot_sync_variants(): void
     {
         $this->postJson("/api/v1/products/{$this->product->id}/variants/sync", ['options' => [], 'variants' => []])
@@ -245,6 +274,30 @@ class ProductVariantApiTest extends TestCase
         $this->assertNotNull($item->selected_options);
     }
 
+    public function test_order_rejects_a_variant_from_another_product(): void
+    {
+        $otherProduct = Product::factory()->create(['stock' => 10]);
+        $otherVariant = $otherProduct->variants()->create([
+            'sku' => 'OTHER-VARIANT',
+            'stock' => 10,
+            'is_active' => true,
+        ]);
+
+        $this->postJson('/api/v1/orders', [
+            'customer_name' => 'Test User',
+            'customer_email' => 'test@example.com',
+            'delivery_method' => 'pickup',
+            'shipping_address' => '',
+            'items' => [[
+                'product_id' => $this->product->id,
+                'quantity' => 1,
+                'variant_id' => $otherVariant->id,
+            ]],
+        ])->assertStatus(422);
+
+        $this->assertDatabaseCount('orders', 0);
+    }
+
     // ─────────────────────────────────────────
     // Stock deduction: variant vs product
     // ─────────────────────────────────────────
@@ -294,6 +347,38 @@ class ProductVariantApiTest extends TestCase
                 ['product_id' => $this->product->id, 'quantity' => 5, 'variant_id' => $variant->id],
             ],
         ])->assertStatus(422);
+    }
+
+    public function test_stock_race_moves_paid_order_to_refund_required_state(): void
+    {
+        $this->product->update(['stock' => 2]);
+
+        $this->postJson('/api/v1/orders', [
+            'customer_name' => 'Race Customer',
+            'customer_email' => 'race@example.com',
+            'delivery_method' => 'pickup',
+            'shipping_address' => '',
+            'items' => [
+                ['product_id' => $this->product->id, 'quantity' => 2],
+            ],
+        ])->assertCreated();
+
+        $order = Order::latest()->firstOrFail();
+        $this->product->update(['stock' => 0]);
+
+        Payment::create([
+            'order_id' => $order->id,
+            'provider' => 'cash',
+            'status' => 'pending',
+            'amount' => 20000,
+            'currency' => 'USD',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/api/v1/orders/{$order->id}/confirm-payment")
+            ->assertOk();
+
+        $this->assertSame('failed_needs_refund', $order->fresh()->status);
     }
 
     // ─────────────────────────────────────────

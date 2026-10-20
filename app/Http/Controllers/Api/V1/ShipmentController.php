@@ -44,6 +44,7 @@ class ShipmentController extends Controller
     public function track($trackingNumber)
     {
         $shipment = Shipment::where('tracking_number', $trackingNumber)
+            ->whereHas('order')
             ->with('order:id,customer_name,status,created_at')
             ->firstOrFail();
 
@@ -52,7 +53,7 @@ class ShipmentController extends Controller
 
     public function update(Request $request, $id)
     {
-        $shipment = Shipment::findOrFail($id);
+        $shipment = Shipment::whereHas('order')->findOrFail($id);
 
         $validated = $request->validate([
             'status' => 'required|in:label_created,in_transit,delivered,returned',
@@ -77,9 +78,11 @@ class ShipmentController extends Controller
 
     public function barcode($trackingNumber)
     {
-        $shipment = Shipment::where('tracking_number', $trackingNumber)->firstOrFail();
+        $shipment = Shipment::where('tracking_number', $trackingNumber)
+            ->whereHas('order')
+            ->firstOrFail();
 
-        $generator = new BarcodeGeneratorSVG();
+        $generator = new BarcodeGeneratorSVG;
         $svg = $generator->getBarcode($shipment->tracking_number, $generator::TYPE_CODE_128);
 
         return response($svg, 200, [
