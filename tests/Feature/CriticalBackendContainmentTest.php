@@ -47,6 +47,26 @@ class CriticalBackendContainmentTest extends TestCase
             ->assertJsonPath('order_status', 'pending');
     }
 
+    public function test_containment_migration_backfills_tokens_idempotently(): void
+    {
+        $order = Order::factory()->create();
+        $payment = app(PaymentService::class)->createPending($order, 'stripe', [
+            'provider_ref' => 'pi_migration_backfill',
+        ]);
+        $payment->update(['public_token' => null]);
+
+        $migration = require database_path('migrations/2026_10_20_000001_harden_payment_access_and_order_status.php');
+        $migration->up();
+
+        $backfilledToken = $payment->fresh()->public_token;
+        $this->assertIsString($backfilledToken);
+        $this->assertSame(64, strlen($backfilledToken));
+
+        $migration->up();
+
+        $this->assertSame($backfilledToken, $payment->fresh()->public_token);
+    }
+
     public function test_idempotent_paypal_capture_returns_payment_access_and_order_outcome(): void
     {
         $order = Order::factory()->create(['status' => 'failed_needs_refund']);
