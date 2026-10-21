@@ -2,8 +2,12 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Models\Order;
+use App\Models\Payment;
 use App\Models\PaymentSetting;
+use App\Models\PaymentWebhookEvent;
 use App\Models\Store;
+use App\Payments\PaymentService;
 use App\Support\Tenancy\CurrentStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -74,6 +78,104 @@ class PerStoreWebhookTest extends TestCase
             ->getJson('/api/v1/payment-settings')
             ->assertOk()
             ->assertJsonPath('webhook_urls.stripe', url('/api/v1/webhooks/stripe/watch-world'));
+    }
+
+    public function test_stripe_payment_update_is_idempotent_by_provider_event_id(): void
+    {
+        app(CurrentStore::class)->set($this->storeA);
+        $order = Order::factory()->create(['store_id' => $this->storeA->id]);
+        $payment = app(PaymentService::class)->createPending($order, 'stripe', [
+            'provider_ref' => 'pi_webhook_contract',
+        ]);
+
+        $payload = json_encode([
+            'id' => 'evt_webhook_contract',
+            'object' => 'event',
+            'type' => 'payment_intent.succeeded',
+            'data' => ['object' => [
+                'id' => 'pi_webhook_contract',
+                'metadata' => ['order_id' => (string) $order->id],
+                'status' => 'succeeded',
+            ]],
+        ]);
+        $signature = $this->stripeSignature($payload, 'whsec_a');
+
+        $this->callWebhook('default', $payload, $signature)->assertOk();
+        $this->callWebhook('default', $payload, $signature)->assertOk();
+
+        $this->assertSame('paid', $payment->fresh()->status);
+        $this->assertSame('processing', $order->fresh()->status);
+        $this->assertSame(1, PaymentWebhookEvent::where([
+            'provider' => 'stripe',
+            'event_id' => 'evt_webhook_contract',
+        ])->count());
+    }
+
+    public function test_square_webhook_updates_the_matching_payment(): void
+    {
+        app(CurrentStore::class)->set($this->storeA);
+        PaymentSetting::first()->update([
+            'square_enabled' => true,
+            'square_webhook_secret' => 'square_secret_a',
+        ]);
+        $order = Order::factory()->create(['store_id' => $this->storeA->id]);
+        $payment = app(PaymentService::class)->createPending($order, 'square', [
+            'provider_ref' => 'square-order-contract',
+        ]);
+
+        $payload = json_encode([
+            'event_id' => 'square-event-contract',
+            'type' => 'payment.updated',
+            'data' => ['object' => ['payment' => [
+                'id' => 'square-payment-contract',
+                'order_id' => 'square-order-contract',
+                'status' => 'COMPLETED',
+            ]]],
+        ]);
+        $url = url('/api/v1/webhooks/square/default');
+        $signature = base64_encode(hash_hmac('sha256', $url.$payload, 'square_secret_a', true));
+
+        $this->call(
+            'POST',
+            '/api/v1/webhooks/square/default',
+            [], [], [],
+            ['HTTP_X_SQUARE_HMACSHA256_SIGNATURE' => $signature, 'CONTENT_TYPE' => 'application/json'],
+            $payload,
+        )->assertOk();
+
+        $this->assertSame('paid', $payment->fresh()->status);
+        $this->assertSame('square-payment-contract', $payment->fresh()->meta['square_payment_id']);
+    }
+
+    public function test_webhook_cannot_update_a_payment_from_another_store(): void
+    {
+        app(CurrentStore::class)->set($this->storeA);
+        $orderA = Order::factory()->create(['store_id' => $this->storeA->id]);
+        $paymentA = app(PaymentService::class)->createPending($orderA, 'stripe', [
+            'provider_ref' => 'pi_shared_reference',
+        ]);
+
+        app(CurrentStore::class)->set($this->storeB);
+        $orderB = Order::factory()->create(['store_id' => $this->storeB->id]);
+        $paymentB = app(PaymentService::class)->createPending($orderB, 'stripe', [
+            'provider_ref' => 'pi_shared_reference',
+        ]);
+
+        $payload = json_encode([
+            'id' => 'evt_store_boundary',
+            'object' => 'event',
+            'type' => 'payment_intent.succeeded',
+            'data' => ['object' => [
+                'id' => 'pi_shared_reference',
+                'metadata' => [],
+                'status' => 'succeeded',
+            ]],
+        ]);
+
+        $this->callWebhook('default', $payload, $this->stripeSignature($payload, 'whsec_a'))->assertOk();
+
+        $this->assertSame('paid', $paymentA->fresh()->status);
+        $this->assertSame('pending', $paymentB->fresh()->status);
     }
 
     private function stripeSignature(string $payload, string $secret): string

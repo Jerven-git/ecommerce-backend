@@ -5,6 +5,7 @@ namespace App\Payments\Gateways;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Payments\Contracts\ChecksPaymentStatus;
+use App\Payments\Contracts\HandlesWebhooks;
 use App\Payments\Contracts\PaymentGateway;
 use App\Payments\PaymentCredentials;
 use Illuminate\Http\Client\PendingRequest;
@@ -12,7 +13,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class SquareGateway implements ChecksPaymentStatus, PaymentGateway
+class SquareGateway implements ChecksPaymentStatus, HandlesWebhooks, PaymentGateway
 {
     public function __construct(private PaymentCredentials $credentials) {}
 
