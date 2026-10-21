@@ -22,6 +22,7 @@ class WebhookReceiver
     public function receive(string $provider, Request $request, ?string $storeSlug): WebhookResult
     {
         $provider = strtolower(trim($provider));
+        $this->currentStore->clear();
         $this->setStoreContext($storeSlug);
 
         $verification = $this->verifier->verify($provider, $request);

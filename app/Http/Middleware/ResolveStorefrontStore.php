@@ -18,6 +18,10 @@ class ResolveStorefrontStore
 
     public function handle(Request $request, Closure $next): Response
     {
+        // A long-lived worker may have handled another host immediately before
+        // this request. Resolution always starts from an empty context.
+        $this->currentStore->clear();
+
         $host = strtolower($request->getHost());
         $canonical = $this->resolver->canonicalHost($host);
 
