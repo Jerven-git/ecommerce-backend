@@ -7,7 +7,11 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\SiteConfig;
+use App\Models\Store;
 use App\Models\User;
+use App\Payments\Contracts\PaymentGateway;
+use App\Payments\GatewayManager;
+use App\Payments\PaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -17,8 +21,11 @@ class BackorderApiTest extends TestCase
     use RefreshDatabase;
 
     private User $admin;
+
     private Order $order;
+
     private Product $product;
+
     private Backorder $backorder;
 
     protected function setUp(): void
@@ -207,6 +214,145 @@ class BackorderApiTest extends TestCase
             ->assertStatus(410);
     }
 
+    public function test_public_token_cannot_cross_the_storefront_boundary(): void
+    {
+        $foreignStore = Store::factory()->create(['slug' => 'foreign-backorder']);
+        $foreignProduct = Product::factory()->create(['store_id' => $foreignStore->id]);
+        $foreignOrder = Order::factory()->create(['store_id' => $foreignStore->id]);
+        Backorder::create([
+            'order_id' => $foreignOrder->id,
+            'product_id' => $foreignProduct->id,
+            'quantity' => 1,
+            'status' => 'notified',
+            'charge_policy' => 'charged_later',
+            'payment_token' => 'foreign_store_backorder_token',
+            'token_expires_at' => now()->addDay(),
+        ]);
+
+        $this->getJson('/api/v1/backorders/pay/foreign_store_backorder_token')
+            ->assertNotFound();
+    }
+
+    public function test_public_backorder_payment_keeps_its_redirect_contract(): void
+    {
+        $this->backorder->update([
+            'status' => 'notified',
+            'payment_token' => 'payable_backorder_token',
+            'token_expires_at' => now()->addDay(),
+            'stock_reserved' => true,
+        ]);
+        $this->app->instance(GatewayManager::class, new GatewayManager([
+            'paypal' => new BackorderContractGateway,
+        ]));
+
+        $response = $this->postJson('/api/v1/backorders/pay/payable_backorder_token', [
+            'payment_method' => 'paypal',
+        ])->assertOk()
+            ->assertJsonStructure(['data' => [
+                'order_id',
+                'amount',
+                'backorder_id',
+                'payment_id',
+                'payment_token',
+                'redirect_url',
+            ]])
+            ->assertJsonPath('data.order_id', $this->order->id)
+            ->assertJsonPath('data.amount', 100)
+            ->assertJsonPath('data.backorder_id', $this->backorder->id)
+            ->assertJsonPath('data.redirect_url', 'https://paypal.example/backorder');
+
+        $this->assertDatabaseHas('payments', [
+            'id' => $response->json('data.payment_id'),
+            'order_id' => $this->order->id,
+            'provider' => 'paypal',
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_public_confirmation_and_admin_mark_paid_keep_their_contracts(): void
+    {
+        $this->backorder->update([
+            'status' => 'notified',
+            'payment_token' => 'confirmable_backorder_token',
+            'token_expires_at' => now()->addDay(),
+            'stock_reserved' => true,
+        ]);
+
+        $this->postJson('/api/v1/backorders/pay/confirmable_backorder_token/confirm')
+            ->assertOk()
+            ->assertExactJson([
+                'message' => 'Order confirmed. You will be contacted for payment.',
+                'data' => ['status' => 'confirmed'],
+            ]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/api/v1/backorders/{$this->backorder->id}/mark-paid")
+            ->assertOk()
+            ->assertJsonPath('message', 'Backorder marked as paid')
+            ->assertJsonPath('data.status', 'paid');
+
+        $this->assertSame('processing', $this->order->fresh()->status);
+        $this->assertFalse($this->backorder->fresh()->stock_reserved);
+    }
+
+    public function test_cancel_releases_reserved_stock_once(): void
+    {
+        $this->product->update(['stock' => 3]);
+        $this->backorder->update([
+            'status' => 'notified',
+            'stock_reserved' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/api/v1/backorders/{$this->backorder->id}/cancel")
+            ->assertOk();
+
+        $this->assertSame(5, $this->product->fresh()->stock);
+        $this->assertFalse($this->backorder->fresh()->stock_reserved);
+    }
+
+    public function test_confirmed_provider_payment_fulfils_the_backorder_once(): void
+    {
+        $this->product->update(['stock' => 3]);
+        $this->backorder->update([
+            'status' => 'notified',
+            'payment_token' => 'provider_payment_token',
+            'token_expires_at' => now()->addDay(),
+            'stock_reserved' => true,
+        ]);
+        $payment = app(PaymentService::class)->createPending($this->order, 'stripe', [
+            'provider_ref' => 'pi_backorder_fulfilment',
+            'backorder_id' => $this->backorder->id,
+        ]);
+
+        app(PaymentService::class)->markPaid($payment);
+        app(PaymentService::class)->markPaid($payment->fresh());
+
+        $this->assertSame('paid', $this->backorder->fresh()->status);
+        $this->assertNull($this->backorder->fresh()->payment_token);
+        $this->assertSame(3, $this->product->fresh()->stock);
+        $this->assertSame('processing', $this->order->fresh()->status);
+    }
+
+    public function test_expiry_command_releases_reserved_stock(): void
+    {
+        $this->product->update(['stock' => 3]);
+        $this->backorder->update([
+            'status' => 'notified',
+            'payment_token' => 'expired_command_token',
+            'token_expires_at' => now()->subMinute(),
+            'stock_reserved' => true,
+        ]);
+
+        $this->artisan('backorders:expire-tokens')
+            ->expectsOutput('Expired 1 backorder payment links.')
+            ->assertSuccessful();
+
+        $this->assertSame('expired', $this->backorder->fresh()->status);
+        $this->assertNull($this->backorder->fresh()->payment_token);
+        $this->assertSame(5, $this->product->fresh()->stock);
+    }
+
     // ─────────────────────────────────────────
     // Settings
     // ─────────────────────────────────────────
@@ -245,5 +391,21 @@ class BackorderApiTest extends TestCase
                 'backorder_payment_link_expiry_hours' => 0,
             ])
             ->assertStatus(422);
+    }
+}
+
+class BackorderContractGateway implements PaymentGateway
+{
+    public function key(): string
+    {
+        return 'paypal';
+    }
+
+    public function createPayment(Order $order, array $meta = []): array
+    {
+        return [
+            'provider_ref' => 'paypal-backorder-contract',
+            'approval_url' => 'https://paypal.example/backorder',
+        ];
     }
 }

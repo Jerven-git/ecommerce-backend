@@ -95,6 +95,24 @@ class ShipmentApiTest extends TestCase
             ->assertStatus(404);
     }
 
+    public function test_public_barcode_keeps_its_svg_and_cache_contract(): void
+    {
+        $order = Order::factory()->create(['status' => 'shipped']);
+        Shipment::create([
+            'order_id' => $order->id,
+            'tracking_number' => 'SSU-20260319-BAR123',
+            'status' => 'in_transit',
+            'shipped_at' => now(),
+        ]);
+
+        $response = $this->get('/api/v1/tracking/SSU-20260319-BAR123/barcode')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/svg+xml')
+            ->assertHeader('Cache-Control', 'max-age=86400, public');
+
+        $this->assertStringContainsString('<svg', $response->getContent());
+    }
+
     public function test_carrier_is_sanitized(): void
     {
         $order = Order::factory()->create(['status' => 'processing']);

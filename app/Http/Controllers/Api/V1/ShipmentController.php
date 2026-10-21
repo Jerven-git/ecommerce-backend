@@ -3,89 +3,59 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Order;
-use App\Models\Shipment;
+use App\Modules\Shipments\Application\ShipmentLifecycle;
+use App\Modules\Shipments\Application\ShipmentOperationException;
+use App\Modules\Shipments\Application\ShipmentTracking;
 use Illuminate\Http\Request;
-use Picqer\Barcode\BarcodeGeneratorSVG;
 
 class ShipmentController extends Controller
 {
-    public function ship(Request $request, $orderId)
+    public function ship(Request $request, int|string $orderId, ShipmentLifecycle $shipments)
     {
-        $order = Order::with('shipment')->findOrFail($orderId);
+        try {
+            $order = $shipments->orderForShipment($orderId);
+            $validated = $request->validate(['carrier' => 'nullable|string|max:255']);
 
-        if ($order->shipment) {
             return response()->json([
-                'message' => 'Order already has a shipment',
-                'data' => $order->shipment,
-            ], 422);
+                'message' => 'Shipment created successfully',
+                'data' => $shipments->create($order, $validated['carrier'] ?? null),
+            ], 201);
+        } catch (ShipmentOperationException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'data' => $exception->shipment,
+            ], $exception->status);
         }
+    }
 
-        $validated = $request->validate([
-            'carrier' => 'nullable|string|max:255',
-        ]);
-
-        $shipment = Shipment::create([
-            'order_id' => $order->id,
-            'tracking_number' => Shipment::generateTrackingNumber(),
-            'carrier' => $validated['carrier'] ?? null,
-            'status' => 'label_created',
-            'shipped_at' => now(),
-        ]);
-
-        $order->update(['status' => 'shipped']);
-
+    public function track(string $trackingNumber, ShipmentTracking $tracking)
+    {
         return response()->json([
-            'message' => 'Shipment created successfully',
-            'data' => $shipment,
-        ], 201);
+            'data' => $tracking->find($trackingNumber, withOrder: true),
+        ]);
     }
 
-    public function track($trackingNumber)
+    public function update(Request $request, int|string $id, ShipmentLifecycle $shipments)
     {
-        $shipment = Shipment::where('tracking_number', $trackingNumber)
-            ->whereHas('order')
-            ->with('order:id,customer_name,status,created_at')
-            ->firstOrFail();
-
-        return response()->json(['data' => $shipment]);
-    }
-
-    public function update(Request $request, $id)
-    {
-        $shipment = Shipment::whereHas('order')->findOrFail($id);
-
+        $shipment = $shipments->shipmentForUpdate($id);
         $validated = $request->validate([
             'status' => 'required|in:label_created,in_transit,delivered,returned',
             'carrier' => 'nullable|string|max:255',
         ]);
 
-        $shipment->update([
-            'status' => $validated['status'],
-            'carrier' => $validated['carrier'] ?? $shipment->carrier,
-            'delivered_at' => $validated['status'] === 'delivered' ? now() : $shipment->delivered_at,
-        ]);
-
-        if ($validated['status'] === 'delivered') {
-            $shipment->order->update(['status' => 'delivered']);
-        }
-
         return response()->json([
             'message' => 'Shipment updated',
-            'data' => $shipment->fresh(),
+            'data' => $shipments->update(
+                $shipment,
+                $validated['status'],
+                $validated['carrier'] ?? null,
+            ),
         ]);
     }
 
-    public function barcode($trackingNumber)
+    public function barcode(string $trackingNumber, ShipmentTracking $tracking)
     {
-        $shipment = Shipment::where('tracking_number', $trackingNumber)
-            ->whereHas('order')
-            ->firstOrFail();
-
-        $generator = new BarcodeGeneratorSVG;
-        $svg = $generator->getBarcode($shipment->tracking_number, $generator::TYPE_CODE_128);
-
-        return response($svg, 200, [
+        return response($tracking->barcode($trackingNumber), 200, [
             'Content-Type' => 'image/svg+xml',
             'Cache-Control' => 'public, max-age=86400',
         ]);
