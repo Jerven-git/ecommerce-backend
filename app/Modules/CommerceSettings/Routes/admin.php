@@ -1,0 +1,41 @@
+<?php
+
+use App\Http\Controllers\Api\V1\AdminGiftCardController;
+use App\Http\Controllers\Api\V1\CurrencyController;
+use App\Http\Controllers\Api\V1\DiscountController;
+use App\Http\Controllers\Api\V1\PaymentSettingsController;
+use App\Http\Controllers\Api\V1\ShippingSettingsController;
+use App\Http\Controllers\Api\V1\TaxReportController;
+use App\Http\Controllers\Api\V1\TaxRuleController;
+use App\Http\Controllers\Api\V1\TaxSettingsController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/admin/currencies', [CurrencyController::class, 'adminIndex']);
+Route::post('/currencies', [CurrencyController::class, 'store']);
+Route::patch('/currencies/{currency}', [CurrencyController::class, 'update']);
+Route::delete('/currencies/{currency}', [CurrencyController::class, 'destroy']);
+Route::get('/admin/gift-card-denominations', [AdminGiftCardController::class, 'denominationIndex']);
+Route::post('/gift-card-denominations', [AdminGiftCardController::class, 'denominationStore']);
+Route::patch('/gift-card-denominations/{denomination}', [AdminGiftCardController::class, 'denominationUpdate']);
+Route::delete('/gift-card-denominations/{denomination}', [AdminGiftCardController::class, 'denominationDestroy']);
+Route::get('/admin/gift-cards', [AdminGiftCardController::class, 'index']);
+Route::post('/admin/gift-cards', [AdminGiftCardController::class, 'store']);
+Route::patch('/admin/gift-cards/{giftCard}', [AdminGiftCardController::class, 'update']);
+Route::get('/discounts', [DiscountController::class, 'index']);
+Route::get('/discounts/{id}', [DiscountController::class, 'show']);
+Route::post('/discounts', [DiscountController::class, 'store']);
+Route::patch('/discounts/{id}', [DiscountController::class, 'update']);
+Route::delete('/discounts/{id}', [DiscountController::class, 'destroy']);
+Route::get('/shipping-settings', [ShippingSettingsController::class, 'show']);
+Route::patch('/shipping-settings', [ShippingSettingsController::class, 'update']);
+Route::get('/tax-settings', [TaxSettingsController::class, 'show']);
+Route::patch('/tax-settings', [TaxSettingsController::class, 'update']);
+Route::get('/tax-rules', [TaxRuleController::class, 'index']);
+Route::post('/tax-rules', [TaxRuleController::class, 'store']);
+Route::patch('/tax-rules/{id}', [TaxRuleController::class, 'update']);
+Route::delete('/tax-rules/{id}', [TaxRuleController::class, 'destroy']);
+Route::post('/tax-rules/sync', [TaxRuleController::class, 'sync']);
+Route::get('/tax-report', [TaxReportController::class, 'index']);
+Route::get('/tax-report/export', [TaxReportController::class, 'export']);
+Route::get('/payment-settings', [PaymentSettingsController::class, 'show']);
+Route::patch('/payment-settings', [PaymentSettingsController::class, 'update']);
