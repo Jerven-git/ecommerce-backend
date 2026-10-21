@@ -3,46 +3,28 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Discount;
+use App\Modules\CommerceSettings\Application\DiscountManager;
 use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class DiscountController extends Controller
 {
+    public function __construct(private readonly DiscountManager $discounts) {}
+
     public function index(Request $request)
     {
-        $query = Discount::query();
-
-        // Filter by active status
+        $filters = $request->only(['search', 'sort', 'order', 'per_page']);
         if ($request->has('is_active')) {
-            $query->where('is_active', $request->boolean('is_active'));
+            $filters['is_active'] = $request->boolean('is_active');
         }
 
-        // Search by code or description
-        if ($request->filled('search')) {
-            $search = $request->query('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('code', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%");
-            });
-        }
-
-        // Sorting
-        $sort = $request->input('sort', 'created_at');
-        $order = $request->input('order', 'desc');
-        $query->orderBy($sort, $order);
-
-        $discounts = $query->paginate($request->input('per_page', 15));
-
-        return response()->json($discounts);
+        return response()->json($this->discounts->paginate($filters));
     }
 
     public function show($id)
     {
-        $discount = Discount::findOrFail($id);
-
-        return response()->json(['data' => $discount]);
+        return response()->json(['data' => $this->discounts->find((int) $id)]);
     }
 
     public function store(Request $request)
@@ -68,7 +50,7 @@ class DiscountController extends Controller
             ], 422);
         }
 
-        $discount = Discount::create($validated);
+        $discount = $this->discounts->create($validated);
 
         return response()->json([
             'message' => 'Discount created successfully',
@@ -78,8 +60,6 @@ class DiscountController extends Controller
 
     public function update(Request $request, $id)
     {
-        $discount = Discount::findOrFail($id);
-
         $validated = $request->validate([
             'code' => [
                 'sometimes', 'string', 'max:255',
@@ -103,7 +83,7 @@ class DiscountController extends Controller
             ], 422);
         }
 
-        $discount->update($validated);
+        $discount = $this->discounts->update((int) $id, $validated);
 
         return response()->json([
             'message' => 'Discount updated successfully',
@@ -113,8 +93,7 @@ class DiscountController extends Controller
 
     public function destroy($id)
     {
-        $discount = Discount::findOrFail($id);
-        $discount->delete();
+        $this->discounts->delete((int) $id);
 
         return response()->json([
             'message' => 'Discount deleted successfully',
@@ -128,7 +107,7 @@ class DiscountController extends Controller
             'order_amount' => 'required|numeric|min:0',
         ]);
 
-        $discount = Discount::where('code', $request->code)->first();
+        $discount = $this->discounts->byCode($request->code);
 
         if (! $discount) {
             return response()->json([

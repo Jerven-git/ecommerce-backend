@@ -5,18 +5,19 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\GiftCard;
 use App\Models\GiftCardDenomination;
+use App\Modules\CommerceSettings\Application\GiftCardManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AdminGiftCardController extends Controller
 {
+    public function __construct(private readonly GiftCardManager $giftCards) {}
+
     // --- Denominations ---
 
     public function denominationIndex(): JsonResponse
     {
-        $denominations = GiftCardDenomination::orderBy('sort_order')->orderBy('amount')->get();
-
-        return response()->json(['data' => $denominations]);
+        return response()->json(['data' => $this->giftCards->denominations()]);
     }
 
     public function denominationStore(Request $request): JsonResponse
@@ -28,7 +29,7 @@ class AdminGiftCardController extends Controller
             'sort_order' => 'integer|min:0',
         ]);
 
-        $denomination = GiftCardDenomination::create($validated);
+        $denomination = $this->giftCards->createDenomination($validated);
 
         return response()->json(['data' => $denomination], 201);
     }
@@ -42,14 +43,12 @@ class AdminGiftCardController extends Controller
             'sort_order' => 'integer|min:0',
         ]);
 
-        $denomination->update($validated);
-
-        return response()->json(['data' => $denomination->fresh()]);
+        return response()->json(['data' => $this->giftCards->updateDenomination($denomination, $validated)]);
     }
 
     public function denominationDestroy(GiftCardDenomination $denomination): JsonResponse
     {
-        $denomination->delete();
+        $this->giftCards->deleteDenomination($denomination);
 
         return response()->json(['message' => 'Denomination deleted.']);
     }
@@ -58,24 +57,7 @@ class AdminGiftCardController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = GiftCard::with('order')->latest();
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->input('status'));
-        }
-
-        if ($request->filled('search')) {
-            $term = $request->input('search');
-            $query->where(function ($q) use ($term) {
-                $q->where('code', 'like', "%{$term}%")
-                    ->orWhere('recipient_email', 'like', "%{$term}%")
-                    ->orWhere('purchaser_email', 'like', "%{$term}%");
-            });
-        }
-
-        $perPage = min((int) $request->input('per_page', 20), 100);
-
-        return response()->json($query->paginate($perPage));
+        return response()->json($this->giftCards->paginate($request->only(['status', 'search', 'per_page'])));
     }
 
     public function store(Request $request): JsonResponse
@@ -90,19 +72,7 @@ class AdminGiftCardController extends Controller
             'currency' => 'nullable|string|size:3',
         ]);
 
-        $card = GiftCard::create([
-            'code' => GiftCard::generateCode(),
-            'original_amount' => $validated['amount'],
-            'balance' => $validated['amount'],
-            'currency' => strtoupper($validated['currency'] ?? 'USD'),
-            'purchaser_name' => $validated['purchaser_name'],
-            'purchaser_email' => $validated['purchaser_email'],
-            'recipient_name' => $validated['recipient_name'] ?? null,
-            'recipient_email' => $validated['recipient_email'],
-            'message' => $validated['message'] ?? null,
-            'status' => GiftCard::STATUS_ACTIVE,
-            'activated_at' => now(),
-        ]);
+        $card = $this->giftCards->issue($validated);
 
         return response()->json(['data' => $card], 201);
     }
@@ -114,8 +84,6 @@ class AdminGiftCardController extends Controller
             'balance' => 'sometimes|numeric|min:0',
         ]);
 
-        $giftCard->update($validated);
-
-        return response()->json(['data' => $giftCard->fresh()]);
+        return response()->json(['data' => $this->giftCards->update($giftCard, $validated)]);
     }
 }

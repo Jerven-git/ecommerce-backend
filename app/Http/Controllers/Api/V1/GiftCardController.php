@@ -3,21 +3,19 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\GiftCard;
-use App\Models\GiftCardDenomination;
-use App\Models\SiteConfig;
+use App\Modules\CommerceSettings\Application\GiftCardManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class GiftCardController extends Controller
 {
+    public function __construct(private readonly GiftCardManager $giftCards) {}
+
     public function denominations(): JsonResponse
     {
         $this->abortIfModuleDisabled();
 
-        $denominations = GiftCardDenomination::enabled()->get();
-
-        return response()->json(['data' => $denominations]);
+        return response()->json(['data' => $this->giftCards->enabledDenominations()]);
     }
 
     public function validate(Request $request): JsonResponse
@@ -26,8 +24,7 @@ class GiftCardController extends Controller
             'code' => 'required|string|max:20',
         ]);
 
-        $code = strtoupper(trim($request->input('code')));
-        $card = GiftCard::where('code', $code)->first();
+        $card = $this->giftCards->findUsable($request->input('code'));
 
         if (! $card || ! $card->isUsable()) {
             return response()->json([
@@ -46,11 +43,7 @@ class GiftCardController extends Controller
 
     private function abortIfModuleDisabled(): void
     {
-        $config = SiteConfig::first();
-        $modules = $config?->modules_enabled ?? [];
-        $enabled = $modules['gift_cards'] ?? false;
-
-        if (! $enabled) {
+        if (! $this->giftCards->moduleEnabled()) {
             abort(404);
         }
     }

@@ -3,27 +3,17 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\ShippingSetting;
-use App\Models\ShippingZone;
-use App\Services\ShippingCalculator;
+use App\Modules\CommerceSettings\Application\ShippingConfiguration;
 use Illuminate\Http\Request;
 
 class ShippingSettingsController extends Controller
 {
+    public function __construct(private readonly ShippingConfiguration $shipping) {}
+
     public function show()
     {
-        $settings = ShippingSetting::first();
-        $zones = ShippingZone::all();
-
-        if (!$settings) {
-            $settings = ShippingSetting::create([]);
-        }
-
         return response()->json([
-            'data' => array_merge(
-                $settings->toArray(),
-                ['zones' => $zones]
-            )
+            'data' => $this->shipping->get(),
         ]);
     }
 
@@ -54,32 +44,11 @@ class ShippingSettingsController extends Controller
             'zones.*.per_cbm_rate' => 'nullable|numeric|min:0',
         ]);
 
-        $settings = ShippingSetting::first();
-
-        if (!$settings) {
-            $settings = ShippingSetting::create($validated);
-        } else {
-            $settings->update($validated);
-        }
-
-        // Update or create shipping zones
-        if (isset($validated['zones'])) {
-            foreach ($validated['zones'] as $zoneData) {
-                ShippingZone::updateOrCreate(
-                    ['zone_type' => $zoneData['zone_type']],
-                    [
-                        'enabled' => $zoneData['enabled'],
-                        'base_rate' => $zoneData['base_rate'],
-                        'per_kg_rate' => $zoneData['per_kg_rate'] ?? 0,
-                        'per_cbm_rate' => $zoneData['per_cbm_rate'] ?? 0,
-                    ]
-                );
-            }
-        }
+        $settings = $this->shipping->update($validated);
 
         return response()->json([
             'message' => 'Shipping settings updated successfully',
-            'data' => $settings
+            'data' => $settings,
         ]);
     }
 
@@ -97,29 +66,16 @@ class ShippingSettingsController extends Controller
             'options.*' => 'in:insurance',
         ]);
 
-        $calculator = new ShippingCalculator();
-        $result = $calculator->calculateShipping($validated);
-
-        return response()->json($result);
+        return response()->json($this->shipping->calculate($validated));
     }
 
     public function options()
     {
-        $calculator = new ShippingCalculator();
-
-        return response()->json([
-            'data' => [
-                'methods' => $calculator->getShippingMethods(),
-                'add_ons' => $calculator->getShippingAddOns(),
-            ]
-        ]);
+        return response()->json(['data' => $this->shipping->options()]);
     }
 
     public function zones()
     {
-        $calculator = new ShippingCalculator();
-        $zones = $calculator->getEnabledZones();
-
-        return response()->json(['data' => $zones]);
+        return response()->json(['data' => $this->shipping->enabledZones()]);
     }
 }

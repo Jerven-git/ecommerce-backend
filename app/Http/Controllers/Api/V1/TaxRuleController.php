@@ -3,19 +3,18 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\TaxRule;
+use App\Modules\CommerceSettings\Application\TaxRuleManager;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class TaxRuleController extends Controller
 {
+    public function __construct(private readonly TaxRuleManager $rules) {}
+
     public function index()
     {
-        $rules = TaxRule::orderBy('country')
-            ->orderBy('state')
-            ->orderByDesc('priority')
-            ->get();
-
-        return response()->json(['data' => $rules]);
+        return response()->json(['data' => $this->rules->all()]);
     }
 
     public function store(Request $request)
@@ -30,22 +29,7 @@ class TaxRuleController extends Controller
             'enabled' => 'boolean',
         ]);
 
-        // Auto-set priority based on region type
-        $validated['priority'] = match ($validated['region_type']) {
-            'state' => 2,
-            'country' => 1,
-            'all' => 0,
-        };
-
-        // Clear state for non-state rules, clear country for all-region rules
-        if ($validated['region_type'] === 'all') {
-            $validated['country'] = null;
-            $validated['state'] = null;
-        } elseif ($validated['region_type'] === 'country') {
-            $validated['state'] = null;
-        }
-
-        $rule = TaxRule::create($validated);
+        $rule = $this->rules->create($validated);
 
         return response()->json([
             'message' => 'Tax rule created successfully',
@@ -55,8 +39,6 @@ class TaxRuleController extends Controller
 
     public function update(Request $request, $id)
     {
-        $rule = TaxRule::findOrFail($id);
-
         $validated = $request->validate([
             'region_type' => 'sometimes|in:all,country,state',
             'country' => 'nullable|string|max:100',
@@ -67,16 +49,7 @@ class TaxRuleController extends Controller
             'enabled' => 'sometimes|boolean',
         ]);
 
-        // Update priority if region type changed
-        if (isset($validated['region_type'])) {
-            $validated['priority'] = match ($validated['region_type']) {
-                'state' => 2,
-                'country' => 1,
-                'all' => 0,
-            };
-        }
-
-        $rule->update($validated);
+        $rule = $this->rules->update((int) $id, $validated);
 
         return response()->json([
             'message' => 'Tax rule updated successfully',
@@ -86,8 +59,7 @@ class TaxRuleController extends Controller
 
     public function destroy($id)
     {
-        $rule = TaxRule::findOrFail($id);
-        $rule->delete();
+        $this->rules->delete((int) $id);
 
         return response()->json([
             'message' => 'Tax rule deleted successfully',
@@ -101,7 +73,14 @@ class TaxRuleController extends Controller
     {
         $validated = $request->validate([
             'rules' => 'present|array',
-            'rules.*.id' => 'nullable|integer|exists:tax_rules,id',
+            'rules.*.id' => [
+                'nullable',
+                'integer',
+                Rule::exists('tax_rules', 'id')->where(
+                    'store_id',
+                    app(CurrentStore::class)->id(),
+                ),
+            ],
             'rules.*.region_type' => 'required|in:all,country,state',
             'rules.*.country' => 'nullable|string|max:100',
             'rules.*.state' => 'nullable|string|max:100',
@@ -111,38 +90,7 @@ class TaxRuleController extends Controller
             'rules.*.enabled' => 'boolean',
         ]);
 
-        $incomingIds = collect($validated['rules'])->pluck('id')->filter()->toArray();
-
-        // Delete rules not in the incoming list
-        TaxRule::whereNotIn('id', $incomingIds)->delete();
-
-        $rules = [];
-        foreach ($validated['rules'] as $ruleData) {
-            $ruleData['priority'] = match ($ruleData['region_type']) {
-                'state' => 2,
-                'country' => 1,
-                'all' => 0,
-            };
-
-            if ($ruleData['region_type'] === 'all') {
-                $ruleData['country'] = null;
-                $ruleData['state'] = null;
-            } elseif ($ruleData['region_type'] === 'country') {
-                $ruleData['state'] = null;
-            }
-
-            if (!empty($ruleData['id'])) {
-                $rule = TaxRule::find($ruleData['id']);
-                if ($rule) {
-                    $rule->update($ruleData);
-                    $rules[] = $rule;
-                    continue;
-                }
-            }
-
-            unset($ruleData['id']);
-            $rules[] = TaxRule::create($ruleData);
-        }
+        $rules = $this->rules->sync($validated['rules']);
 
         return response()->json([
             'message' => 'Tax rules synced successfully',

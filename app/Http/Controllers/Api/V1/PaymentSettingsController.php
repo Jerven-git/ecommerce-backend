@@ -3,25 +3,12 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\PaymentSetting;
-use App\Payments\PaymentCredentials;
+use App\Modules\CommerceSettings\Application\PaymentConfiguration;
 use Illuminate\Http\Request;
 
 class PaymentSettingsController extends Controller
 {
-    public function __construct(private PaymentCredentials $credentials) {}
-
-    private function settings(): PaymentSetting
-    {
-        // Scoped to the current store via the BelongsToStore global scope;
-        // store_id is auto-filled on create. (Previously pinned to id=1, which
-        // would have collided across stores.)
-        return PaymentSetting::firstOrCreate([], [
-            'stripe_enabled' => false,
-            'paypal_enabled' => false,
-            'square_enabled' => false,
-        ]);
-    }
+    public function __construct(private readonly PaymentConfiguration $payments) {}
 
     /**
      * Admin: view settings. Secret credentials are hidden by the model; public
@@ -30,32 +17,12 @@ class PaymentSettingsController extends Controller
      */
     public function show()
     {
-        $settings = $this->settings();
+        $settings = $this->payments->settings();
 
         return response()->json([
             'data' => $settings,
-            'webhook_urls' => $this->webhookUrls(),
+            'webhook_urls' => $this->payments->webhookUrls(),
         ]);
-    }
-
-    /**
-     * Per-store webhook URLs for each provider's dashboard.
-     *
-     * @return array<string, string>
-     */
-    private function webhookUrls(): array
-    {
-        $slug = app(\App\Support\Tenancy\CurrentStore::class)->get()?->slug;
-
-        if (! $slug) {
-            return [];
-        }
-
-        return [
-            'stripe' => url("/api/v1/webhooks/stripe/{$slug}"),
-            'paypal' => url("/api/v1/webhooks/paypal/{$slug}"),
-            'square' => url("/api/v1/webhooks/square/{$slug}"),
-        ];
     }
 
     /**
@@ -87,19 +54,11 @@ class PaymentSettingsController extends Controller
             'square_mode' => 'sometimes|nullable|in:sandbox,live',
         ]);
 
-        $toggleKeys = ['stripe_enabled', 'paypal_enabled', 'square_enabled'];
-
-        $payload = collect($validated)
-            // Credential fields: drop blanks so they're left unchanged.
-            ->reject(fn ($value, $key) => ! in_array($key, $toggleKeys, true) && blank($value))
-            ->all();
-
-        $settings = $this->settings();
-        $settings->update($payload);
+        $settings = $this->payments->update($validated);
 
         return response()->json([
             'message' => 'Payment settings updated successfully',
-            'data' => $settings->fresh(),
+            'data' => $settings,
         ]);
     }
 
@@ -109,62 +68,6 @@ class PaymentSettingsController extends Controller
      */
     public function methods()
     {
-        $settings = $this->settings();
-
-        // Only expose what frontend needs to initialize SDKs
-        $methods = [];
-
-        if ($settings->stripe_enabled) {
-            $publishable = $this->credentials->get('stripe', 'publishable_key');
-
-            // Optional: if missing, don't advertise Stripe
-            if ($publishable) {
-                $methods[] = [
-                    'id' => 'stripe',
-                    'name' => 'Credit/Debit Card',
-                    'description' => 'Pay securely with Stripe',
-                    'icon' => 'stripe',
-                    'config' => [
-                        'publishable_key' => $publishable,
-                    ],
-                ];
-            }
-        }
-
-        if ($settings->paypal_enabled) {
-            $clientId = $this->credentials->get('paypal', 'client_id');
-
-            if ($clientId) {
-                $methods[] = [
-                    'id' => 'paypal',
-                    'name' => 'PayPal',
-                    'description' => 'Pay with your PayPal account',
-                    'icon' => 'paypal',
-                    'config' => [
-                        'client_id' => $clientId,
-                    ],
-                ];
-            }
-        }
-
-        if ($settings->square_enabled) {
-            $appId = $this->credentials->get('square', 'application_id');
-            $locationId = $this->credentials->get('square', 'location_id');
-
-            if ($appId && $locationId) {
-                $methods[] = [
-                    'id' => 'square',
-                    'name' => 'Square',
-                    'description' => 'Pay with Square',
-                    'icon' => 'square',
-                    'config' => [
-                        'application_id' => $appId,
-                        'location_id' => $locationId,
-                    ],
-                ];
-            }
-        }
-
-        return response()->json(['data' => $methods]);
+        return response()->json(['data' => $this->payments->methods()]);
     }
 }
