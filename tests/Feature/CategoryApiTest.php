@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\Role;
+use App\Models\Store;
 use App\Models\User;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -114,6 +116,44 @@ class CategoryApiTest extends TestCase
         $this->actingAs($this->admin)
             ->patchJson("/api/v1/categories/{$cat->id}", ['parent_id' => $cat->id])
             ->assertStatus(422);
+    }
+
+    public function test_category_cannot_use_a_parent_from_another_store(): void
+    {
+        $ownStore = app(CurrentStore::class)->get();
+        $this->assertNotNull($ownStore);
+        $foreignStore = Store::factory()->create(['slug' => 'foreign-category-parent']);
+        app(CurrentStore::class)->set($foreignStore);
+        $foreignParent = Category::create(['name' => 'Foreign Parent']);
+        app(CurrentStore::class)->set($ownStore);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/categories', [
+                'name' => 'Invalid Child',
+                'parent_id' => $foreignParent->id,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('parent_id');
+
+        $this->assertDatabaseMissing('categories', ['name' => 'Invalid Child']);
+    }
+
+    public function test_reorder_rejects_a_category_from_another_store(): void
+    {
+        $ownCategory = Category::create(['name' => 'Own Category']);
+        $ownStore = app(CurrentStore::class)->get();
+        $this->assertNotNull($ownStore);
+        $foreignStore = Store::factory()->create(['slug' => 'foreign-category-order']);
+        app(CurrentStore::class)->set($foreignStore);
+        $foreignCategory = Category::create(['name' => 'Foreign Category']);
+        app(CurrentStore::class)->set($ownStore);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/categories/reorder', [
+                'ids' => [$ownCategory->id, $foreignCategory->id],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('ids.1');
     }
 
     public function test_admin_can_delete_category(): void

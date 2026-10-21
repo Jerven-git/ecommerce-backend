@@ -3,266 +3,74 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Category;
-use App\Models\Product;
-use App\Modules\Media\MediaService;
+use App\Http\Requests\Catalog\StoreProductRequest;
+use App\Http\Requests\Catalog\UpdateProductRequest;
+use App\Modules\Catalog\Application\ProductManager;
+use App\Modules\Catalog\Application\ProductQuery;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
-    public function __construct(private MediaService $mediaService) {}
-
-    public function index(Request $request)
+    public function index(Request $request, ProductQuery $products)
     {
-        $query = Product::with('categories')->withCount('variants')->withSum('activeVariants', 'stock');
-
-        // Filter by a fixed list of ids — used by the guest favorites page,
-        // which holds product ids in localStorage and asks the API to hydrate
-        // only those rows. Cap at 100 to avoid a runaway query if a client
-        // sends an unbounded list.
-        if ($request->has('ids')) {
-            $ids = collect(explode(',', (string) $request->input('ids')))
-                ->map(fn ($id) => (int) trim($id))
-                ->filter(fn ($id) => $id > 0)
-                ->take(100)
-                ->values()
-                ->all();
-
-            if (empty($ids)) {
-                return response()->json(['data' => []]);
-            }
-
-            $query->whereIn('id', $ids);
-        }
-
-        // Filter by active status
-        if ($request->has('is_active')) {
-            $query->where('is_active', $request->boolean('is_active'));
-        }
-
-        // Filter by category_id (includes subcategories when parent is selected)
-        if ($request->has('category_id')) {
-            $categoryId = (int) $request->category_id;
-            $category = Category::with('childrenRecursive')->find($categoryId);
-            $allIds = $category ? array_merge([$categoryId], $category->allDescendantIds()) : [$categoryId];
-
-            // Match via pivot table OR legacy category_id/category string
-            $categoryNames = Category::whereIn('id', $allIds)->pluck('name')->toArray();
-            $query->where(function ($q) use ($allIds, $categoryNames) {
-                $q->whereHas('categories', fn ($sub) => $sub->whereIn('categories.id', $allIds))
-                    ->orWhereIn('category_id', $allIds)
-                    ->orWhereIn('category', $categoryNames);
-            });
-        } elseif ($request->has('category')) {
-            $query->where('category', $request->category);
-        }
-
-        // Search by name
-        if ($request->has('search')) {
-            $query->where('name', 'LIKE', '%'.$request->search.'%');
-        }
-
-        // Sorting
-        $sort = $request->input('sort', 'created_at');
-        $order = $request->input('order', 'desc');
-        $query->orderBy($sort, $order);
-
-        // Pagination or limit
-        if ($request->has('limit')) {
-            $products = $query->limit($request->limit)->get();
-
-            return response()->json(['data' => $products]);
-        }
-
-        $products = $query->paginate($request->input('per_page', 15));
-
-        return response()->json($products);
+        return response()->json($products->list($request));
     }
 
-    public function show($slug)
+    public function show(string $slug, ProductQuery $products)
     {
-        $product = Product::with(['media', 'categories', 'options.values'])
-            ->where('slug', $slug)
-            ->firstOrFail();
-
-        // Load active variants under the key "variants" so the storefront can use product.variants
-        $product->setRelation('variants', $product->activeVariants()->with('optionValues')->get());
-
-        return response()->json(['data' => $product]);
+        return response()->json(['data' => $products->show($slug)]);
     }
 
-    public function uploadImages(Request $request, $id)
+    public function uploadImages(Request $request, int|string $id, ProductManager $products)
     {
-        $product = Product::findOrFail($id);
-
-        $request->validate([
+        $validated = $request->validate([
             'images' => 'required|array|min:1',
             'images.*' => 'image|max:2048',
         ]);
 
-        $uploaded = [];
-        foreach ($request->file('images') as $file) {
-            $media = $this->mediaService->addToCollection($file, $product, 'gallery', 'products');
-            $uploaded[] = $media;
-        }
-
-        // Set image_url from first gallery image if not already set
-        if (! $product->image_url && count($uploaded)) {
-            $product->update(['image_url' => Storage::disk('public')->url($uploaded[0]->path)]);
-        }
-
         return response()->json([
-            'message' => count($uploaded).' image(s) uploaded',
-            'data' => $product->fresh()->load('media'),
+            'message' => count($validated['images']).' image(s) uploaded',
+            'data' => $products->uploadImages($id, $validated['images']),
         ]);
     }
 
-    public function deleteImage($id, $mediaId)
+    public function deleteImage(int|string $id, int|string $mediaId, ProductManager $products)
     {
-        $product = Product::findOrFail($id);
-        $media = $product->media()->where('id', $mediaId)->firstOrFail();
-
-        Storage::disk('public')->delete($media->path);
-        $media->delete();
-
-        // If the deleted image was the main image_url, update to next gallery image or null
-        if ($product->image_url && str_contains($product->image_url, basename($media->path))) {
-            $next = $product->media()->where('collection', 'gallery')->first();
-            $product->update(['image_url' => $next ? Storage::disk('public')->url($next->path) : null]);
-        }
-
         return response()->json([
             'message' => 'Image deleted',
-            'data' => $product->fresh()->load('media'),
+            'data' => $products->deleteImage($id, $mediaId),
         ]);
     }
 
-    public function store(Request $request)
+    public function store(StoreProductRequest $request, ProductManager $products)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'price' => 'required|numeric|min:0',
-            'image' => 'nullable|image|max:2048',
-            'hover_image' => 'nullable|image|max:2048',
-            'material' => 'nullable|string|max:255',
-            'dimensions' => 'nullable|string|max:100',
-            'stock' => 'nullable|integer|min:0',
-            'weight' => 'nullable|numeric|min:0',
-            'length_cm' => 'nullable|numeric|min:0',
-            'width_cm' => 'nullable|numeric|min:0',
-            'height_cm' => 'nullable|numeric|min:0',
-            'shipping_calc_type' => 'nullable|in:weight,dimensions',
-            'category' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
-            'category_ids' => 'nullable|array',
-            'category_ids.*' => 'exists:categories,id',
-            'is_active' => 'nullable|boolean',
-            'hover_zoom_enabled' => 'nullable|boolean',
-            'allow_backorder' => 'nullable|boolean',
-            'backorder_charge_policy' => 'nullable|in:charged_now,charged_later',
-            'seo_title' => 'nullable|string|max:255',
-            'seo_description' => 'nullable|string|max:500',
-            'og_image_url' => 'nullable|url|max:500',
-            'noindex' => 'nullable|boolean',
-        ]);
-
-        $categoryIds = $validated['category_ids'] ?? [];
-        unset($validated['image'], $validated['hover_image'], $validated['category_ids']);
-        $validated['slug'] = Product::generateUniqueSlug($validated['name']);
-        $product = Product::create($validated);
-
-        if (! empty($categoryIds)) {
-            $product->categories()->sync($categoryIds);
-        }
-
-        if ($request->hasFile('image')) {
-            $media = $this->mediaService->upload($request->file('image'), $product, 'image', 'products');
-            $product->update(['image_url' => Storage::disk('public')->url($media->path)]);
-        }
-
-        if ($request->hasFile('hover_image')) {
-            $media = $this->mediaService->upload($request->file('hover_image'), $product, 'hover', 'products');
-            $product->update(['hover_image_url' => Storage::disk('public')->url($media->path)]);
-        }
-
         return response()->json([
             'message' => 'Product created successfully',
-            'data' => $product->fresh()->load('categories'),
+            'data' => $products->create(
+                $request->validated(),
+                $request->file('image'),
+                $request->file('hover_image'),
+            ),
         ], 201);
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateProductRequest $request, int|string $id, ProductManager $products)
     {
-        $product = Product::findOrFail($id);
-
-        $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'description' => 'nullable|string',
-            'price' => 'sometimes|numeric|min:0',
-            'image' => 'nullable|image|max:2048',
-            // Allow clients to clear a legacy image_url (products seeded with
-            // a raw URL but no Media record) by sending image_url=null.
-            'image_url' => 'nullable|string',
-            'hover_image' => 'nullable|image|max:2048',
-            'hover_image_url' => 'nullable|string',
-            'material' => 'nullable|string|max:255',
-            'dimensions' => 'nullable|string|max:100',
-            'stock' => 'nullable|integer|min:0',
-            'weight' => 'nullable|numeric|min:0',
-            'length_cm' => 'nullable|numeric|min:0',
-            'width_cm' => 'nullable|numeric|min:0',
-            'height_cm' => 'nullable|numeric|min:0',
-            'shipping_calc_type' => 'nullable|in:weight,dimensions',
-            'category' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
-            'category_ids' => 'nullable|array',
-            'category_ids.*' => 'exists:categories,id',
-            'is_active' => 'nullable|boolean',
-            'hover_zoom_enabled' => 'nullable|boolean',
-            'allow_backorder' => 'nullable|boolean',
-            'backorder_charge_policy' => 'nullable|in:charged_now,charged_later',
-            'seo_title' => 'nullable|string|max:255',
-            'seo_description' => 'nullable|string|max:500',
-            'og_image_url' => 'nullable|url|max:500',
-            'noindex' => 'nullable|boolean',
-        ]);
-
-        $categoryIds = $validated['category_ids'] ?? null;
-        unset($validated['image'], $validated['hover_image'], $validated['category_ids']);
-        if (isset($validated['name']) && $validated['name'] !== $product->name) {
-            $validated['slug'] = Product::generateUniqueSlug($validated['name'], $product->id);
-        }
-        $product->update($validated);
-
-        if ($categoryIds !== null) {
-            $product->categories()->sync($categoryIds);
-        }
-
-        if ($request->hasFile('image')) {
-            $media = $this->mediaService->upload($request->file('image'), $product, 'image', 'products');
-            $product->update(['image_url' => Storage::disk('public')->url($media->path)]);
-        }
-
-        if ($request->hasFile('hover_image')) {
-            $media = $this->mediaService->upload($request->file('hover_image'), $product, 'hover', 'products');
-            $product->update(['hover_image_url' => Storage::disk('public')->url($media->path)]);
-        }
-
         return response()->json([
             'message' => 'Product updated successfully',
-            'data' => $product->fresh()->load('categories'),
+            'data' => $products->update(
+                $id,
+                $request->validated(),
+                $request->file('image'),
+                $request->file('hover_image'),
+            ),
         ]);
     }
 
-    public function destroy($id)
+    public function destroy(int|string $id, ProductManager $products)
     {
-        $product = Product::findOrFail($id);
-        $product->delete();
+        $products->delete($id);
 
-        return response()->json([
-            'message' => 'Product deleted successfully',
-        ]);
+        return response()->json(['message' => 'Product deleted successfully']);
     }
 }

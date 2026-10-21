@@ -8,9 +8,13 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Role;
+use App\Models\Store;
 use App\Models\User;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ProductVariantApiTest extends TestCase
@@ -144,6 +148,42 @@ class ProductVariantApiTest extends TestCase
 
         $this->assertSame('Material', $otherOption->fresh()->name);
         $this->assertSame('Steel', $otherValue->fresh()->label);
+    }
+
+    public function test_sync_keeps_the_one_value_per_option_error_contract(): void
+    {
+        $payload = [
+            'options' => [[
+                'id' => null,
+                'name' => 'Color',
+                'position' => 0,
+                'values' => [[
+                    'id' => null,
+                    'label' => 'Red',
+                    'image_url' => null,
+                    'position' => 0,
+                ]],
+            ]],
+            'variants' => [[
+                'id' => null,
+                'sku' => 'INVALID',
+                'price' => null,
+                'stock' => 1,
+                'image_url' => null,
+                'is_active' => true,
+                'option_value_ids' => [999, 998],
+            ]],
+        ];
+
+        $this->actingAs($this->admin)
+            ->postJson("/api/v1/products/{$this->product->id}/variants/sync", $payload)
+            ->assertUnprocessable()
+            ->assertExactJson([
+                'message' => 'Each variant must supply exactly one value per option.',
+            ]);
+
+        $this->assertDatabaseCount('product_options', 0);
+        $this->assertDatabaseCount('product_variants', 0);
     }
 
     public function test_unauthenticated_cannot_sync_variants(): void
@@ -471,5 +511,53 @@ class ProductVariantApiTest extends TestCase
             ->getJson("/api/v1/products/{$this->product->id}/variants")
             ->assertOk()
             ->assertJsonStructure(['data' => ['options', 'variants']]);
+    }
+
+    public function test_variant_image_route_cannot_cross_the_product_store_boundary(): void
+    {
+        Storage::fake('public');
+        $ownStore = app(CurrentStore::class)->get();
+        $this->assertNotNull($ownStore);
+        $foreignStore = Store::factory()->create(['slug' => 'foreign-variant-image']);
+        app(CurrentStore::class)->set($foreignStore);
+        $foreignProduct = Product::factory()->create();
+        $foreignVariant = $foreignProduct->variants()->create([
+            'sku' => 'FOREIGN-IMAGE',
+            'stock' => 1,
+            'is_active' => true,
+        ]);
+        app(CurrentStore::class)->set($ownStore);
+
+        $this->actingAs($this->admin)
+            ->post("/api/v1/products/{$foreignProduct->id}/variants/{$foreignVariant->id}/image", [
+                'image' => UploadedFile::fake()->image('foreign.jpg'),
+            ])
+            ->assertNotFound();
+
+        $this->assertNull($foreignVariant->fresh()->image_url);
+    }
+
+    public function test_admin_can_upload_and_delete_a_variant_image(): void
+    {
+        Storage::fake('public');
+        $variant = $this->product->variants()->create([
+            'sku' => 'OWN-IMAGE',
+            'stock' => 1,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->post("/api/v1/products/{$this->product->id}/variants/{$variant->id}/image", [
+                'image' => UploadedFile::fake()->image('variant.jpg'),
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.id', $variant->id);
+
+        $this->assertNotNull($variant->fresh()->image_url);
+
+        $this->actingAs($this->admin)
+            ->deleteJson("/api/v1/products/{$this->product->id}/variants/{$variant->id}/image")
+            ->assertOk()
+            ->assertJsonPath('data.image_url', null);
     }
 }

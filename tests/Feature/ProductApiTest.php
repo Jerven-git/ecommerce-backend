@@ -5,9 +5,12 @@ namespace Tests\Feature;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Role;
+use App\Models\Store;
 use App\Models\User;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -129,6 +132,28 @@ class ProductApiTest extends TestCase
             ->assertJsonPath('data.name', 'New Product');
     }
 
+    public function test_product_cannot_attach_a_category_from_another_store(): void
+    {
+        $ownStore = app(CurrentStore::class)->get();
+        $this->assertNotNull($ownStore);
+        $foreignStore = Store::factory()->create(['slug' => 'foreign-product-category']);
+        app(CurrentStore::class)->set($foreignStore);
+        $foreignCategory = Category::create(['name' => 'Foreign Category']);
+        app(CurrentStore::class)->set($ownStore);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/products', [
+                'name' => 'Scoped Product',
+                'price' => 29.99,
+                'category_id' => $foreignCategory->id,
+                'category_ids' => [$foreignCategory->id],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['category_id', 'category_ids.0']);
+
+        $this->assertDatabaseMissing('products', ['name' => 'Scoped Product']);
+    }
+
     public function test_admin_can_update_product(): void
     {
         $product = Product::factory()->create();
@@ -236,5 +261,32 @@ class ProductApiTest extends TestCase
         $product = Product::latest()->first();
         $this->assertNotNull($product->hover_image_url);
         $this->assertNotNull($product->media()->where('collection', 'hover')->first());
+    }
+
+    public function test_gallery_upload_and_delete_keep_their_response_contract(): void
+    {
+        Storage::fake('public');
+        Queue::fake();
+        $product = Product::factory()->create(['image_url' => null]);
+
+        $upload = $this->actingAs($this->admin)
+            ->post("/api/v1/products/{$product->id}/images", [
+                'images' => [
+                    UploadedFile::fake()->image('first.jpg'),
+                    UploadedFile::fake()->image('second.jpg'),
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', '2 image(s) uploaded')
+            ->assertJsonCount(2, 'data.media');
+
+        $firstMediaId = $upload->json('data.media.0.id');
+        $this->assertNotNull($product->fresh()->image_url);
+
+        $this->actingAs($this->admin)
+            ->deleteJson("/api/v1/products/{$product->id}/images/{$firstMediaId}")
+            ->assertOk()
+            ->assertJsonPath('message', 'Image deleted')
+            ->assertJsonCount(1, 'data.media');
     }
 }
