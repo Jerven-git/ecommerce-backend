@@ -1,24 +1,15 @@
 <?php
 
-namespace App\Support\Subscriptions;
+namespace App\Modules\Subscriptions\Application;
 
 use App\Models\Store;
 use App\Models\Subscription;
 use App\Models\SubscriptionPlan;
 use Carbon\Carbon;
 
-/**
- * State transitions for a store's platform subscription. The Store row carries
- * the single source of truth for gating (`subscription_status` +
- * `subscription_expires_at`); the `subscriptions` table is its audit ledger.
- */
-class SubscriptionService
+class SubscriptionLifecycle
 {
-    /**
-     * Activate a brand-new subscription (first successful payment).
-     *
-     * @param  array<string, mixed>  $providerData  Stripe refs + any extra keys stored in the ledger row's meta.
-     */
+    /** @param array<string, mixed> $providerData */
     public function activate(Store $store, SubscriptionPlan $plan, array $providerData = []): Subscription
     {
         $startsAt = now();
@@ -45,14 +36,7 @@ class SubscriptionService
         ]);
     }
 
-    /**
-     * Extend an active subscription to a gateway-reported period end (renewals
-     * and the invoice.paid webhook). Never shrinks the current window; skips
-     * and returns null when the event is a no-op (e.g. the first invoice.paid
-     * that mirrors an already-recorded activation).
-     *
-     * @param  array<string, mixed>  $providerData
-     */
+    /** @param array<string, mixed> $providerData */
     public function extend(Store $store, SubscriptionPlan $plan, Carbon $endsAt, array $providerData = []): ?Subscription
     {
         if ($store->subscription_expires_at !== null && $store->subscription_expires_at->greaterThanOrEqualTo($endsAt)) {
@@ -78,15 +62,9 @@ class SubscriptionService
         ]);
     }
 
-    /**
-     * The customer cancelled at period end — access continues until the paid
-     * period lapses, then the command/webhook flips it to expired.
-     */
     public function markCancelled(Store $store, ?string $providerSubscriptionId = null): void
     {
-        $store->update([
-            'subscription_status' => Store::SUBSCRIPTION_CANCELLED,
-        ]);
+        $store->update(['subscription_status' => Store::SUBSCRIPTION_CANCELLED]);
 
         if ($providerSubscriptionId !== null) {
             $store->subscriptions()
@@ -99,16 +77,9 @@ class SubscriptionService
         }
     }
 
-    /**
-     * Access is gone: mark the store expired. If the store is beyond its grace
-     * window this hard-revokes until they resubscribe.
-     */
     public function markExpired(Store $store): void
     {
-        $store->update([
-            'subscription_status' => Store::SUBSCRIPTION_EXPIRED,
-        ]);
-
+        $store->update(['subscription_status' => Store::SUBSCRIPTION_EXPIRED]);
         $store->subscriptions()
             ->whereIn('status', [Subscription::STATUS_ACTIVE, Subscription::STATUS_PENDING])
             ->update(['status' => Subscription::STATUS_EXPIRED]);
@@ -126,10 +97,6 @@ class SubscriptionService
         };
     }
 
-    /**
-     * Super Admin grants platform access (a comp). Never lapses; idempotent —
-     * re-comping a comped store changes nothing and writes no ledger row.
-     */
     public function comp(Store $store, ?SubscriptionPlan $plan = null): void
     {
         if ($store->subscription_status === Store::SUBSCRIPTION_COMPED) {
@@ -155,10 +122,6 @@ class SubscriptionService
         ]);
     }
 
-    /**
-     * Super Admin revokes a comp, returning the store to the pre-subscription
-     * (gated) state. No-op for stores that aren't comped.
-     */
     public function uncomp(Store $store): void
     {
         if ($store->subscription_status !== Store::SUBSCRIPTION_COMPED) {

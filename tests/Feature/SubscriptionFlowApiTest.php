@@ -272,6 +272,38 @@ class SubscriptionFlowApiTest extends TestCase
         $this->assertSame(1, $this->store->subscriptions()->count());
     }
 
+    public function test_failed_invoice_is_recorded_without_revoking_grace_window_access(): void
+    {
+        $this->activateStore('sub_failed', 'cus_failed');
+        $failedAt = now()->timestamp;
+
+        $payload = [
+            'id' => 'evt_failed_1',
+            'object' => 'event',
+            'type' => 'invoice.payment_failed',
+            'data' => [
+                'object' => [
+                    'id' => 'in_failed_1',
+                    'object' => 'invoice',
+                    'customer' => 'cus_failed',
+                    'subscription' => 'sub_failed',
+                    'created' => $failedAt,
+                ],
+            ],
+        ];
+
+        $this->callWebhook(json_encode($payload))->assertOk();
+
+        $this->store->refresh();
+        $ledger = $this->store->subscriptions()
+            ->where('provider_subscription_id', 'sub_failed')
+            ->firstOrFail();
+
+        $this->assertSame(Store::SUBSCRIPTION_ACTIVE, $this->store->subscription_status);
+        $this->assertTrue($this->store->hasActiveSubscription());
+        $this->assertSame($failedAt, $ledger->meta['payment_failed_at']);
+    }
+
     public function test_subscription_cancelled_at_period_end_keeps_access_until_window_lapses(): void
     {
         $this->activateStore('sub_cancel', 'cus_cancel');

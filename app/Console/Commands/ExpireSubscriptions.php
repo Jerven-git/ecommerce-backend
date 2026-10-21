@@ -2,8 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Store;
-use App\Support\Subscriptions\SubscriptionService;
+use App\Modules\Subscriptions\Application\SubscriptionExpiry;
 use Illuminate\Console\Command;
 
 class ExpireSubscriptions extends Command
@@ -25,24 +24,9 @@ class ExpireSubscriptions extends Command
     /**
      * Execute the console command.
      */
-    public function handle(SubscriptionService $service): int
+    public function handle(SubscriptionExpiry $subscriptions): int
     {
-        $graceDays = (int) config('subscriptions.grace_period_days', 3);
-        $cutoff = now()->subDays($graceDays);
-
-        $expired = 0;
-
-        Store::query()
-            ->whereIn('subscription_status', [
-                Store::SUBSCRIPTION_ACTIVE,
-                Store::SUBSCRIPTION_CANCELLED,
-            ])
-            ->whereNotNull('subscription_expires_at')
-            ->where('subscription_expires_at', '<', $cutoff)
-            ->each(function (Store $store) use ($service, &$expired): void {
-                $service->markExpired($store);
-                $expired++;
-            });
+        $expired = $subscriptions->expire();
 
         $this->info("Expired {$expired} subscription(s).");
 

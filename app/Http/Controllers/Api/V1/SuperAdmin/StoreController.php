@@ -7,7 +7,7 @@ use App\Http\Requests\SuperAdmin\UpdateStoreRequest;
 use App\Models\Store;
 use App\Models\SubscriptionPlan;
 use App\Modules\ControlPlane\Application\StoreAdministration;
-use App\Support\Subscriptions\SubscriptionService;
+use App\Modules\Subscriptions\Application\SubscriptionLifecycle;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -15,7 +15,7 @@ use Illuminate\Validation\Rule;
 class StoreController extends Controller
 {
     public function __construct(
-        private readonly SubscriptionService $subscriptions,
+        private readonly SubscriptionLifecycle $subscriptions,
         private readonly StoreAdministration $stores,
     ) {}
 
