@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Modules\Identity\Application\UserPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,7 +14,10 @@ use Throwable;
 
 class ImpersonationController extends Controller
 {
-    public function __construct(protected ImpersonateManager $impersonate) {}
+    public function __construct(
+        protected ImpersonateManager $impersonate,
+        private readonly UserPresenter $presenter,
+    ) {}
 
     public function start(Request $request, User $user): JsonResponse
     {
@@ -57,8 +61,8 @@ class ImpersonationController extends Controller
 
             $this->syncSessionPasswordHash($user, $guardName);
 
-            $targetData = $this->serializeUser($user->load(['roles', 'store']));
-            $impersonatorData = $this->serializeUser($impersonator->fresh()->load(['roles', 'store']));
+            $targetData = $this->presenter->impersonation($user);
+            $impersonatorData = $this->presenter->impersonation($impersonator->fresh());
 
             activity('impersonation')
                 ->causedBy($impersonator)
@@ -158,7 +162,7 @@ class ImpersonationController extends Controller
         return response()->json([
             'message' => 'Impersonation ended.',
             'data' => [
-                'user' => $this->serializeUser($impersonator->fresh()->load(['roles', 'store'])),
+                'user' => $this->presenter->impersonation($impersonator->fresh()),
             ],
         ]);
     }
@@ -212,23 +216,5 @@ class ImpersonationController extends Controller
             'password_hash_'.$driver,
             $guard->hashPasswordForCookie($user->getAuthPassword()),
         );
-    }
-
-    private function serializeUser(User $user): array
-    {
-        $roles = $user->roleNames();
-
-        return [
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'roles' => $roles,
-            'is_super_admin' => in_array('super_admin', $roles, true),
-            'store' => $user->store ? [
-                'id' => $user->store->id,
-                'name' => $user->store->name,
-                'slug' => $user->store->slug,
-            ] : null,
-        ];
     }
 }

@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\SuperAdmin\UpdateStoreRequest;
 use App\Models\Store;
 use App\Models\SubscriptionPlan;
-use App\Models\User;
+use App\Modules\ControlPlane\Application\StoreAdministration;
 use App\Support\Subscriptions\SubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,7 +14,10 @@ use Illuminate\Validation\Rule;
 
 class StoreController extends Controller
 {
-    public function __construct(private SubscriptionService $subscriptions) {}
+    public function __construct(
+        private readonly SubscriptionService $subscriptions,
+        private readonly StoreAdministration $stores,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -34,36 +37,7 @@ class StoreController extends Controller
             'domain_status' => ['sometimes', 'nullable', Rule::in(['verified', 'unverified', 'none'])],
         ]);
 
-        $search = trim((string) ($validated['search'] ?? ''));
-        $stores = Store::query()
-            ->with('subscriptionPlan')
-            ->withCount('users')
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($nested) use ($search) {
-                    $nested
-                        ->where('name', 'like', "%{$search}%")
-                        ->orWhere('slug', 'like', "%{$search}%")
-                        ->orWhere('domain', 'like', "%{$search}%");
-                });
-            })
-            ->when($validated['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
-            ->when(
-                $validated['subscription_status'] ?? null,
-                fn ($query, $status) => $query->where('subscription_status', $status)
-            )
-            ->when($validated['domain_status'] ?? null, function ($query, $domainStatus) {
-                match ($domainStatus) {
-                    'verified' => $query->whereNotNull('domain')->whereNotNull('domain_verified_at'),
-                    'unverified' => $query->whereNotNull('domain')->whereNull('domain_verified_at'),
-                    'none' => $query->whereNull('domain'),
-                };
-            })
-            ->orderBy('name')
-            ->paginate((int) ($validated['per_page'] ?? 25));
-
-        $stores->through(fn (Store $store) => $this->serialize($store));
-
-        return response()->json($stores);
+        return response()->json($this->stores->paginate($validated));
     }
 
     public function options(Request $request): JsonResponse
@@ -73,30 +47,7 @@ class StoreController extends Controller
             'selected_id' => ['sometimes', 'nullable', 'integer', 'exists:stores,id'],
         ]);
 
-        $search = trim((string) ($validated['search'] ?? ''));
-        $selectedId = isset($validated['selected_id']) ? (int) $validated['selected_id'] : null;
-
-        $stores = Store::query()
-            ->select(['id', 'name', 'slug'])
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($nested) use ($search) {
-                    $nested
-                        ->where('name', 'like', "%{$search}%")
-                        ->orWhere('slug', 'like', "%{$search}%");
-                });
-            })
-            ->orderBy('name')
-            ->limit(20)
-            ->get();
-
-        if ($selectedId && ! $stores->contains('id', $selectedId)) {
-            $selected = Store::query()->select(['id', 'name', 'slug'])->find($selectedId);
-            if ($selected) {
-                $stores->prepend($selected);
-            }
-        }
-
-        return response()->json(['data' => $stores->take(20)->values()]);
+        return response()->json(['data' => $this->stores->options($validated)]);
     }
 
     public function show(Store $store): JsonResponse
@@ -104,43 +55,23 @@ class StoreController extends Controller
         $store->load('subscriptionPlan')->loadCount('users');
 
         return response()->json([
-            'data' => $this->serialize($store),
+            'data' => $this->stores->present($store),
         ]);
     }
 
     public function admins(Store $store): JsonResponse
     {
-        $users = User::query()
-            ->where('store_id', $store->id)
-            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['admin', 'super_admin']))
-            ->with(['roles', 'store'])
-            ->orderBy('name')
-            ->get();
-
-        return response()->json([
-            'data' => $users->map(fn (User $user) => $this->serializeAdmin($user))->values(),
-        ]);
+        return response()->json(['data' => $this->stores->admins($store)]);
     }
 
     public function update(UpdateStoreRequest $request, Store $store): JsonResponse
     {
         $data = $request->validated();
 
-        if (array_key_exists('domain', $data)) {
-            // Compare against the canonical form the model would persist, so
-            // re-saving the same domain doesn't needlessly drop verification.
-            $store->domain = $data['domain'];
-
-            if ($store->isDirty('domain')) {
-                $data['domain_verified_at'] = null;
-            }
-        }
-
-        $store->update($data);
-        $store->loadCount('users');
+        $store = $this->stores->update($store, $data);
 
         return response()->json([
-            'data' => $this->serialize($store),
+            'data' => $this->stores->present($store),
         ]);
     }
 
@@ -158,7 +89,7 @@ class StoreController extends Controller
             ], 422);
         }
 
-        $store->delete();
+        $this->stores->delete($store);
 
         return response()->json([
             'message' => 'Store deleted.',
@@ -167,10 +98,8 @@ class StoreController extends Controller
 
     public function activate(Store $store): JsonResponse
     {
-        $store->update(['status' => 'active']);
-
         return response()->json([
-            'data' => $this->serialize($store->fresh()->loadCount('users')),
+            'data' => $this->stores->present($this->stores->status($store, 'active')),
         ]);
     }
 
@@ -182,10 +111,8 @@ class StoreController extends Controller
             ], 422);
         }
 
-        $store->update(['status' => 'inactive']);
-
         return response()->json([
-            'data' => $this->serialize($store->fresh()->loadCount('users')),
+            'data' => $this->stores->present($this->stores->status($store, 'inactive')),
         ]);
     }
 
@@ -206,7 +133,7 @@ class StoreController extends Controller
         $this->subscriptions->comp($store, $plan);
 
         return response()->json([
-            'data' => $this->serialize($store->fresh()->load('subscriptionPlan')->loadCount('users')),
+            'data' => $this->stores->present($store->fresh()->load('subscriptionPlan')->loadCount('users')),
         ]);
     }
 
@@ -224,61 +151,7 @@ class StoreController extends Controller
         $this->subscriptions->uncomp($store);
 
         return response()->json([
-            'data' => $this->serialize($store->fresh()->load('subscriptionPlan')->loadCount('users')),
+            'data' => $this->stores->present($store->fresh()->load('subscriptionPlan')->loadCount('users')),
         ]);
-    }
-
-    private function serialize(Store $store): array
-    {
-        return [
-            'id' => $store->id,
-            'name' => $store->name,
-            'slug' => $store->slug,
-            'domain' => $store->domain,
-            'domain_verified_at' => $store->domain_verified_at,
-            'domain_verified' => $store->hasVerifiedDomain(),
-            'status' => $store->status,
-            'timezone' => $store->timezone,
-            'resolved_timezone' => $store->resolvedTimezone(),
-            'platform_timezone' => (string) config('app.timezone', 'UTC'),
-            'subscription_status' => $store->subscription_status,
-            'subscription_plan_id' => $store->subscription_plan_id,
-            'subscription_plan' => $store->subscriptionPlan ? [
-                'id' => $store->subscriptionPlan->id,
-                'name' => $store->subscriptionPlan->name,
-                'slug' => $store->subscriptionPlan->slug,
-                'price_cents' => $store->subscriptionPlan->price_cents,
-                'setup_fee_cents' => $store->subscriptionPlan->setup_fee_cents,
-                'interval' => $store->subscriptionPlan->interval,
-            ] : null,
-            'subscribed_at' => $store->subscribed_at,
-            'subscription_expires_at' => $store->subscription_expires_at,
-            'is_default' => $store->slug === Store::DEFAULT_SLUG,
-            'users_count' => $store->users_count ?? 0,
-            'created_at' => $store->created_at,
-            'updated_at' => $store->updated_at,
-            'deleted_at' => $store->deleted_at,
-        ];
-    }
-
-    private function serializeAdmin(User $user): array
-    {
-        $roles = $user->roleNames();
-
-        return [
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'role' => in_array('super_admin', $roles, true) ? 'super_admin' : 'admin',
-            'is_super_admin' => in_array('super_admin', $roles, true),
-            'status' => $user->status,
-            'disabled_at' => $user->disabled_at,
-            'store' => $user->store ? [
-                'id' => $user->store->id,
-                'name' => $user->store->name,
-                'slug' => $user->store->slug,
-            ] : null,
-            'created_at' => $user->created_at,
-        ];
     }
 }

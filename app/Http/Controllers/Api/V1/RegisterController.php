@@ -4,18 +4,16 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\RegisterRequest;
-use App\Models\Role;
-use App\Models\Store;
-use App\Models\User;
-use App\Support\Tenancy\StoreProvisioner;
-use Illuminate\Http\Client\Response;
+use App\Modules\Identity\Application\Registration;
+use App\Modules\Identity\Application\UserPresenter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 
 class RegisterController extends Controller
 {
-    public function __construct(private StoreProvisioner $storeProvisioner) {}
+    public function __construct(
+        private readonly Registration $registration,
+        private readonly UserPresenter $presenter,
+    ) {}
 
     /**
      * Self-service signup: a prospect creates their account plus a brand-new
@@ -27,86 +25,12 @@ class RegisterController extends Controller
     {
         $validated = $request->validated();
 
-        $this->verifyRecaptcha($validated['recaptcha_token'] ?? null);
-
-        $user = DB::transaction(function () use ($validated): User {
-            $store = $this->storeProvisioner->provision([
-                'name' => $validated['store_name'],
-                'slug' => $validated['store_slug'] ?? Store::generateUniqueSlug($validated['store_name']),
-                'status' => 'active',
-                // New self-service stores start gated; the column default would
-                // do this anyway, but being explicit keeps the contract visible.
-                'subscription_status' => Store::SUBSCRIPTION_UNSUBSCRIBED,
-            ]);
-
-            $role = Role::query()->firstOrCreate(['name' => 'admin']);
-
-            $user = User::create([
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-                'password' => $validated['password'],
-                'is_admin' => true,
-                'store_id' => $store->id,
-                'status' => User::STATUS_ACTIVE,
-            ]);
-
-            $user->roles()->sync([$role->id]);
-
-            return $user;
-        });
-
-        $user->load(['roles', 'store']);
+        $user = $this->registration->register($validated);
 
         return response()->json([
             'message' => 'Account created. Log in to finish setting up your store.',
-            'data' => $this->serializeUser($user),
+            'data' => $this->presenter->registration($user),
             'redirect' => '/subscribe',
         ], 201);
-    }
-
-    private function serializeUser(User $user): array
-    {
-        $roles = $user->roleNames();
-
-        return array_merge($user->toArray(), [
-            'roles' => $roles,
-            'is_admin' => in_array('admin', $roles, true) || in_array('super_admin', $roles, true),
-            'is_super_admin' => in_array('super_admin', $roles, true),
-            'store' => $user->store ? [
-                'id' => $user->store->id,
-                'name' => $user->store->name,
-                'slug' => $user->store->slug,
-                'subscription_status' => $user->store->subscription_status,
-                'subscription_expires_at' => $user->store->subscription_expires_at,
-            ] : null,
-        ]);
-    }
-
-    private function verifyRecaptcha(?string $token): void
-    {
-        $secretKey = config('services.recaptcha.secret_key');
-
-        // reCAPTCHA is optional; validation only happens when a key is set.
-        if (! $secretKey) {
-            return;
-        }
-
-        if ($token === null || $token === '') {
-            abort(422, 'reCAPTCHA verification failed. Please try again.');
-        }
-
-        $threshold = config('services.recaptcha.threshold', 0.5);
-
-        /** @var Response $response */
-        $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-            'secret' => $secretKey,
-            'response' => $token,
-        ]);
-
-        $result = $response->json();
-
-        if (! ($result['success'] ?? false) || ($result['score'] ?? 0) < $threshold) {
-            abort(422, 'reCAPTCHA verification failed. Please try again.');
-        }
     }
 }

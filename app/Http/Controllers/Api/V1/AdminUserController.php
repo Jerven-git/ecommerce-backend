@@ -3,18 +3,15 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Role;
-use App\Models\Store;
 use App\Models\User;
-use App\Support\Tenancy\StoreProvisioner;
+use App\Modules\Identity\Application\AdminUserManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class AdminUserController extends Controller
 {
-    public function __construct(private StoreProvisioner $storeProvisioner) {}
+    public function __construct(private readonly AdminUserManager $users) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -24,34 +21,12 @@ class AdminUserController extends Controller
             'search' => ['sometimes', 'nullable', 'string', 'max:100'],
         ]);
 
-        $search = trim((string) ($validated['search'] ?? ''));
-        $users = User::query()
-            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['admin', 'super_admin']))
-            ->with(['roles', 'store'])
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($nested) use ($search) {
-                    $nested
-                        ->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
-                });
-            })
-            ->orderBy('name')
-            ->orderBy('email')
-            ->paginate((int) ($validated['per_page'] ?? 25));
-
-        $users->through(fn (User $user) => $this->serializeUser($user));
-
-        return response()->json($users);
+        return response()->json($this->users->paginate($validated));
     }
 
     public function show(User $user): JsonResponse
     {
-        abort_unless($user->isAdminLike(), 404);
-        $user->load(['roles', 'store']);
-
-        return response()->json([
-            'data' => $this->serializeUser($user),
-        ]);
+        return response()->json(['data' => $this->users->show($user)]);
     }
 
     public function store(Request $request): JsonResponse
@@ -75,47 +50,9 @@ class AdminUserController extends Controller
             ], 422);
         }
 
-        $user = DB::transaction(function () use ($validated) {
-            $storeId = null;
+        $user = $this->users->create($validated);
 
-            if ($validated['role'] === 'admin') {
-                if (! empty($validated['store_id'])) {
-                    $storeId = (int) $validated['store_id'];
-                } else {
-                    $slug = $validated['store_slug'] ?? Store::generateUniqueSlug($validated['store_name']);
-
-                    $store = $this->storeProvisioner->provision([
-                        'name' => $validated['store_name'],
-                        'slug' => $slug,
-                        'status' => 'active',
-                    ]);
-
-                    $storeId = $store->id;
-                }
-            }
-
-            $role = Role::query()->firstOrCreate(['name' => $validated['role']]);
-
-            $user = User::create([
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-                'password' => $validated['password'],
-                'is_admin' => true,
-                'store_id' => $storeId,
-                'status' => $validated['status'] ?? User::STATUS_ACTIVE,
-                'disabled_at' => ($validated['status'] ?? null) === User::STATUS_DISABLED ? now() : null,
-            ]);
-
-            $user->roles()->sync([$role->id]);
-
-            return $user;
-        });
-
-        $user->load(['roles', 'store']);
-
-        return response()->json([
-            'data' => $this->serializeUser($user),
-        ], 201);
+        return response()->json(['data' => $this->users->present($user)], 201);
     }
 
     public function update(Request $request, User $user): JsonResponse
@@ -146,7 +83,7 @@ class AdminUserController extends Controller
             array_key_exists('status', $validated)
             && $validated['status'] === User::STATUS_DISABLED
             && $user->isSuperAdmin()
-            && $this->activeSuperAdminCount() <= 1
+            && $this->users->superAdminCount(activeOnly: true) <= 1
         ) {
             return response()->json([
                 'message' => 'You must keep at least one active super admin account.',
@@ -163,22 +100,10 @@ class AdminUserController extends Controller
             ], 422);
         }
 
-        $user->fill(collect($validated)->except(['password', 'status'])->all());
-
-        if (! empty($validated['password'])) {
-            $user->password = $validated['password'];
-        }
-
-        if (array_key_exists('status', $validated)) {
-            $user->status = $validated['status'];
-            $user->disabled_at = $validated['status'] === User::STATUS_DISABLED ? now() : null;
-        }
-
-        $user->save();
-        $user->load(['roles', 'store']);
+        $user = $this->users->update($user, $validated);
 
         return response()->json([
-            'data' => $this->serializeUser($user),
+            'data' => $this->users->present($user),
         ]);
     }
 
@@ -192,65 +117,18 @@ class AdminUserController extends Controller
             ], 422);
         }
 
-        if ($user->isSuperAdmin() && $this->superAdminCount() <= 1) {
+        if ($user->isSuperAdmin() && $this->users->superAdminCount() <= 1) {
             return response()->json([
                 'message' => 'You must keep at least one super admin account.',
             ], 422);
         }
 
-        $storeDeleted = DB::transaction(function () use ($user) {
-            $store = $user->store;
-
-            $user->delete();
-
-            // A store can now have several admins. Only soft-delete it once the
-            // last admin is gone (never the default store) so it can be restored
-            // if needed; otherwise the remaining admins keep operating it.
-            if ($store && $store->slug !== Store::DEFAULT_SLUG && ! $store->users()->exists()) {
-                $store->delete();
-
-                return true;
-            }
-
-            return false;
-        });
+        $storeDeleted = $this->users->delete($user);
 
         return response()->json([
             'message' => $storeDeleted
                 ? 'Admin account deleted. Its store had no other admins and was removed.'
                 : 'Admin account deleted.',
-        ]);
-    }
-
-    private function superAdminCount(): int
-    {
-        return User::query()
-            ->whereHas('roles', fn ($query) => $query->where('name', 'super_admin'))
-            ->count();
-    }
-
-    private function activeSuperAdminCount(): int
-    {
-        return User::query()
-            ->whereHas('roles', fn ($query) => $query->where('name', 'super_admin'))
-            ->where('status', User::STATUS_ACTIVE)
-            ->count();
-    }
-
-    private function serializeUser(User $user): array
-    {
-        $roles = $user->roleNames();
-
-        return array_merge($user->toArray(), [
-            'roles' => $roles,
-            'is_admin' => in_array('admin', $roles, true) || in_array('super_admin', $roles, true),
-            'is_super_admin' => in_array('super_admin', $roles, true),
-            'role' => in_array('super_admin', $roles, true) ? 'super_admin' : 'admin',
-            'store' => $user->store ? [
-                'id' => $user->store->id,
-                'name' => $user->store->name,
-                'slug' => $user->store->slug,
-            ] : null,
         ]);
     }
 }

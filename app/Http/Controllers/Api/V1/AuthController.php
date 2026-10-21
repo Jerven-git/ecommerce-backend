@@ -3,18 +3,21 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Mail\TwoFactorCodeMail;
-use App\Models\TwoFactorCode;
 use App\Models\User;
+use App\Modules\Identity\Application\TwoFactorChallenge;
+use App\Modules\Identity\Application\UserPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class AuthController extends Controller
 {
+    public function __construct(
+        private readonly TwoFactorChallenge $twoFactor,
+        private readonly UserPresenter $presenter,
+    ) {}
+
     /**
      * Step 1: Verify credentials and send 2FA code via email.
      */
@@ -58,7 +61,7 @@ class AuthController extends Controller
         $request->session()->forget(['two_factor_user_id', 'two_factor_expires_at']);
 
         try {
-            $this->generateAndSendCode($user);
+            $this->twoFactor->send($user);
         } catch (Throwable $e) {
             report($e);
 
@@ -122,21 +125,11 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // Find the latest unused, unexpired code
-        $twoFactorCode = TwoFactorCode::where('user_id', $userId)
-            ->whereNull('used_at')
-            ->where('expires_at', '>', now())
-            ->latest()
-            ->first();
-
-        if (! $twoFactorCode || ! Hash::check($request->code, $twoFactorCode->code)) {
+        if (! $this->twoFactor->consume((int) $userId, $request->code)) {
             return response()->json([
                 'message' => 'Invalid verification code.',
             ], 422);
         }
-
-        // Mark code as used
-        $twoFactorCode->update(['used_at' => now()]);
 
         // Clean up session 2FA data
         $request->session()->forget(['two_factor_user_id', 'two_factor_expires_at']);
@@ -150,7 +143,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Login successful',
-            'user' => $this->serializeUser($user),
+            'user' => $this->presenter->auth($user),
         ]);
     }
 
@@ -195,7 +188,7 @@ class AuthController extends Controller
         }
 
         try {
-            $this->generateAndSendCode($user);
+            $this->twoFactor->send($user);
         } catch (Throwable $e) {
             report($e);
 
@@ -259,68 +252,16 @@ class AuthController extends Controller
             $impersonatorId = session(config('laravel-impersonate.session_key'));
             $impersonatorUser = User::find($impersonatorId);
             if ($impersonatorUser) {
-                $impersonator = $this->serializeUser($impersonatorUser);
+                $impersonator = $this->presenter->auth($impersonatorUser);
             }
         }
 
         return response()->json([
-            'user' => array_merge($this->serializeUser($user), [
+            'user' => array_merge($this->presenter->auth($user), [
                 'is_impersonating' => $isImpersonating,
                 'impersonator' => $impersonator,
             ]),
         ]);
-    }
-
-    private function serializeUser(User $user): array
-    {
-        $user->loadMissing(['roles', 'store']);
-        $roles = $user->roleNames();
-
-        return array_merge($user->toArray(), [
-            'roles' => $roles,
-            'is_admin' => in_array('admin', $roles, true) || in_array('super_admin', $roles, true),
-            'is_super_admin' => in_array('super_admin', $roles, true),
-            'store' => $user->store ? [
-                'id' => $user->store->id,
-                'name' => $user->store->name,
-                'slug' => $user->store->slug,
-                'domain' => $user->store->domain,
-                // Only a verified domain actually serves the storefront, so
-                // clients must not link to an unverified one.
-                'domain_verified' => $user->store->hasVerifiedDomain(),
-                // Tenancy-level subscription state drives admin-UI gating. The
-                // backend enforces it independently via SubscriptionMiddleware.
-                'subscription_status' => $user->store->subscription_status,
-                'subscription_expires_at' => $user->store->subscription_expires_at,
-            ] : null,
-        ]);
-    }
-
-    /**
-     * Generate a 6-digit code, store hashed, and email it.
-     */
-    private function generateAndSendCode(User $user): void
-    {
-        // Invalidate any existing unused codes
-        TwoFactorCode::where('user_id', $user->id)
-            ->whereNull('used_at')
-            ->delete();
-
-        $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-
-        $twoFactorCode = TwoFactorCode::create([
-            'user_id' => $user->id,
-            'code' => Hash::make($code),
-            'expires_at' => now()->addMinutes(10),
-        ]);
-
-        try {
-            Mail::to($user->email)->send(new TwoFactorCodeMail($code, $user->name));
-        } catch (Throwable $e) {
-            $twoFactorCode->delete();
-
-            throw $e;
-        }
     }
 
     private function ensureSession(Request $request): void
