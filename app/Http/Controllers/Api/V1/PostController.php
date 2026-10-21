@@ -3,76 +3,35 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Post;
-use App\Models\PostCategory;
-use App\Modules\Media\MediaService;
+use App\Modules\Editorial\Application\EditorialQuery;
+use App\Modules\Editorial\Application\PostManager;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class PostController extends Controller
 {
-    public function __construct(private MediaService $mediaService) {}
+    public function __construct(
+        private readonly EditorialQuery $editorial,
+        private readonly PostManager $posts,
+    ) {}
 
     /**
      * Public listing. Only returns published posts.
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Post::with('category')->published();
+        $filters = $request->only(['category', 'search', 'sort', 'limit', 'per_page']);
+        $filters['featured'] = $request->boolean('featured');
+        $result = $this->editorial->publicPosts($filters);
 
-        if ($request->filled('category')) {
-            $category = PostCategory::where('slug', $request->category)->first();
-            if ($category) {
-                $query->where('category_id', $category->id);
-            } else {
-                $query->whereRaw('1 = 0');
-            }
-        }
-
-        if ($request->filled('search')) {
-            $s = $request->search;
-            $query->where(function ($q) use ($s) {
-                $q->where('title', 'LIKE', "%{$s}%")
-                    ->orWhere('excerpt', 'LIKE', "%{$s}%");
-            });
-        }
-
-        if ($request->boolean('featured')) {
-            $query->featured();
-        }
-
-        $sort = $request->input('sort', 'newest');
-        $query->orderBy('published_at', $sort === 'oldest' ? 'asc' : 'desc');
-
-        if ($request->filled('limit')) {
-            return response()->json(['data' => $query->limit((int) $request->limit)->get()]);
-        }
-
-        $posts = $query->paginate($request->input('per_page', 12));
-
-        return response()->json($posts);
+        return response()->json($request->filled('limit') ? ['data' => $result] : $result);
     }
 
     public function show(string $slug): JsonResponse
     {
-        $post = Post::with(['category', 'media'])
-            ->published()
-            ->where('slug', $slug)
-            ->firstOrFail();
-
-        $related = Post::with('category')
-            ->published()
-            ->where('id', '!=', $post->id)
-            ->when($post->category_id, fn ($q) => $q->where('category_id', $post->category_id))
-            ->orderByDesc('published_at')
-            ->limit(3)
-            ->get();
-
-        return response()->json([
-            'data' => $post,
-            'related' => $related,
-        ]);
+        return response()->json($this->editorial->post($slug));
     }
 
     /**
@@ -80,89 +39,47 @@ class PostController extends Controller
      */
     public function adminIndex(Request $request): JsonResponse
     {
-        $query = Post::with('category');
-
+        $filters = $request->only(['category_id', 'search', 'sort', 'order', 'per_page']);
         if ($request->has('is_published')) {
-            $query->where('is_published', $request->boolean('is_published'));
+            $filters['is_published'] = $request->boolean('is_published');
         }
 
-        if ($request->filled('category_id')) {
-            $query->where('category_id', (int) $request->category_id);
-        }
-
-        if ($request->filled('search')) {
-            $s = $request->search;
-            $query->where(function ($q) use ($s) {
-                $q->where('title', 'LIKE', "%{$s}%")
-                    ->orWhere('excerpt', 'LIKE', "%{$s}%");
-            });
-        }
-
-        $sort = $request->input('sort', 'created_at');
-        $order = $request->input('order', 'desc');
-        $query->orderBy($sort, $order);
-
-        $posts = $query->paginate($request->input('per_page', 15));
-
-        return response()->json($posts);
+        return response()->json($this->editorial->adminPosts($filters));
     }
 
     public function adminShow(int $id): JsonResponse
     {
-        $post = Post::with(['category', 'media'])->findOrFail($id);
-
-        return response()->json(['data' => $post]);
+        return response()->json(['data' => $this->editorial->adminPost($id)]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $validated = $this->validatePost($request);
 
-        $validated['slug'] = Post::generateUniqueSlug($validated['title']);
-        $this->resolvePublishedAt($validated);
-
-        $post = Post::create($validated);
-
-        if ($request->hasFile('cover_image')) {
-            $media = $this->mediaService->upload($request->file('cover_image'), $post, 'cover', 'posts');
-            $post->update(['cover_image_url' => Storage::disk('public')->url($media->path)]);
-        }
+        unset($validated['cover_image']);
+        $post = $this->posts->create($validated, $request->file('cover_image'));
 
         return response()->json([
             'message' => 'Post created successfully',
-            'data' => $post->fresh()->load(['category', 'media']),
+            'data' => $post,
         ], 201);
     }
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $post = Post::findOrFail($id);
-
         $validated = $this->validatePost($request, true);
-
-        if (isset($validated['title']) && $validated['title'] !== $post->title) {
-            $validated['slug'] = Post::generateUniqueSlug($validated['title'], $post->id);
-        }
-
-        $this->resolvePublishedAt($validated, $post);
-
-        $post->update($validated);
-
-        if ($request->hasFile('cover_image')) {
-            $media = $this->mediaService->upload($request->file('cover_image'), $post, 'cover', 'posts');
-            $post->update(['cover_image_url' => Storage::disk('public')->url($media->path)]);
-        }
+        unset($validated['cover_image']);
+        $post = $this->posts->update($id, $validated, $request->file('cover_image'));
 
         return response()->json([
             'message' => 'Post updated successfully',
-            'data' => $post->fresh()->load(['category', 'media']),
+            'data' => $post,
         ]);
     }
 
     public function destroy(int $id): JsonResponse
     {
-        $post = Post::findOrFail($id);
-        $post->delete();
+        $this->posts->delete($id);
 
         return response()->json(['message' => 'Post deleted successfully']);
     }
@@ -179,7 +96,10 @@ class PostController extends Controller
             'cover_image_url' => 'nullable|string|max:500',
             'cover_alt_text' => 'nullable|string|max:255',
             'author_name' => 'nullable|string|max:255',
-            'category_id' => 'nullable|exists:post_categories,id',
+            'category_id' => [
+                'nullable',
+                Rule::exists('post_categories', 'id')->where('store_id', app(CurrentStore::class)->id()),
+            ],
             'is_published' => 'nullable|boolean',
             'is_featured' => 'nullable|boolean',
             'published_at' => 'nullable|date',
@@ -188,21 +108,5 @@ class PostController extends Controller
             'og_image_url' => 'nullable|url|max:500',
             'noindex' => 'nullable|boolean',
         ]);
-    }
-
-    /**
-     * Ensure published_at is set when flipping to published, preserved otherwise.
-     */
-    private function resolvePublishedAt(array &$validated, ?Post $existing = null): void
-    {
-        unset($validated['cover_image']);
-
-        $willPublish = array_key_exists('is_published', $validated)
-            ? (bool) $validated['is_published']
-            : (bool) ($existing->is_published ?? false);
-
-        if ($willPublish && empty($validated['published_at']) && ! ($existing && $existing->published_at)) {
-            $validated['published_at'] = now();
-        }
     }
 }

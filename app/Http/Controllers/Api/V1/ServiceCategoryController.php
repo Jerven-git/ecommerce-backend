@@ -4,121 +4,73 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ServiceCategory;
-use App\Modules\Media\MediaService;
+use App\Modules\Editorial\Application\TaxonomyManager;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class ServiceCategoryController extends Controller
 {
-    public function __construct(private MediaService $mediaService) {}
+    public function __construct(private readonly TaxonomyManager $categories) {}
 
     public function index(Request $request): JsonResponse
     {
-        $query = ServiceCategory::orderBy('sort_order')
-            ->orderBy('name')
-            ->withCount(['services' => fn ($q) => $q->published()]);
+        $paginated = $request->filled('page') || $request->filled('per_page');
+        $result = $this->categories->list(ServiceCategory::class, 'services', [
+            'search' => $request->input('search'),
+            'paginate' => $paginated,
+            'per_page' => $request->input('per_page', 10),
+        ]);
 
-        if ($request->filled('search')) {
-            $s = $request->search;
-            $query->where(function ($q) use ($s) {
-                $q->where('name', 'LIKE', "%{$s}%")
-                    ->orWhere('slug', 'LIKE', "%{$s}%");
-            });
-        }
-
-        // Paginated mode (admin list). Plain array otherwise so the
-        // storefront and filter dropdowns keep working unchanged.
-        if ($request->filled('page') || $request->filled('per_page')) {
-            $perPage = max(1, min(100, (int) $request->input('per_page', 10)));
-
-            return response()->json($query->paginate($perPage));
-        }
-
-        $categories = $query->get();
-
-        return response()->json(['data' => $categories]);
+        return response()->json($paginated ? $result : ['data' => $result]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $validated = $this->validateCategory($request);
 
-        $file = $request->file('image');
         unset($validated['image']);
-
-        $validated['slug'] = ServiceCategory::generateUniqueSlug($validated['name']);
-        $category = ServiceCategory::create($validated);
-
-        if ($file) {
-            $media = $this->mediaService->upload($file, $category, 'image', 'service-categories');
-            $category->update(['image_url' => Storage::disk('public')->url($media->path)]);
-        }
+        $category = $this->categories->create(
+            ServiceCategory::class, $validated, $request->file('image'), 'service-categories'
+        );
 
         return response()->json(['data' => $category->fresh()], 201);
     }
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $category = ServiceCategory::findOrFail($id);
-
         $validated = $this->validateCategory($request, partial: true);
-
-        $file = $request->file('image');
         unset($validated['image']);
+        $category = $this->categories->update(
+            ServiceCategory::class, $id, $validated, $request->file('image'), 'service-categories'
+        );
 
-        if (isset($validated['name']) && $validated['name'] !== $category->name) {
-            $validated['slug'] = ServiceCategory::generateUniqueSlug($validated['name'], $category->id);
-        }
-
-        if ($file) {
-            $media = $this->mediaService->upload($file, $category, 'image', 'service-categories');
-            $validated['image_url'] = Storage::disk('public')->url($media->path);
-        }
-
-        $category->update($validated);
-
-        return response()->json(['data' => $category->fresh()]);
+        return response()->json(['data' => $category]);
     }
 
     public function deleteImage(int $id): JsonResponse
     {
-        $category = ServiceCategory::findOrFail($id);
-        $media = $category->media()->where('collection', 'image')->first();
-
-        if ($media) {
-            Storage::disk('public')->delete($media->path);
-            $media->delete();
-        }
-        $category->update(['image_url' => null]);
-
-        return response()->json(['data' => $category->fresh()]);
+        return response()->json(['data' => $this->categories->deleteImage(ServiceCategory::class, $id)]);
     }
 
     public function reorder(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'ids' => 'required|array|min:1',
-            'ids.*' => 'integer|exists:service_categories,id',
+            'ids.*' => [
+                'integer',
+                Rule::exists('service_categories', 'id')->where('store_id', app(CurrentStore::class)->id()),
+            ],
         ]);
-
-        foreach ($validated['ids'] as $order => $id) {
-            ServiceCategory::where('id', $id)->update(['sort_order' => $order]);
-        }
+        $this->categories->reorder(ServiceCategory::class, $validated['ids']);
 
         return response()->json(['message' => 'Reordered.']);
     }
 
     public function destroy(int $id): JsonResponse
     {
-        $category = ServiceCategory::findOrFail($id);
-
-        foreach ($category->media as $media) {
-            Storage::disk('public')->delete($media->path);
-            $media->delete();
-        }
-
-        $category->delete();
+        $this->categories->delete(ServiceCategory::class, $id);
 
         return response()->json(['message' => 'Category deleted.']);
     }

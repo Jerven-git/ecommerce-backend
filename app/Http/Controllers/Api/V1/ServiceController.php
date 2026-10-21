@@ -3,84 +3,35 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Service;
-use App\Models\ServiceCategory;
-use App\Modules\Media\MediaService;
+use App\Modules\Editorial\Application\EditorialQuery;
+use App\Modules\Editorial\Application\ServiceManager;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class ServiceController extends Controller
 {
-    public function __construct(private MediaService $mediaService) {}
+    public function __construct(
+        private readonly EditorialQuery $editorial,
+        private readonly ServiceManager $services,
+    ) {}
 
     /**
      * Public listing. Only returns published services.
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Service::with('category')->published();
+        $filters = $request->only(['category', 'search', 'sort', 'limit', 'per_page']);
+        $filters['featured'] = $request->boolean('featured');
+        $result = $this->editorial->publicServices($filters);
 
-        if ($request->filled('category')) {
-            $category = ServiceCategory::where('slug', $request->category)->first();
-            if ($category) {
-                $query->where('category_id', $category->id);
-            } else {
-                $query->whereRaw('1 = 0');
-            }
-        }
-
-        if ($request->filled('search')) {
-            $s = $request->search;
-            $query->where(function ($q) use ($s) {
-                $q->where('title', 'LIKE', "%{$s}%")
-                    ->orWhere('description', 'LIKE', "%{$s}%");
-            });
-        }
-
-        if ($request->boolean('featured')) {
-            $query->featured();
-        }
-
-        $sort = $request->input('sort', 'default');
-        if ($sort === 'newest') {
-            $query->orderByDesc('published_at');
-        } elseif ($sort === 'oldest') {
-            $query->orderBy('published_at');
-        } else {
-            // Default: respect per-category ordering, then creation order
-            $query->orderBy('sort_order')->orderByDesc('published_at');
-        }
-
-        if ($request->filled('limit')) {
-            return response()->json(['data' => $query->limit((int) $request->limit)->get()]);
-        }
-
-        $services = $query->paginate($request->input('per_page', 12));
-
-        return response()->json($services);
+        return response()->json($request->filled('limit') ? ['data' => $result] : $result);
     }
 
     public function show(string $slug): JsonResponse
     {
-        $service = Service::with(['category', 'media'])
-            ->published()
-            ->where('slug', $slug)
-            ->firstOrFail();
-
-        $related = Service::with('category')
-            ->published()
-            ->where('id', '!=', $service->id)
-            ->when($service->category_id, fn ($q) => $q->where('category_id', $service->category_id))
-            ->orderBy('sort_order')
-            ->orderByDesc('published_at')
-            ->limit(3)
-            ->get();
-
-        return response()->json([
-            'data' => $service,
-            'related' => $related,
-        ]);
+        return response()->json($this->editorial->service($slug));
     }
 
     /**
@@ -88,95 +39,47 @@ class ServiceController extends Controller
      */
     public function adminIndex(Request $request): JsonResponse
     {
-        $query = Service::with('category');
-
+        $filters = $request->only(['category_id', 'search', 'sort', 'order', 'per_page']);
         if ($request->has('is_published')) {
-            $query->where('is_published', $request->boolean('is_published'));
+            $filters['is_published'] = $request->boolean('is_published');
         }
 
-        if ($request->filled('category_id')) {
-            $query->where('category_id', (int) $request->category_id);
-        }
-
-        if ($request->filled('search')) {
-            $s = $request->search;
-            $query->where(function ($q) use ($s) {
-                $q->where('title', 'LIKE', "%{$s}%")
-                    ->orWhere('description', 'LIKE', "%{$s}%");
-            });
-        }
-
-        $sort = $request->input('sort', 'created_at');
-        $order = $request->input('order', 'desc');
-        $query->orderBy($sort, $order);
-
-        $services = $query->paginate($request->input('per_page', 15));
-
-        return response()->json($services);
+        return response()->json($this->editorial->adminServices($filters));
     }
 
     public function adminShow(int $id): JsonResponse
     {
-        $service = Service::with(['category', 'media'])->findOrFail($id);
-
-        return response()->json(['data' => $service]);
+        return response()->json(['data' => $this->editorial->adminService($id)]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $validated = $this->validateService($request);
 
-        $validated['slug'] = Service::generateUniqueSlug($validated['title']);
-        $this->resolvePublishedAt($validated);
-
-        $service = Service::create($validated);
-
-        if ($request->hasFile('cover_image')) {
-            $media = $this->mediaService->upload($request->file('cover_image'), $service, 'cover', 'services');
-            $service->update(['cover_image_url' => Storage::disk('public')->url($media->path)]);
-        }
+        unset($validated['cover_image']);
+        $service = $this->services->create($validated, $request->file('cover_image'));
 
         return response()->json([
             'message' => 'Service created successfully',
-            'data' => $service->fresh()->load(['category', 'media']),
+            'data' => $service,
         ], 201);
     }
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $service = Service::findOrFail($id);
-
         $validated = $this->validateService($request, true);
-
-        if (isset($validated['title']) && $validated['title'] !== $service->title) {
-            $validated['slug'] = Service::generateUniqueSlug($validated['title'], $service->id);
-        }
-
-        $this->resolvePublishedAt($validated, $service);
-
-        $service->update($validated);
-
-        if ($request->hasFile('cover_image')) {
-            $media = $this->mediaService->upload($request->file('cover_image'), $service, 'cover', 'services');
-            $service->update(['cover_image_url' => Storage::disk('public')->url($media->path)]);
-        }
+        unset($validated['cover_image']);
+        $service = $this->services->update($id, $validated, $request->file('cover_image'));
 
         return response()->json([
             'message' => 'Service updated successfully',
-            'data' => $service->fresh()->load(['category', 'media']),
+            'data' => $service,
         ]);
     }
 
     public function destroy(int $id): JsonResponse
     {
-        $service = Service::findOrFail($id);
-
-        foreach ($service->media as $media) {
-            Storage::disk('public')->delete($media->path);
-            $media->delete();
-        }
-
-        $service->delete();
+        $this->services->delete($id);
 
         return response()->json(['message' => 'Service deleted successfully']);
     }
@@ -185,12 +88,13 @@ class ServiceController extends Controller
     {
         $validated = $request->validate([
             'ids' => 'required|array|min:1',
-            'ids.*' => 'integer|exists:services,id',
+            'ids.*' => [
+                'integer',
+                Rule::exists('services', 'id')->where('store_id', app(CurrentStore::class)->id()),
+            ],
         ]);
 
-        foreach ($validated['ids'] as $order => $id) {
-            Service::where('id', $id)->update(['sort_order' => $order]);
-        }
+        $this->services->reorder($validated['ids']);
 
         return response()->json(['message' => 'Reordered.']);
     }
@@ -207,7 +111,10 @@ class ServiceController extends Controller
             'cover_image' => 'nullable|image|max:5120',
             'cover_image_url' => 'nullable|string|max:500',
             'cover_alt_text' => 'nullable|string|max:255',
-            'category_id' => 'nullable|exists:service_categories,id',
+            'category_id' => [
+                'nullable',
+                Rule::exists('service_categories', 'id')->where('store_id', app(CurrentStore::class)->id()),
+            ],
             'cta_label' => 'nullable|string|max:100',
             'cta_link' => 'nullable|string|max:500',
             'is_published' => 'nullable|boolean',
@@ -219,21 +126,5 @@ class ServiceController extends Controller
             'noindex' => 'nullable|boolean',
             'sort_order' => 'nullable|integer|min:0',
         ]);
-    }
-
-    /**
-     * Ensure published_at is set when flipping to published, preserved otherwise.
-     */
-    private function resolvePublishedAt(array &$validated, ?Service $existing = null): void
-    {
-        unset($validated['cover_image']);
-
-        $willPublish = array_key_exists('is_published', $validated)
-            ? (bool) $validated['is_published']
-            : (bool) ($existing->is_published ?? false);
-
-        if ($willPublish && empty($validated['published_at']) && ! ($existing && $existing->published_at)) {
-            $validated['published_at'] = now();
-        }
     }
 }
