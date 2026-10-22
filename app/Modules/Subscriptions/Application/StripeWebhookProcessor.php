@@ -5,12 +5,15 @@ namespace App\Modules\Subscriptions\Application;
 use App\Models\Store;
 use App\Models\SubscriptionPlan;
 use App\Models\SubscriptionWebhookEvent;
+use App\Support\Webhooks\WebhookEventProcessor;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Log;
 
 class StripeWebhookProcessor
 {
-    public function __construct(private readonly SubscriptionLifecycle $lifecycle) {}
+    public function __construct(
+        private readonly SubscriptionLifecycle $lifecycle,
+        private readonly WebhookEventProcessor $eventProcessor,
+    ) {}
 
     /** @param array<string, mixed> $event */
     public function process(array $event): void
@@ -28,19 +31,11 @@ class StripeWebhookProcessor
             ],
         );
 
-        if (! $stored->wasRecentlyCreated) {
-            return;
-        }
-
-        try {
-            $this->apply($event);
-        } catch (\Throwable $exception) {
-            Log::channel('single')->error('subscription webhook processing failed', [
-                'event_id' => $eventId,
-                'event_type' => $event['type'] ?? null,
-                'error' => $exception->getMessage(),
-            ]);
-        }
+        $this->eventProcessor->process(
+            $stored,
+            fn () => $this->apply($event),
+            ['provider' => 'stripe', 'store_id' => null, 'stream' => 'subscriptions'],
+        );
     }
 
     /** @param array<string, mixed> $event */

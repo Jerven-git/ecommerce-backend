@@ -5,14 +5,16 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Product;
+use App\Support\Cache\StoreCommerceCache;
 use App\Support\Tenancy\CurrentStore;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
+    public function __construct(private readonly StoreCommerceCache $cache) {}
+
     public function stats(Request $request)
     {
         $storeId = app(CurrentStore::class)->id();
@@ -26,7 +28,7 @@ class DashboardController extends Controller
             $range = '7d';
         }
 
-        $stats = Cache::remember("dashboard_stats:store:{$storeId}", 60, function () use ($storeId) {
+        $stats = $this->cache->rememberDashboardStats((int) $storeId, function () use ($storeId) {
             $orderStats = Order::toBase()
                 ->selectRaw('count(*) as total_orders')
                 ->selectRaw("count(case when status = 'pending' then 1 end) as pending_orders")
@@ -52,7 +54,7 @@ class DashboardController extends Controller
 
         [$start, $end, $granularity] = $this->resolveRange($range);
 
-        $analytics = Cache::remember("dashboard_analytics:store:{$storeId}:range:{$range}", 60, function () use ($storeId, $range, $start, $end, $granularity) {
+        $analytics = $this->cache->rememberDashboardAnalytics((int) $storeId, $range, function () use ($storeId, $range, $start, $end, $granularity) {
             return $this->buildAnalytics($storeId, $range, $start, $end, $granularity);
         });
 

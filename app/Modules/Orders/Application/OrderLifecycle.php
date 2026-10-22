@@ -6,7 +6,7 @@ use App\Mail\OrderCancellationMail;
 use App\Models\Order;
 use App\Payments\PaymentService;
 use App\Repositories\OrderRepository;
-use Illuminate\Support\Facades\DB;
+use App\Support\Database\Transaction;
 use Illuminate\Support\Facades\Mail;
 
 class OrderLifecycle
@@ -49,7 +49,7 @@ class OrderLifecycle
         $order->forceFill(['status' => $status])->save();
 
         if ($status === 'cancelled') {
-            DB::transaction(function () use ($order) {
+            Transaction::run(function () use ($order) {
                 $payment = $order->payment;
                 if ($payment && $payment->status === 'pending') {
                     $payment->update(['status' => 'failed']);
@@ -99,7 +99,7 @@ class OrderLifecycle
             throw new OrderOperationException('Payment is not confirmed');
         }
 
-        DB::transaction(function () use ($payment, $order) {
+        Transaction::run(function () use ($payment, $order) {
             $payment->update(['status' => 'pending']);
             $this->orders->restoreStock($order);
 
@@ -126,7 +126,7 @@ class OrderLifecycle
             );
         }
 
-        DB::transaction(function () use ($order, $payment) {
+        Transaction::run(function () use ($order, $payment) {
             $payment->update(['status' => 'refunded']);
             $this->orders->restoreStock($order);
             $order->forceFill(['status' => 'cancelled'])->save();

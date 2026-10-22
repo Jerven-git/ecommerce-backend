@@ -6,7 +6,7 @@ use App\Mail\BackorderCancellationMail;
 use App\Mail\BackorderPaymentLinkMail;
 use App\Models\Backorder;
 use App\Models\Product;
-use Illuminate\Support\Facades\DB;
+use App\Support\Database\Transaction;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -54,7 +54,7 @@ class BackorderLifecycle
             );
         }
 
-        DB::transaction(function () use ($backorder) {
+        Transaction::run(function () use ($backorder) {
             if ($backorder->stock_reserved) {
                 $product = Product::query()->whereKey($backorder->product_id)->lockForUpdate()->first();
                 $product?->increment('stock', $backorder->quantity);
@@ -93,7 +93,7 @@ class BackorderLifecycle
             );
         }
 
-        DB::transaction(function () use ($backorder) {
+        Transaction::run(function () use ($backorder) {
             $backorder->update([
                 'status' => 'paid',
                 'paid_at' => now(),
@@ -107,7 +107,7 @@ class BackorderLifecycle
 
     public function fulfillPaid(int|string $id): void
     {
-        DB::transaction(function () use ($id) {
+        Transaction::run(function () use ($id) {
             $backorder = $this->backorders->tenantQuery()
                 ->whereKey($id)
                 ->lockForUpdate()
@@ -150,7 +150,7 @@ class BackorderLifecycle
             ->get();
 
         foreach ($expired as $backorder) {
-            DB::transaction(function () use ($backorder) {
+            Transaction::run(function () use ($backorder) {
                 if ($backorder->stock_reserved) {
                     $product = Product::query()->whereKey($backorder->product_id)->lockForUpdate()->first();
                     $product?->increment('stock', $backorder->quantity);
@@ -172,7 +172,7 @@ class BackorderLifecycle
         $expiryHours = $this->settings->paymentLinkExpiryHours();
         $token = Str::random(64);
 
-        DB::transaction(function () use ($backorder, $token, $expiryHours) {
+        Transaction::run(function () use ($backorder, $token, $expiryHours) {
             $product = Product::query()->whereKey($backorder->product_id)->lockForUpdate()->first();
             if (! $product || $product->stock < $backorder->quantity) {
                 throw new BackorderOperationException(

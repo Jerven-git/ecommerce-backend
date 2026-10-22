@@ -8,9 +8,10 @@ use App\Modules\Orders\Application\OrderCheckout;
 use App\Modules\Orders\Application\OrderLifecycle;
 use App\Modules\Orders\Application\OrderOperationException;
 use App\Repositories\OrderRepository;
+use App\Support\Cache\StoreCommerceCache;
+use App\Support\Tenancy\CurrentStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 class OrderController extends Controller
 {
@@ -18,6 +19,8 @@ class OrderController extends Controller
         private readonly OrderRepository $orders,
         private readonly OrderCheckout $checkout,
         private readonly OrderLifecycle $lifecycle,
+        private readonly StoreCommerceCache $cache,
+        private readonly CurrentStore $currentStore,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -47,7 +50,10 @@ class OrderController extends Controller
 
         $query->orderBy($sort, $direction);
 
-        $statusCounts = Cache::remember('order_status_counts', 300, fn () => $this->orders->statusCounts());
+        $statusCounts = $this->cache->rememberOrderStatusCounts(
+            (int) $this->currentStore->id(),
+            fn () => $this->orders->statusCounts(),
+        );
         $paginator = $query->paginate(min((int) $request->input('per_page', 15), 100));
 
         return response()->json(array_merge($paginator->toArray(), [

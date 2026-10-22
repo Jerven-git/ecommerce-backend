@@ -8,6 +8,7 @@ use App\Models\Store;
 use App\Payments\GatewayManager;
 use App\Payments\PaymentService;
 use App\Support\Tenancy\CurrentStore;
+use App\Support\Webhooks\WebhookEventProcessor;
 use Illuminate\Http\Request;
 
 class WebhookReceiver
@@ -17,6 +18,7 @@ class WebhookReceiver
         private readonly GatewayManager $gateways,
         private readonly PaymentService $payments,
         private readonly CurrentStore $currentStore,
+        private readonly WebhookEventProcessor $eventProcessor,
     ) {}
 
     public function receive(string $provider, Request $request, ?string $storeSlug): WebhookResult
@@ -40,17 +42,20 @@ class WebhookReceiver
             return WebhookResult::reject('Missing event id');
         }
 
-        if (! $this->storeEventOnce($provider, $normalized, $event)) {
-            return WebhookResult::ok();
-        }
+        $storedEvent = $this->storeEvent($provider, $normalized, $event);
+        $this->eventProcessor->process($storedEvent, function () use ($provider, $normalized): void {
+            $payment = $this->resolvePayment($provider, $normalized);
+            if (! $payment) {
+                return;
+            }
 
-        $payment = $this->resolvePayment($provider, $normalized);
-        if (! $payment) {
-            return WebhookResult::ok();
-        }
-
-        $this->mergeMeta($payment, $normalized);
-        $this->applyStatus($payment, $normalized);
+            $this->mergeMeta($payment, $normalized);
+            $this->applyStatus($payment, $normalized);
+        }, [
+            'provider' => $provider,
+            'store_id' => $this->currentStore->id(),
+            'stream' => 'payments',
+        ]);
 
         return WebhookResult::ok();
     }
@@ -70,17 +75,15 @@ class WebhookReceiver
     }
 
     /** @param array<string, mixed> $normalized @param array<string, mixed> $fallbackPayload */
-    private function storeEventOnce(string $provider, array $normalized, array $fallbackPayload): bool
+    private function storeEvent(string $provider, array $normalized, array $fallbackPayload): PaymentWebhookEvent
     {
-        $event = PaymentWebhookEvent::firstOrCreate(
+        return PaymentWebhookEvent::firstOrCreate(
             ['provider' => $provider, 'event_id' => $normalized['event_id']],
             [
                 'event_type' => $normalized['event_type'] ?? null,
                 'payload' => $normalized['payload'] ?? $fallbackPayload,
             ],
         );
-
-        return $event->wasRecentlyCreated;
     }
 
     /** @param array<string, mixed> $normalized */

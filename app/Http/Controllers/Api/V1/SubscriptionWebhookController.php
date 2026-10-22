@@ -7,6 +7,7 @@ use App\Modules\Subscriptions\Application\StripeWebhookProcessor;
 use App\Modules\Subscriptions\Application\SubscriptionOperationException;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class SubscriptionWebhookController extends Controller
 {
@@ -33,6 +34,8 @@ class SubscriptionWebhookController extends Controller
             $this->webhooks->process($event->toArray());
         } catch (SubscriptionOperationException $exception) {
             return response($exception->getMessage(), $exception->status);
+        } catch (Throwable) {
+            return response('Webhook processing failed', 500);
         }
 
         return response('OK', 200);

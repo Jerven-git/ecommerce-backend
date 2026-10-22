@@ -7,7 +7,7 @@ use App\Models\GiftCard;
 use App\Models\GiftCardDenomination;
 use App\Models\Order;
 use App\Models\SiteConfig;
-use Illuminate\Support\Facades\DB;
+use App\Support\Database\Transaction;
 
 class OrderCheckout
 {
@@ -22,7 +22,7 @@ class OrderCheckout
      */
     public function create(array $validated, ?string $discountCode, ?string $giftCardCode): array
     {
-        return DB::transaction(function () use ($validated, $discountCode, $giftCardCode) {
+        return Transaction::run(function () use ($validated, $discountCode, $giftCardCode) {
             $cart = $this->cartBuilder->build($validated['items']);
             $shipping = $this->pricing->shipping($validated, $cart);
             $shippingTotal = (float) ($shipping['total'] ?? 0);
@@ -87,7 +87,7 @@ class OrderCheckout
             throw new OrderOperationException('Selected denomination is not available.');
         }
 
-        return DB::transaction(function () use ($validated, $denomination) {
+        return Transaction::run(function () use ($validated, $denomination) {
             $currency = $this->shopCurrency();
             $amount = round((float) $denomination->amount, 2);
 

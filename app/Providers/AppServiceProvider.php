@@ -13,6 +13,10 @@ use App\Listeners\FulfillBackorder;
 use App\Listeners\HandleFailedOrder;
 use App\Listeners\SendOrderConfirmation;
 use App\Listeners\UpdateOrderStatus;
+use App\Models\Order;
+use App\Models\Payment;
+use App\Models\Product;
+use App\Observers\InvalidateStoreCommerceCache;
 use App\Payments\Contracts\PaymentServiceInterface;
 use App\Payments\GatewayManager;
 use App\Payments\Gateways\PayPalGateway;
@@ -56,6 +60,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Order::observe(InvalidateStoreCommerceCache::class);
+        Payment::observe(InvalidateStoreCommerceCache::class);
+        Product::observe(InvalidateStoreCommerceCache::class);
+
         Event::listen(PaymentConfirmed::class, UpdateOrderStatus::class);
         Event::listen(PaymentConfirmed::class, DeductStock::class);
         Event::listen(PaymentConfirmed::class, FulfillBackorder::class);
