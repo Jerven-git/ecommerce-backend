@@ -19,7 +19,8 @@ class RegisterController extends Controller
      * Self-service signup: a prospect creates their account plus a brand-new
      * store in one atomic step, which is created gated (`unsubscribed`) until
      * they complete checkout. No auto-login — the platform's mandatory 2FA
-     * login is a separate two-step flow (see §8.2 of SUBSCRIPTION_FEATURE.md).
+     * login is a separate two-step flow (see §8.2 of
+     * docs/roadmaps/SUBSCRIPTION_FEATURE.md in the infrastructure repository).
      */
     public function register(RegisterRequest $request): JsonResponse
     {
